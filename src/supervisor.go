@@ -8,42 +8,32 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/redis/go-redis/v9"
 )
 
 type Supervisor struct {
-	client         *redis.Client
-	dockerClient   *client.Client
-	ctx            context.Context
-	cancel         context.CancelFunc
-	consumerID     string
-	wg             sync.WaitGroup
-	maxContainers  int
-	containerMutex sync.RWMutex
+	redisClient *redis.Client
+	ctx         context.Context
+	cancel      context.CancelFunc
+	consumerID  string
+	gpuType     string
+	wg          sync.WaitGroup
 }
 
-func NewSupervisor(redisAddr, consumerID string) (*Supervisor, error) {
-	redisClient := redis.NewClient(&redis.Options{
+func NewSupervisor(redisAddr, consumerID, gpuType string) *Supervisor {
+	client := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
-
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Docker client: %w", err)
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Supervisor{
-		client:        redisClient,
-		dockerClient:  dockerClient,
-		ctx:           ctx,
-		cancel:        cancel,
-		consumerID:    consumerID,
-		maxContainers: 4,
-	}, nil
+		redisClient: client,
+		ctx:         ctx,
+		cancel:      cancel,
+		consumerID:  consumerID,
+		gpuType:     gpuType,
+	}
 }
 
 func (s *Supervisor) Start() error {
@@ -56,12 +46,12 @@ func (s *Supervisor) Start() error {
 	s.wg.Add(1)
 	go s.processJobs()
 
-	log.Printf("Supervisor %s started with max containers: %d", s.consumerID, s.maxContainers)
+	log.Printf("Supervisor %s started with GPU: %s", s.consumerID, s.gpuType)
 	return nil
 }
 
 func (s *Supervisor) createConsumerGroup() error {
-	result := s.client.XGroupCreateMkStream(s.ctx, StreamName, ConsumerGroup, "$")
+	result := s.redisClient.XGroupCreateMkStream(s.ctx, StreamName, ConsumerGroup, "$")
 	if result.Err() != nil {
 		if result.Err().Error() != "BUSYGROUP Consumer Group name already exists" {
 			// in this case the group already exists
@@ -79,19 +69,13 @@ func (s *Supervisor) processJobs() {
 		case <-s.ctx.Done():
 			return
 		default:
-			if !s.canStartNewContainer() {
-				log.Printf("Container limit reached (%d), not claiming job", s.maxContainers)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
 			// Read from stream with blocking
-			result := s.client.XReadGroup(s.ctx, &redis.XReadGroupArgs{
+			result := s.redisClient.XReadGroup(s.ctx, &redis.XReadGroupArgs{
 				Group:    ConsumerGroup,
 				Consumer: s.consumerID,
 				Streams:  []string{StreamName, ">"},
 				Count:    1,
-				Block:    time.Second * 3,
+				Block:    time.Second * 5,
 			})
 
 			if result.Err() != nil {
@@ -126,33 +110,37 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 		return
 	}
 
-	log.Printf("Processing job %s of type %s", job.ID, job.Type)
+	// certain jobs require a specific GPU
+	if !s.canHandleJob(job) {
+		log.Printf("Job %s requires GPU type %s, but supervisor has %s - skipping",
+			job.ID, job.RequiredGPU, s.gpuType)
+		// let another supervisor can pick it up
+		return
+	}
+
+	log.Printf("Processing job %s:%s", job.ID, job.Type)
 
 	// Simulate job processing
 	success := s.processJob(job)
+
 	if success {
 		s.ackMessage(message.ID)
 		log.Printf("Job %s completed successfully", job.ID)
 	} else {
-		log.Printf("Job %s failed", job.ID) // maybe don't do this?
-		s.ackMessage(message.ID)            // TODO: change this once we have docker support
+		log.Printf("Job %s failed", job.ID)
+		s.ackMessage(message.ID) // TODO: change this once we have docker support
 	}
 }
 
-func (s *Supervisor) canStartNewContainer() bool {
-	s.containerMutex.RLock()
-	defer s.containerMutex.RUnlock()
-
-	containers, err := s.dockerClient.ContainerList(s.ctx, container.ListOptions{})
-	if err != nil {
-		log.Printf("Error getting container count: %v", err)
-		return false
+// canHandleJob checks if this supervisor can handle the given job based on GPU requirements
+func (s *Supervisor) canHandleJob(job Job) bool {
+	// If job doesn't specify GPU requirement, any supervisor can handle it
+	if job.RequiredGPU == "" {
+		return true
 	}
 
-	runningCount := len(containers)
-
-	log.Printf("Current running containers: %d, Max: %d", runningCount, s.maxContainers)
-	return runningCount < s.maxContainers
+	// Job must match supervisor's GPU type
+	return job.RequiredGPU == s.gpuType
 }
 
 // TODO: Actually schedule a container here
@@ -161,7 +149,7 @@ func (s *Supervisor) processJob(job Job) bool {
 }
 
 func (s *Supervisor) ackMessage(messageID string) {
-	result := s.client.XAck(s.ctx, StreamName, ConsumerGroup, messageID)
+	result := s.redisClient.XAck(s.ctx, StreamName, ConsumerGroup, messageID)
 	if result.Err() != nil {
 		log.Printf("Failed to ack message %s: %v", messageID, result.Err())
 	}
@@ -171,9 +159,5 @@ func (s *Supervisor) Stop() {
 	log.Printf("Stopping supervisor %s", s.consumerID)
 	s.cancel()
 	s.wg.Wait()
-	s.client.Close()
-
-	if s.dockerClient != nil {
-		s.dockerClient.Close()
-	}
+	s.redisClient.Close()
 }
