@@ -12,14 +12,15 @@ import (
 )
 
 type Supervisor struct {
-	client     *redis.Client
-	ctx        context.Context
-	cancel     context.CancelFunc
-	consumerID string
-	wg         sync.WaitGroup
+	redisClient *redis.Client
+	ctx         context.Context
+	cancel      context.CancelFunc
+	consumerID  string
+	gpuType     string
+	wg          sync.WaitGroup
 }
 
-func NewSupervisor(redisAddr, consumerID string) *Supervisor {
+func NewSupervisor(redisAddr, consumerID, gpuType string) *Supervisor {
 	client := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
@@ -27,10 +28,11 @@ func NewSupervisor(redisAddr, consumerID string) *Supervisor {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Supervisor{
-		client:     client,
-		ctx:        ctx,
-		cancel:     cancel,
-		consumerID: consumerID,
+		redisClient: client,
+		ctx:         ctx,
+		cancel:      cancel,
+		consumerID:  consumerID,
+		gpuType:     gpuType,
 	}
 }
 
@@ -44,12 +46,12 @@ func (s *Supervisor) Start() error {
 	s.wg.Add(1)
 	go s.processJobs()
 
-	log.Printf("Supervisor %s started", s.consumerID)
+	log.Printf("Supervisor %s started with GPU: %s", s.consumerID, s.gpuType)
 	return nil
 }
 
 func (s *Supervisor) createConsumerGroup() error {
-	result := s.client.XGroupCreateMkStream(s.ctx, StreamName, ConsumerGroup, "$")
+	result := s.redisClient.XGroupCreateMkStream(s.ctx, StreamName, ConsumerGroup, "$")
 	if result.Err() != nil {
 		if result.Err().Error() != "BUSYGROUP Consumer Group name already exists" {
 			// in this case the group already exists
@@ -68,7 +70,7 @@ func (s *Supervisor) processJobs() {
 			return
 		default:
 			// Read from stream with blocking
-			result := s.client.XReadGroup(s.ctx, &redis.XReadGroupArgs{
+			result := s.redisClient.XReadGroup(s.ctx, &redis.XReadGroupArgs{
 				Group:    ConsumerGroup,
 				Consumer: s.consumerID,
 				Streams:  []string{StreamName, ">"},
@@ -108,7 +110,15 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 		return
 	}
 
-	log.Printf("Processing job %s of type %s", job.ID, job.Type)
+	// certain jobs require a specific GPU
+	if !s.canHandleJob(job) {
+		log.Printf("Job %s requires GPU type %s, but supervisor has %s - skipping",
+			job.ID, job.RequiredGPU, s.gpuType)
+		// let another supervisor can pick it up
+		return
+	}
+
+	log.Printf("Processing job %s:%s", job.ID, job.Type)
 
 	// Simulate job processing
 	success := s.processJob(job)
@@ -122,13 +132,24 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 	}
 }
 
+// canHandleJob checks if this supervisor can handle the given job based on GPU requirements
+func (s *Supervisor) canHandleJob(job Job) bool {
+	// If job doesn't specify GPU requirement, any supervisor can handle it
+	if job.RequiredGPU == "" {
+		return true
+	}
+
+	// Job must match supervisor's GPU type
+	return job.RequiredGPU == s.gpuType
+}
+
 // TODO: Actually schedule a container here
 func (s *Supervisor) processJob(job Job) bool {
 	return true
 }
 
 func (s *Supervisor) ackMessage(messageID string) {
-	result := s.client.XAck(s.ctx, StreamName, ConsumerGroup, messageID)
+	result := s.redisClient.XAck(s.ctx, StreamName, ConsumerGroup, messageID)
 	if result.Err() != nil {
 		log.Printf("Failed to ack message %s: %v", messageID, result.Err())
 	}
@@ -138,5 +159,5 @@ func (s *Supervisor) Stop() {
 	log.Printf("Stopping supervisor %s", s.consumerID)
 	s.cancel()
 	s.wg.Wait()
-	s.client.Close()
+	s.redisClient.Close()
 }

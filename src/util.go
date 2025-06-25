@@ -14,11 +14,12 @@ const (
 )
 
 type Job struct {
-	ID      string                 `json:"id"`
-	Type    string                 `json:"type"`
-	Payload map[string]interface{} `json:"payload"`
-	Retries int                    `json:"retries"`
-	Created time.Time              `json:"created"`
+	ID          string                 `json:"id"`
+	Type        string                 `json:"type"`
+	Payload     map[string]interface{} `json:"payload"`
+	Retries     int                    `json:"retries"`
+	Created     time.Time              `json:"created"`
+	RequiredGPU string                 `json:"gpu"`
 }
 
 func generateJobID() string {

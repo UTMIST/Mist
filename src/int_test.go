@@ -24,7 +24,7 @@ func TestIntegration(t *testing.T) {
 	defer scheduler.Close()
 
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
-	supervisor := NewSupervisor(redisAddr, consumerID)
+	supervisor := NewSupervisor(redisAddr, consumerID, "AMD")
 
 	if err := supervisor.Start(); err != nil {
 		t.Errorf("Failed to start supervisor: %v", err)
