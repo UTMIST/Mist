@@ -1,0 +1,8 @@
+FROM rocm/pytorch
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+RUN useradd -ms /bin/bash guest
+USER guest
+WORKDIR /home/guest
