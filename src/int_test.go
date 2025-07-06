@@ -15,7 +15,6 @@ func TestIntegration(t *testing.T) {
 	redisAddr := "localhost:6379"
 
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
-	defer client.Close()
 	if err := client.Ping(context.Background()).Err(); err != nil {
 		t.Errorf("Failed to connect to Redis: %v", err)
 	}
@@ -35,6 +34,7 @@ func TestIntegration(t *testing.T) {
 
 	// test jobs
 	go func() {
+		defer client.Close()
 		jobTypes := []string{"a", "b", "c"}
 		for i := 0; i < 10; i++ {
 			jobType := jobTypes[i%len(jobTypes)]
@@ -48,5 +48,6 @@ func TestIntegration(t *testing.T) {
 			}
 		}
 	}()
+
 	supervisor.Stop()
 }
