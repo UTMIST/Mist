@@ -22,6 +22,16 @@ type Job struct {
 	RequiredGPU string                 `json:"gpu"`
 }
 
+func NewJob(jobType string, payload map[string]interface{}) Job {
+	return Job{
+		ID:      generateJobID(),
+		Type:    jobType,
+		Payload: payload,
+		Retries: 0,
+		Created: time.Now(),
+	}
+}
+
 func generateJobID() string {
 	return fmt.Sprintf("job_%d_%d", time.Now().UnixNano(), os.Getpid())
 }
