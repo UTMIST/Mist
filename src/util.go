@@ -22,13 +22,14 @@ type Job struct {
 	RequiredGPU string                 `json:"gpu"`
 }
 
-func NewJob(jobType string, payload map[string]interface{}) Job {
+func NewJob(jobType string, payload map[string]interface{}, requiredGPU string) Job {
 	return Job{
-		ID:      generateJobID(),
-		Type:    jobType,
-		Payload: payload,
-		Retries: 0,
-		Created: time.Now(),
+		ID:          generateJobID(),
+		Type:        jobType,
+		Payload:     payload,
+		Retries:     0,
+		RequiredGPU: requiredGPU,
+		Created:     time.Now(),
 	}
 }
 
