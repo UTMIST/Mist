@@ -1,0 +1,11 @@
+schemaVersion: '2.0.0'
+
+commandTests:
+  - name: "Check Sudo"
+    command: "whoami"
+    expectedOutput: ["guest"]
+  
+  - name: "CUDA availability check"
+    command: "python"
+    args: ["-c", "import torch; print(torch.cuda.is_available())"]
+    expectedOutput: ["False"]
