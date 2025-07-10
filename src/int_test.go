@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"os/signal"
 	"syscall"
 	"testing"
@@ -34,7 +35,10 @@ func TestIntegration(t *testing.T) {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// test jobs
+	var wg sync.WaitGroup
+    wg.Add(1)
 	go func() {
+		defer wg.Done()
 		jobTypes := []string{"a", "b", "c"}
 		for i := 0; i < 10; i++ {
 			jobType := jobTypes[i%len(jobTypes)]
@@ -48,5 +52,7 @@ func TestIntegration(t *testing.T) {
 			}
 		}
 	}()
+	
+	wg.Wait()
 	supervisor.Stop()
 }
