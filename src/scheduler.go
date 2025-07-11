@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -27,13 +26,7 @@ func NewScheduler(redisAddr string) *Scheduler {
 }
 
 func (s *Scheduler) Enqueue(jobType string, payload map[string]interface{}) error {
-	job := Job{
-		ID:      generateJobID(),
-		Type:    jobType,
-		Payload: payload,
-		Retries: 0,
-		Created: time.Now(),
-	}
+	job := NewJob(jobType, payload, "") // TODO account for gpu type
 
 	jobData, err := json.Marshal(job)
 	if err != nil {
