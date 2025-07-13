@@ -12,28 +12,37 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func main() {
-	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		panic(err)
-	}
+type ContainerMgr struct {
+	ctx context.Context
+	cli *client.Client
+}
 
-	// Create a Docker volume
-	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{
-		Name: "my_volume", // You can leave this empty for a random name
-	})
-	if err != nil {
-		panic(err)
+func NewContainerMgr(client *client.Client) *ContainerMgr {
+	return &ContainerMgr{
+		ctx: context.Background(),
+		cli: client,
 	}
-	fmt.Println("Created volume:", vol.Name)
+}
+
+func (containerMgr *ContainerMgr) spinUpContainer() {
+}
+
+func (containerMgr *ContainerMgr) spinUpContainerRocm() {
+}
+
+func (containerMgr *ContainerMgr) spinUpContainerCpu() {
+}
+
+func (containerMgr *ContainerMgr) spinUpContainerCuda(volName string) {
+	ctx := containerMgr.ctx
+	cli := containerMgr.cli
 
 	hostConfig := &container.HostConfig{
 		Runtime: "nvidia",
 		Mounts: []mount.Mount{
 			{
 				Type:   mount.TypeVolume,
-				Source: vol.Name,
+				Source: volName,
 				Target: "/data",
 			},
 		},
@@ -67,4 +76,24 @@ func main() {
 	}
 
 	io.Copy(os.Stdout, out)
+}
+
+func main() {
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(err)
+	}
+
+	// Create a Docker volume
+	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{
+		Name: "my_volume", // You can leave this empty for a random name
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Created volume:", vol.Name)
+	containerMgr := NewContainerMgr(cli)
+	containerMgr.spinUpContainerCuda("my_volume")
+
 }
