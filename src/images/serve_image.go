@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 )
 
@@ -17,8 +19,24 @@ func main() {
 		panic(err)
 	}
 
+	// Create a Docker volume
+	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{
+		Name: "my_volume", // You can leave this empty for a random name
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Created volume:", vol.Name)
+
 	hostConfig := &container.HostConfig{
 		Runtime: "nvidia",
+		Mounts: []mount.Mount{
+			{
+				Type:   mount.TypeVolume,
+				Source: vol.Name,
+				Target: "/data",
+			},
+		},
 	}
 
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
