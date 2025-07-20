@@ -24,16 +24,37 @@ func NewContainerMgr(client *client.Client) *ContainerMgr {
 	}
 }
 
-func (containerMgr *ContainerMgr) spinUpContainer() {
+func (containerMgr *ContainerMgr) runContainer() {
 }
 
-func (containerMgr *ContainerMgr) spinUpContainerRocm() {
+func (containerMgr *ContainerMgr) runContainerRocm() {
 }
 
-func (containerMgr *ContainerMgr) spinUpContainerCpu() {
+func (containerMgr *ContainerMgr) runContainerCpu() {
 }
 
-func (containerMgr *ContainerMgr) spinUpContainerCuda(volName string) {
+func (containerMgr *ContainerMgr) killContainer() {
+
+}
+
+func (containerMgr *ContainerMgr) createVolume(volumeName string) volume.Volume {
+	ctx := containerMgr.ctx
+	cli := containerMgr.cli
+
+	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{
+		Name: "my_volume", // You can leave this empty for a random name
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Created volume:", vol.Name)
+	return vol
+}
+
+func (containerMgr *ContainerMgr) deleteVolume() {
+}
+
+func (containerMgr *ContainerMgr) runContainerCuda(volName string) {
 	ctx := containerMgr.ctx
 	cli := containerMgr.cli
 
@@ -79,21 +100,16 @@ func (containerMgr *ContainerMgr) spinUpContainerCuda(volName string) {
 }
 
 func main() {
-	ctx := context.Background()
+	// ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		panic(err)
 	}
 
 	// Create a Docker volume
-	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{
-		Name: "my_volume", // You can leave this empty for a random name
-	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Created volume:", vol.Name)
 	containerMgr := NewContainerMgr(cli)
-	containerMgr.spinUpContainerCuda("my_volume")
+	volumeName := "my_volume"
+	containerMgr.createVolume(volumeName)
+	containerMgr.runContainerCuda(volumeName)
 
 }
