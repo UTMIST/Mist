@@ -33,7 +33,27 @@ func (containerMgr *ContainerMgr) runContainerRocm() {
 func (containerMgr *ContainerMgr) runContainerCpu() {
 }
 
-func (containerMgr *ContainerMgr) killContainer() {
+func (containerMgr *ContainerMgr) stopContainer(containerID string) {
+	ctx := containerMgr.ctx
+	cli := containerMgr.cli
+
+	err := cli.ContainerStop(ctx, containerID, container.StopOptions{})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("stopped container:", containerID)
+
+}
+
+func (containerMgr *ContainerMgr) removeContainer(containerID string) {
+	ctx := containerMgr.ctx
+	cli := containerMgr.cli
+
+	err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{RemoveVolumes: true})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("remove container:", containerID)
 
 }
 
@@ -42,7 +62,7 @@ func (containerMgr *ContainerMgr) createVolume(volumeName string) volume.Volume 
 	cli := containerMgr.cli
 
 	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{
-		Name: "my_volume", // You can leave this empty for a random name
+		Name: volumeName, // You can leave this empty for a random name
 	})
 	if err != nil {
 		panic(err)
@@ -51,10 +71,19 @@ func (containerMgr *ContainerMgr) createVolume(volumeName string) volume.Volume 
 	return vol
 }
 
-func (containerMgr *ContainerMgr) deleteVolume() {
+func (containerMgr *ContainerMgr) removeVolume(volumeName string, force bool) bool {
+	ctx := containerMgr.ctx
+	cli := containerMgr.cli
+
+	err := cli.VolumeRemove(ctx, volumeName, force)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Remove volume:", volumeName)
+	return true
 }
 
-func (containerMgr *ContainerMgr) runContainerCuda(volName string) {
+func (containerMgr *ContainerMgr) runContainerCuda(volName string) string {
 	ctx := containerMgr.ctx
 	cli := containerMgr.cli
 
@@ -82,14 +111,14 @@ func (containerMgr *ContainerMgr) runContainerCuda(volName string) {
 		panic(err)
 	}
 
-	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
-	select {
-	case err := <-errCh:
-		if err != nil {
-			panic(err)
-		}
-	case <-statusCh:
-	}
+	// statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+	// select {
+	// case err := <-errCh:
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// case <-statusCh:
+	// }
 
 	out, err := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true})
 	if err != nil {
@@ -97,10 +126,10 @@ func (containerMgr *ContainerMgr) runContainerCuda(volName string) {
 	}
 
 	io.Copy(os.Stdout, out)
+	return resp.ID
 }
 
 func main() {
-	// ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		panic(err)
@@ -108,8 +137,12 @@ func main() {
 
 	// Create a Docker volume
 	containerMgr := NewContainerMgr(cli)
-	volumeName := "my_volume"
+	volumeName := "my_volume1"
+
 	containerMgr.createVolume(volumeName)
-	containerMgr.runContainerCuda(volumeName)
+	id := containerMgr.runContainerCuda(volumeName)
+	containerMgr.stopContainer(id)
+	containerMgr.removeContainer(id)
+	containerMgr.removeVolume(volumeName, true)
 
 }
