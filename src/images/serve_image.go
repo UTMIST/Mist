@@ -24,15 +24,6 @@ func NewContainerMgr(client *client.Client) *ContainerMgr {
 	}
 }
 
-func (containerMgr *ContainerMgr) runContainer() {
-}
-
-func (containerMgr *ContainerMgr) runContainerRocm() {
-}
-
-func (containerMgr *ContainerMgr) runContainerCpu() {
-}
-
 func (containerMgr *ContainerMgr) stopContainer(containerID string) {
 	ctx := containerMgr.ctx
 	cli := containerMgr.cli
@@ -110,15 +101,6 @@ func (containerMgr *ContainerMgr) runContainerCuda(volName string) string {
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		panic(err)
 	}
-
-	// statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
-	// select {
-	// case err := <-errCh:
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// case <-statusCh:
-	// }
 
 	out, err := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true})
 	if err != nil {
