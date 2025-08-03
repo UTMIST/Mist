@@ -17,7 +17,6 @@ import (
 type App struct {
 	redisClient *redis.Client
 	scheduler   *Scheduler
-	supervisor  *Supervisor
 	httpServer  *http.Server
 	wg          sync.WaitGroup
 }
@@ -27,13 +26,11 @@ func NewApp(redisAddr, gpuType string) *App {
 	scheduler := NewScheduler(redisAddr)
 
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
-	supervisor := NewSupervisor(redisAddr, consumerID, gpuType)
 
 	mux := http.NewServeMux()
 	a := &App{
 		redisClient: client,
 		scheduler:   scheduler,
-		supervisor:  supervisor,
 		httpServer:  &http.Server{Addr: ":3000", Handler: mux},
 	}
 
@@ -71,8 +68,6 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	// Wait for ListenAndServe goroutine to finish
 	a.wg.Wait()
-
-	a.supervisor.Stop()
 
 	if err := a.scheduler.Close(); err != nil {
 		log.Printf("error closing scheduler: %v", err)
