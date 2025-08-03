@@ -11,6 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-oauth2/oauth2/v4/manage"
+	"github.com/go-oauth2/oauth2/v4/models"
+	"github.com/go-oauth2/oauth2/v4/server"
+	"github.com/go-oauth2/oauth2/v4/store"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -18,6 +22,8 @@ type App struct {
 	redisClient *redis.Client
 	scheduler   *Scheduler
 	httpServer  *http.Server
+	manager     *manage.Manager
+	srv         *server.Server
 	wg          sync.WaitGroup
 }
 
@@ -25,17 +31,33 @@ func NewApp(redisAddr, gpuType string) *App {
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	scheduler := NewScheduler(redisAddr)
 
-	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
+	manager := manage.NewDefaultManager()
+	// token memory store
+	manager.MustTokenStorage(store.NewMemoryTokenStore())
+
+	// client memory store
+	clientStore := store.NewClientStore()
+	clientStore.Set("000000", &models.Client{
+		ID:     "000000",
+		Secret: "999999",
+		Domain: "http://localhost:3000", // replace with environment domain
+	})
+	manager.MapClientStorage(clientStore)
+	srv := CreateServer(manager)
 
 	mux := http.NewServeMux()
 	a := &App{
 		redisClient: client,
 		scheduler:   scheduler,
+		manager:     manager,
+		srv:         srv,
 		httpServer:  &http.Server{Addr: ":3000", Handler: mux},
 	}
 
-	mux.HandleFunc("/auth/login", a.login)
-	mux.HandleFunc("/auth/refresh", a.refresh)
+	// auth routes
+	mux.HandleFunc("/oauth/authorize", a.authorize)
+	mux.HandleFunc("/oauth/token", a.token)
+	
 	mux.HandleFunc("/jobs", a.enqueueJob)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
 
@@ -47,7 +69,7 @@ func (a *App) Start() error {
 	if err := a.redisClient.Ping(context.Background()).Err(); err != nil {
 		return fmt.Errorf("redis ping failed: %w", err)
 	}
-	
+
 	// Launch HTTP server
 	a.wg.Add(1)
 	go func() {
@@ -101,18 +123,20 @@ func main() {
 	log.Println("all services stopped cleanly")
 }
 
-func (a *App) login(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	val, err := a.redisClient.Get(ctx, "some:key").Result()
-	if err != nil || err != redis.Nil {
-		http.Error(w, "redis error", http.StatusInternalServerError)
-		return
+func (a *App) authorize(w http.ResponseWriter, r *http.Request) {
+	err := a.srv.HandleAuthorizeRequest(w, r)
+	if err != nil {
+		log.Printf("Authorize error: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-	fmt.Fprintf(w, "login page; redis says: %q\n", val)
 }
 
-func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, world!\n")
+func (a *App) token(w http.ResponseWriter, r *http.Request) {
+	err := a.srv.HandleTokenRequest(w, r)
+	if err != nil {
+		log.Printf("Token error: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
 }
 
 func (a *App) enqueueJob(w http.ResponseWriter, r *http.Request) {
