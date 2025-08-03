@@ -50,12 +50,7 @@ func (a *App) Start() error {
 	if err := a.redisClient.Ping(context.Background()).Err(); err != nil {
 		return fmt.Errorf("redis ping failed: %w", err)
 	}
-
-	// Start Supervisor
-	if err := a.supervisor.Start(); err != nil {
-		return fmt.Errorf("supervisor start failed: %w", err)
-	}
-
+	
 	// Launch HTTP server
 	a.wg.Add(1)
 	go func() {
@@ -114,7 +109,7 @@ func main() {
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	val, err := a.redisClient.Get(ctx, "some:key").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil || err != redis.Nil {
 		http.Error(w, "redis error", http.StatusInternalServerError)
 		return
 	}
