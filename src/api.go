@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,6 +19,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type App struct {
 	redisClient *redis.Client
 	scheduler   *Scheduler
@@ -32,10 +43,8 @@ func NewApp(redisAddr, gpuType string) *App {
 	scheduler := NewScheduler(redisAddr)
 
 	manager := manage.NewDefaultManager()
-	// token memory store
 	manager.MustTokenStorage(store.NewMemoryTokenStore())
 
-	// client memory store
 	clientStore := store.NewClientStore()
 	clientStore.Set("000000", &models.Client{
 		ID:     "000000",
@@ -55,9 +64,12 @@ func NewApp(redisAddr, gpuType string) *App {
 	}
 
 	// auth routes
+	mux.HandleFunc("/auth/register", a.register)
+	mux.HandleFunc("/auth/login", a.login)
+
 	mux.HandleFunc("/oauth/authorize", a.authorize)
 	mux.HandleFunc("/oauth/token", a.token)
-	
+
 	mux.HandleFunc("/jobs", a.enqueueJob)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
 
@@ -121,6 +133,81 @@ func main() {
 	}
 
 	log.Println("all services stopped cleanly")
+}
+
+func (a *App) register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		a.jsonResponse(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed",
+		})
+		return
+	}
+
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.jsonResponse(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Invalid JSON",
+		})
+		return
+	}
+
+	if req.Email == "" || req.Password == "" {
+		a.jsonResponse(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Username and password required",
+		})
+		return
+	}
+
+	// Check if user exists
+	if _, err := a.getUserByEmail(req.Email); err == nil {
+		a.jsonResponse(w, http.StatusConflict, APIResponse{
+			Success: false,
+			Error:   "Username already exists",
+		})
+		return
+	}
+
+	user, err := a.createUser(req.Email, req.Password)
+	if err != nil {
+		log.Printf("Failed to create user: %v", err)
+		a.jsonResponse(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Failed to create user",
+		})
+		return
+	}
+
+	a.jsonResponse(w, http.StatusCreated, APIResponse{
+		Success: true,
+		Data: map[string]string{
+			"user_id": user.ID,
+			"email":   user.Email,
+		},
+	})
+}
+
+func (a *App) login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		a.jsonResponse(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed",
+		})
+		return
+	}
+
+	var req LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.jsonResponse(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Error:   "Invalid JSON",
+		})
+		return
+	}
+
+	// TODO: login methods
 }
 
 func (a *App) authorize(w http.ResponseWriter, r *http.Request) {

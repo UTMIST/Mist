@@ -5,6 +5,8 @@ go 1.24.3
 require (
 	github.com/go-oauth2/oauth2/v4 v4.5.3
 	github.com/redis/go-redis/v9 v9.10.0
+	github.com/teris-io/shortid v0.0.0-20220617161101-71ec9f2aa569
+	golang.org/x/crypto v0.40.0
 )
 
 require (

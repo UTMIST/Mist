@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 )
@@ -12,6 +14,12 @@ const (
 	MaxRetries    = 3
 	RetryDelay    = 5 * time.Second
 )
+
+type APIResponse struct {
+	Success bool        `json:"success"`
+	Data    interface{} `json:"data,omitempty"`
+	Error   string      `json:"error,omitempty"`
+}
 
 type Job struct {
 	ID          string                 `json:"id"`
@@ -24,4 +32,10 @@ type Job struct {
 
 func generateJobID() string {
 	return fmt.Sprintf("job_%d_%d", time.Now().UnixNano(), os.Getpid())
+}
+
+func (a *App) jsonResponse(w http.ResponseWriter, statusCode int, response APIResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(response)
 }
