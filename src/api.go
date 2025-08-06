@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/go-oauth2/oauth2/v4/server"
 	"github.com/go-oauth2/oauth2/v4/store"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type LoginRequest struct {
@@ -43,16 +46,20 @@ func NewApp(redisAddr, gpuType string) *App {
 	scheduler := NewScheduler(redisAddr)
 
 	manager := manage.NewDefaultManager()
-	manager.MustTokenStorage(store.NewMemoryTokenStore())
+	manager.SetAuthorizeCodeTokenCfg(manage.DefaultAuthorizeCodeTokenCfg)
+	manager.MustTokenStorage(store.NewMemoryTokenStore()) // TODO: move to redis?
 
 	clientStore := store.NewClientStore()
-	clientStore.Set("000000", &models.Client{
-		ID:     "000000",
-		Secret: "999999",
+	clientStore.Set("client", &models.Client{
+		ID:     "client",
+		Secret: "secret",                // replace this with actual secret
 		Domain: "http://localhost:3000", // replace with environment domain
 	})
 	manager.MapClientStorage(clientStore)
-	srv := CreateServer(manager)
+
+	srv := server.NewDefaultServer(manager)
+	srv.SetAllowGetAccessRequest(true)
+	srv.SetClientInfoHandler(server.ClientFormHandler)
 
 	mux := http.NewServeMux()
 	a := &App{
@@ -72,6 +79,8 @@ func NewApp(redisAddr, gpuType string) *App {
 
 	mux.HandleFunc("/jobs", a.enqueueJob)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
+
+	srv.UserAuthorizationHandler = a.UserAuthorizationHandler
 
 	return a
 }
@@ -156,7 +165,7 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 	if req.Email == "" || req.Password == "" {
 		a.jsonResponse(w, http.StatusBadRequest, APIResponse{
 			Success: false,
-			Error:   "Username and password required",
+			Error:   "Email and password required",
 		})
 		return
 	}
@@ -165,7 +174,7 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 	if _, err := a.getUserByEmail(req.Email); err == nil {
 		a.jsonResponse(w, http.StatusConflict, APIResponse{
 			Success: false,
-			Error:   "Username already exists",
+			Error:   "Email already exists",
 		})
 		return
 	}
@@ -189,33 +198,38 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) login(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		a.jsonResponse(w, http.StatusMethodNotAllowed, APIResponse{
-			Success: false,
-			Error:   "Method not allowed",
-		})
-		return
-	}
-
-	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		a.jsonResponse(w, http.StatusBadRequest, APIResponse{
-			Success: false,
-			Error:   "Invalid JSON",
-		})
-		return
-	}
-
-	// TODO: login methods
-}
-
 func (a *App) authorize(w http.ResponseWriter, r *http.Request) {
-	err := a.srv.HandleAuthorizeRequest(w, r)
-	if err != nil {
-		log.Printf("Authorize error: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if r.Method == "GET" {
+		sessionID := r.Header.Get("Authorization")
+		if strings.HasPrefix(sessionID, "Session ") {
+			sessionID = strings.TrimPrefix(sessionID, "Session ")
+		}
+		if cookie, err := r.Cookie("session"); err == nil {
+			sessionID = cookie.Value
+		}
+
+		log.Println(sessionID)
+
+		if sessionID == "" {
+			log.Println("a")
+			a.redirectToLogin(w, r)
+			return
+		}
+		if _, err := a.getSession(sessionID); err != nil {
+			log.Println("b")
+			a.redirectToLogin(w, r)
+			return
+		}
+
+		err := a.srv.HandleAuthorizeRequest(w, r)
+		if err != nil {
+			log.Printf("Authorize error: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		return
 	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
 func (a *App) token(w http.ResponseWriter, r *http.Request) {
@@ -224,6 +238,154 @@ func (a *App) token(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Token error: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
+}
+
+func (a *App) login(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		if sessionID := a.getSessionFromRequest(r); sessionID != "" {
+			if _, err := a.getSession(sessionID); err == nil {
+				// user is already logged in, redirect them
+				redirectURL := r.URL.Query().Get("redirect")
+				if redirectURL == "" {
+					redirectURL = "/" // default
+				}
+				
+				http.Redirect(w, r, redirectURL, http.StatusFound)
+				return
+			}
+		}
+
+		
+		a.showLoginPage(w, r)
+		return
+	}
+
+	if r.Method != "POST" {
+		a.jsonResponse(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Error:   "Method not allowed",
+		})
+		return
+	}
+
+	// Check if this is a form submission or api
+	contentType := r.Header.Get("Content-Type")
+	isFormData := strings.Contains(contentType, "application/x-www-form-urlencoded") || contentType == ""
+
+	var email, password string
+	var err error
+
+	if isFormData {
+		email = r.FormValue("email")
+		password = r.FormValue("password")
+		if email == "" || password == "" {
+			a.showLoginPage(w, r)
+			return
+		}
+	} else {
+		var req LoginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			a.jsonResponse(w, http.StatusBadRequest, APIResponse{
+				Success: false,
+				Error:   "Invalid JSON",
+			})
+			return
+		}
+		email = req.Email
+		password = req.Password
+	}
+
+	user, err := a.getUserByEmail(email)
+	if err != nil {
+		if isFormData {
+			a.showLoginPage(w, r)
+			return
+		}
+		a.jsonResponse(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Error:   "Invalid Email / Password",
+		})
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if err != nil {
+		if isFormData {
+			a.showLoginPage(w, r)
+			return
+		}
+		a.jsonResponse(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Error:   "Invalid Email / Password",
+		})
+		return
+	}
+
+	sessionID, err := a.CreateSession(user.ID)
+	if err != nil {
+		if isFormData {
+			a.showLoginPage(w, r)
+			return
+		}
+		a.jsonResponse(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Error:   "Error Creating Session",
+		})
+		return
+	}
+
+	if isFormData {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session",
+			Path:     "/",
+			Value:    sessionID,
+			HttpOnly: true,
+			Secure:   false, // TODO: change in prod
+			SameSite: http.SameSiteLaxMode,
+		})
+
+		redirectURL := r.FormValue("redirect")
+		log.Println(redirectURL)
+		if redirectURL == "" {
+			redirectURL = "/" // Default redirect
+		}
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+
+	a.jsonResponse(w, http.StatusAccepted, APIResponse{
+		Success: true,
+		Data: map[string]any{
+			"session": sessionID,
+		},
+	})
+}
+
+// TODO: move this to a file?
+func (a *App) showLoginPage(w http.ResponseWriter, r *http.Request) {
+	redirectURL := r.URL.Query().Get("redirect")
+
+	html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<body>
+    <form method="POST" action="/auth/login">
+        <input type="hidden" name="redirect" value="%s">
+        
+        <div>
+            <label>Email:</label>
+            <input type="email" name="email" required>
+        </div>
+        <div>
+            <label>Password:</label>
+            <input type="password" name="password" required>
+        </div>
+        <button type="submit">Login</button>
+    </form>
+</body>
+</html>`, redirectURL)
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, html)
 }
 
 func (a *App) enqueueJob(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 )
@@ -38,4 +39,11 @@ func (a *App) jsonResponse(w http.ResponseWriter, statusCode int, response APIRe
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(response)
+}
+
+func (a *App) redirectToLogin(w http.ResponseWriter, r *http.Request) {
+	authorizeURL := "/oauth/authorize?" + r.URL.RawQuery
+
+	loginURL := "/auth/login?redirect=" + url.QueryEscape(authorizeURL)
+	http.Redirect(w, r, loginURL, http.StatusFound)
 }

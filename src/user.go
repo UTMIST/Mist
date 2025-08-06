@@ -63,6 +63,8 @@ func (a *App) createUser(email, password string) (*User, error) {
 	if err := a.redisClient.Set(ctx, "user:"+userID, userData, 0).Err(); err != nil {
 		return nil, err
 	}
+
+	// creates email index
 	if err := a.redisClient.Set(ctx, "email:"+email, userID, 0).Err(); err != nil {
 		return nil, err
 	}

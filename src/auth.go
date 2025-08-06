@@ -1,33 +1,113 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
-	"github.com/go-oauth2/oauth2/v4/errors"
-	"github.com/go-oauth2/oauth2/v4/manage"
-	"github.com/go-oauth2/oauth2/v4/server"
+	"github.com/teris-io/shortid"
 )
 
-func CreateServer(manager *manage.Manager) *server.Server {
-	srv := server.NewDefaultServer(manager)
-	srv.SetAllowGetAccessRequest(true)
-	srv.SetClientInfoHandler(server.ClientFormHandler)
-
-	srv.UserAuthorizationHandler = func(w http.ResponseWriter, r *http.Request) (userID string, err error) {
-		return "000000", nil
+// creates a user session in redis
+func (a *App) CreateSession(uid string) (string, error) {
+	id, err := shortid.Generate()
+	if err != nil {
+		return "", err
 	}
 
-	// Error handler
-	srv.SetInternalErrorHandler(func(err error) (re *errors.Response) {
-		log.Println("Internal Error:", err.Error())
-		return
-	})
+	ctx := context.Background()
+	if err := a.redisClient.Set(ctx, "session:"+id, uid, 0).Err(); err != nil {
+		return "", err
+	}
 
-	// Response error handler
-	srv.SetResponseErrorHandler(func(re *errors.Response) {
-		log.Println("Response Error:", re.Error.Error())
-	})
+	return id, nil
+}
 
-	return srv
+func (a *App) getSession(session_id string) (string, error) {
+	ctx := context.Background()
+	uid, err := a.redisClient.Get(ctx, "session:"+session_id).Result()
+	if err != nil {
+		return "", err
+	}
+
+	return uid, nil
+}
+
+func (a *App) getSessionFromRequest(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	log.Println("test")
+	if strings.HasPrefix(authHeader, "Session ") {
+		return strings.TrimPrefix(authHeader, "Session ")
+	} else {
+	if cookie, err := r.Cookie("session"); err == nil {
+		return cookie.Value
+	}
+	}
+
+	return ""
+}
+
+func (a *App) UserAuthorizationHandler(w http.ResponseWriter, r *http.Request) (string, error) {
+	sessionID := a.getSessionFromRequest(r)
+
+	if sessionID != "" {
+		uid, err := a.getSession(sessionID)
+		if err == nil {
+			log.Println("authorized " + uid)
+			return uid, nil
+		}
+		log.Printf("Session validation failed: %v", err)
+	}
+
+	return "", fmt.Errorf("not authenticated")
+}
+
+func (a *App) withAuth(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+
+		// Handle session-based auth
+		if strings.HasPrefix(auth, "Session ") {
+			sessionID := strings.TrimPrefix(auth, "Session ")
+			userID, err := a.getSession(sessionID)
+			if err != nil {
+				a.jsonResponse(w, http.StatusUnauthorized, APIResponse{
+					Success: false,
+					Error:   "Invalid session",
+				})
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), "user_id", userID)
+			ctx = context.WithValue(ctx, "auth_type", "session")
+			handler(w, r.WithContext(ctx))
+			return
+		}
+
+		// Handle OAuth2 bearer tokens
+		if strings.HasPrefix(auth, "Bearer ") {
+			token := strings.TrimPrefix(auth, "Bearer ")
+			ti, err := a.manager.LoadAccessToken(context.Background(), token)
+			if err != nil {
+				a.jsonResponse(w, http.StatusUnauthorized, APIResponse{
+					Success: false,
+					Error:   "Invalid token",
+				})
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), "user_id", ti.GetUserID())
+			ctx = context.WithValue(ctx, "auth_type", "oauth2")
+			ctx = context.WithValue(ctx, "client_id", ti.GetClientID())
+			handler(w, r.WithContext(ctx))
+			return
+		}
+
+		a.jsonResponse(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Error:   "Authentication required",
+		})
+	}
 }
