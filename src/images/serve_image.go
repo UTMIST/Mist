@@ -62,16 +62,29 @@ func (containerMgr *ContainerMgr) createVolume(volumeName string) volume.Volume 
 	return vol
 }
 
-func (containerMgr *ContainerMgr) removeVolume(volumeName string, force bool) bool {
+func (containerMgr *ContainerMgr) removeVolume(volumeName string, force bool) error {
 	ctx := containerMgr.ctx
 	cli := containerMgr.cli
 
+	vols, _ := cli.VolumeList(ctx, volume.ListOptions{})
+	found := false
+	for _, v := range vols.Volumes {
+		if v.Name == volumeName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("volume %s does not exist", volumeName)
+	}
+
 	err := cli.VolumeRemove(ctx, volumeName, force)
+	fmt.Printf("Remove error: %#v\n", err)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	fmt.Println("Remove volume:", volumeName)
-	return true
+	return nil
 }
 
 func (containerMgr *ContainerMgr) runContainerCuda(volName string) string {

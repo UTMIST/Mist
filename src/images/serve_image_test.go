@@ -73,12 +73,15 @@ func TestCreateVolumeTwice(t *testing.T) {
 // T4: remove volume that doesn't exist (should fail or panic)
 func TestRemoveNonexistentVolume(t *testing.T) {
 	mgr := setupMgr(t)
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Expected panic when removing nonexistent volume, but did not panic")
-		}
-	}()
-	mgr.removeVolume("nonexistent_volume_t4", true) // Maybe this function never panics
+	// defer func() {
+	// 	if r := recover(); r == nil {
+	// 		t.Errorf("Expected panic when removing nonexistent volume, but did not panic")
+	// 	}
+	// }()
+	err := mgr.removeVolume("nonexistent_volume_t4", true) // Maybe this function never panics
+	if err == nil {
+		t.Errorf("Expected panic when removing nonexistent volume, but did not panic")
+	}
 }
 
 // T5: remove volume in use (should fail or panic)
