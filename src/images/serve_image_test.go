@@ -80,7 +80,7 @@ func TestRemoveNonexistentVolume(t *testing.T) {
 	// }()
 	err := mgr.removeVolume("nonexistent_volume_t4", true) // Maybe this function never panics
 	if err == nil {
-		t.Errorf("Expected panic when removing nonexistent volume, but did not panic")
+		t.Errorf("Expected error when removing nonexistent volume, but no error")
 	}
 }
 
@@ -95,12 +95,10 @@ func TestRemoveVolumeInUse(t *testing.T) {
 		mgr.removeContainer(containerID)
 		mgr.removeVolume(volName, true)
 	}()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Expected panic when removing volume in use, but did not panic")
-		}
-	}()
-	mgr.removeVolume(volName, true) // why didn't this panic?
+	err := mgr.removeVolume(volName, true) // why didn't this panic?
+	if err == nil {
+		t.Errorf("Expected error when removing nonexistent volume, but no error")
+	}
 }
 
 // T6: attach a volume that does not exist (should fail or panic)
