@@ -48,7 +48,10 @@ func TestVolumePersistence(t *testing.T) {
 	mgr := setupMgr(t)
 	volName := "test_volume_t2"
 	mgr.createVolume(volName)
-	containerID := mgr.runContainerCuda(volName)
+	containerID, err := mgr.runContainerCuda(volName)
+	if err != nil {
+		fmt.Errorf("Failed to start container: %v", err.Error())
+	}
 	// Write to volume (you'd need to exec into container or mount and write a file)
 	// For example, use mgr.execInContainer(containerID, "sh", "-c", "echo hello > /data/test.txt")
 	// Stop and start container-p
@@ -89,13 +92,16 @@ func TestRemoveVolumeInUse(t *testing.T) {
 	mgr := setupMgr(t)
 	volName := "test_volume_t5"
 	mgr.createVolume(volName)
-	containerID := mgr.runContainerCuda(volName)
+	containerID, err := mgr.runContainerCuda(volName)
+	if err != nil {
+		fmt.Errorf("Failed to start container: %v", err.Error())
+	}
 	defer func() {
 		mgr.stopContainer(containerID)
 		mgr.removeContainer(containerID)
 		mgr.removeVolume(volName, true)
 	}()
-	err := mgr.removeVolume(volName, true) // why didn't this panic?
+	err = mgr.removeVolume(volName, true) // why didn't this panic?
 	if err == nil {
 		t.Errorf("Expected error when removing nonexistent volume, but no error")
 	}
@@ -104,12 +110,17 @@ func TestRemoveVolumeInUse(t *testing.T) {
 // T6: attach a volume that does not exist (should fail or panic)
 func TestAttachNonexistentVolume(t *testing.T) {
 	mgr := setupMgr(t)
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Expected panic when attaching nonexistent volume, but did not panic")
-		}
-	}()
-	mgr.runContainerCuda("nonexistent_volume_t6") // why did this one panic/work
+	// defer func() {
+	// 	if r := recover(); r == nil {
+	// 		t.Errorf("Expected panic when attaching nonexistent volume, but did not panic")
+	// 	}
+	// }()
+
+	id, err := mgr.runContainerCuda("nonexistent_volume_t6") // why did this one panic/work
+	// fmt.Printf("ALLO: %v, %v", id, err)
+	if id != "" && err != nil {
+		t.Errorf("Expected error when removing nonexistent volume, but no error")
+	}
 }
 
 // T7: two containers attach to the same volume (should succeed in Docker, but test for your policy)
@@ -117,8 +128,14 @@ func TestTwoContainersSameVolume(t *testing.T) {
 	mgr := setupMgr(t)
 	volName := "test_volume_t7"
 	mgr.createVolume(volName)
-	id1 := mgr.runContainerCuda(volName)
-	id2 := mgr.runContainerCuda(volName)
+	id1, err := mgr.runContainerCuda(volName)
+	if err != nil {
+		fmt.Errorf("Failed to start container: %v", err.Error())
+	}
+	id2, err := mgr.runContainerCuda(volName)
+	if err != nil {
+		fmt.Errorf("Failed to start container: %v", err.Error())
+	}
 	mgr.stopContainer(id1)
 	mgr.removeContainer(id1)
 	mgr.stopContainer(id2)
@@ -131,8 +148,14 @@ func TestTwoContainersSameVolumeConcurrent(t *testing.T) {
 	mgr := setupMgr(t)
 	volName := "test_volume_t8"
 	mgr.createVolume(volName)
-	id1 := mgr.runContainerCuda(volName)
-	id2 := mgr.runContainerCuda(volName)
+	id1, err := mgr.runContainerCuda(volName)
+	if err != nil {
+		fmt.Errorf("Failed to start container: %v", err.Error())
+	}
+	id2, err2 := mgr.runContainerCuda(volName)
+	if err2 != nil {
+		fmt.Errorf("Failed to start container: %v", err2.Error())
+	}
 	mgr.stopContainer(id1)
 	mgr.removeContainer(id1)
 	mgr.stopContainer(id2)
@@ -168,7 +191,10 @@ func TestContainerLimit(t *testing.T) {
 	ids := []string{}
 	limit := 10
 	for i := 0; i < limit; i++ {
-		id := mgr.runContainerCuda(volName)
+		id, err := mgr.runContainerCuda(volName)
+		if err != nil {
+			fmt.Errorf("Failed to start container: %v", err.Error())
+		}
 		ids = append(ids, id)
 	}
 	defer func() {

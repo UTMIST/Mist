@@ -32,7 +32,6 @@ func (containerMgr *ContainerMgr) stopContainer(containerID string) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("stopped container:", containerID)
 
 }
 
@@ -44,7 +43,6 @@ func (containerMgr *ContainerMgr) removeContainer(containerID string) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("remove container:", containerID)
 
 }
 
@@ -58,7 +56,6 @@ func (containerMgr *ContainerMgr) createVolume(volumeName string) volume.Volume 
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Created volume:", vol.Name)
 	return vol
 }
 
@@ -79,15 +76,13 @@ func (containerMgr *ContainerMgr) removeVolume(volumeName string, force bool) er
 	}
 
 	err := cli.VolumeRemove(ctx, volumeName, force)
-	fmt.Printf("Remove error: %#v\n", err)
 	if err != nil {
 		return err
 	}
-	fmt.Println("Remove volume:", volumeName)
 	return nil
 }
 
-func (containerMgr *ContainerMgr) runContainerCuda(volName string) string {
+func (containerMgr *ContainerMgr) runContainerCuda(volumeName string) (string, error) {
 	ctx := containerMgr.ctx
 	cli := containerMgr.cli
 
@@ -96,7 +91,7 @@ func (containerMgr *ContainerMgr) runContainerCuda(volName string) string {
 		Mounts: []mount.Mount{
 			{
 				Type:   mount.TypeVolume,
-				Source: volName,
+				Source: volumeName,
 				Target: "/data",
 			},
 		},
@@ -106,10 +101,20 @@ func (containerMgr *ContainerMgr) runContainerCuda(volName string) string {
 		Image: "pytorch-cuda",
 		Cmd:   []string{"sleep", "1000"},
 	}, hostConfig, nil, nil, "")
+	vols, _ := cli.VolumeList(ctx, volume.ListOptions{})
+	found := false
+	for _, v := range vols.Volumes {
+		if v.Name == volumeName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("volume %s does not exist", volumeName)
+	}
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(resp.ID)
 
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		panic(err)
@@ -121,7 +126,7 @@ func (containerMgr *ContainerMgr) runContainerCuda(volName string) string {
 	}
 
 	io.Copy(os.Stdout, out)
-	return resp.ID
+	return resp.ID, nil
 }
 
 func main() {
@@ -135,7 +140,10 @@ func main() {
 	volumeName := "my_volume1"
 
 	containerMgr.createVolume(volumeName)
-	id := containerMgr.runContainerCuda(volumeName)
+	id, err := containerMgr.runContainerCuda(volumeName)
+	if err != nil {
+		fmt.Errorf("Failed to start container: %v", err.Error())
+	}
 	containerMgr.stopContainer(id)
 	containerMgr.removeContainer(id)
 	containerMgr.removeVolume(volumeName, true)
