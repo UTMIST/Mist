@@ -13,20 +13,28 @@ import (
 )
 
 type ContainerMgr struct {
-	ctx context.Context
-	cli *client.Client
+	ctx            context.Context
+	cli            *client.Client
+	containerLimit int
+	volumeLimit    int
+	containers     map[string]struct{}
+	volumes        map[string]struct{}
 }
 
-func NewContainerMgr(client *client.Client) *ContainerMgr {
+func NewContainerMgr(client *client.Client, containerLimit, volumeLimit int) *ContainerMgr {
 	return &ContainerMgr{
-		ctx: context.Background(),
-		cli: client,
+		ctx:            context.Background(),
+		cli:            client,
+		containerLimit: containerLimit,
+		volumeLimit:    volumeLimit,
+		containers:     make(map[string]struct{}),
+		volumes:        make(map[string]struct{}),
 	}
 }
 
-func (containerMgr *ContainerMgr) stopContainer(containerID string) {
-	ctx := containerMgr.ctx
-	cli := containerMgr.cli
+func (mgr *ContainerMgr) stopContainer(containerID string) {
+	ctx := mgr.ctx
+	cli := mgr.cli
 
 	err := cli.ContainerStop(ctx, containerID, container.StopOptions{})
 	if err != nil {
@@ -35,33 +43,37 @@ func (containerMgr *ContainerMgr) stopContainer(containerID string) {
 
 }
 
-func (containerMgr *ContainerMgr) removeContainer(containerID string) {
-	ctx := containerMgr.ctx
-	cli := containerMgr.cli
-
+func (mgr *ContainerMgr) removeContainer(containerID string) error {
+	ctx := mgr.ctx
+	cli := mgr.cli
 	err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{RemoveVolumes: true})
 	if err != nil {
-		panic(err)
+		return err
 	}
-
+	delete(mgr.containers, containerID)
+	return nil
 }
 
-func (containerMgr *ContainerMgr) createVolume(volumeName string) volume.Volume {
-	ctx := containerMgr.ctx
-	cli := containerMgr.cli
+func (mgr *ContainerMgr) createVolume(volumeName string) (volume.Volume, error) {
+	if len(mgr.volumes) >= mgr.volumeLimit {
+		return volume.Volume{}, fmt.Errorf("volume limit reached")
+	}
+	ctx := mgr.ctx
+	cli := mgr.cli
 
 	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{
 		Name: volumeName, // You can leave this empty for a random name
 	})
 	if err != nil {
-		panic(err)
+		return volume.Volume{}, err
 	}
-	return vol
+	mgr.volumes[vol.Name] = struct{}{}
+	return vol, nil
 }
 
-func (containerMgr *ContainerMgr) removeVolume(volumeName string, force bool) error {
-	ctx := containerMgr.ctx
-	cli := containerMgr.cli
+func (mgr *ContainerMgr) removeVolume(volumeName string, force bool) error {
+	ctx := mgr.ctx
+	cli := mgr.cli
 
 	vols, _ := cli.VolumeList(ctx, volume.ListOptions{})
 	found := false
@@ -79,14 +91,21 @@ func (containerMgr *ContainerMgr) removeVolume(volumeName string, force bool) er
 	if err != nil {
 		return err
 	}
+	delete(mgr.volumes, volumeName)
 	return nil
 }
 
-func (containerMgr *ContainerMgr) runContainerCuda(volumeName string) (string, error) {
-	ctx := containerMgr.ctx
-	cli := containerMgr.cli
+func (mgr *ContainerMgr) runContainerCuda(volumeName string) (string, error) {
+	if len(mgr.containers) >= mgr.containerLimit {
+		return "", fmt.Errorf("container limit reached")
+	}
+	ctx := mgr.ctx
+	cli := mgr.cli
 
-	hostConfig := &container.HostConfig{
+	resp, err := cli.ContainerCreate(ctx, &container.Config{
+		Image: "pytorch-cuda",
+		Cmd:   []string{"sleep", "1000"},
+	}, &container.HostConfig{
 		Runtime: "nvidia",
 		Mounts: []mount.Mount{
 			{
@@ -95,12 +114,7 @@ func (containerMgr *ContainerMgr) runContainerCuda(volumeName string) (string, e
 				Target: "/data",
 			},
 		},
-	}
-
-	resp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image: "pytorch-cuda",
-		Cmd:   []string{"sleep", "1000"},
-	}, hostConfig, nil, nil, "")
+	}, nil, nil, "")
 	vols, _ := cli.VolumeList(ctx, volume.ListOptions{})
 	found := false
 	for _, v := range vols.Volumes {
@@ -113,11 +127,11 @@ func (containerMgr *ContainerMgr) runContainerCuda(volumeName string) (string, e
 		return "", fmt.Errorf("volume %s does not exist", volumeName)
 	}
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-
+	mgr.containers[resp.ID] = struct{}{}
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		panic(err)
+		return "", err
 	}
 
 	out, err := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true})
@@ -136,7 +150,7 @@ func main() {
 	}
 
 	// Create a Docker volume
-	containerMgr := NewContainerMgr(cli)
+	containerMgr := NewContainerMgr(cli, 10, 10)
 	volumeName := "my_volume1"
 
 	containerMgr.createVolume(volumeName)

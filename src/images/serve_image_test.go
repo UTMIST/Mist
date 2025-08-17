@@ -13,7 +13,7 @@ func setupMgr(t *testing.T) *ContainerMgr {
 	if err != nil {
 		t.Fatalf("Failed to create Docker client: %v", err)
 	}
-	return NewContainerMgr(cli)
+	return NewContainerMgr(cli, 10, 100)
 }
 
 // T1: create a volume, check exists, delete, check not exists
@@ -173,6 +173,12 @@ func TestVolumeLimit(t *testing.T) {
 		mgr.createVolume(name)
 		created = append(created, name)
 	}
+	name := "test_volume_fail"
+	_, err := mgr.createVolume(name)
+	if err == nil {
+		fmt.Errorf("Volume limit not enforced")
+	}
+
 	defer func() {
 		for _, name := range created {
 			mgr.removeVolume(name, true)
@@ -196,6 +202,10 @@ func TestContainerLimit(t *testing.T) {
 			fmt.Errorf("Failed to start container: %v", err.Error())
 		}
 		ids = append(ids, id)
+	}
+	_, err := mgr.runContainerCuda(volName)
+	if err == nil {
+		fmt.Errorf("Container limit not enforced")
 	}
 	defer func() {
 		for _, id := range ids {
