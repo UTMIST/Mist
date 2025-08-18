@@ -90,7 +90,6 @@ func (a *App) Start() error {
 	if err := a.redisClient.Ping(context.Background()).Err(); err != nil {
 		return fmt.Errorf("redis ping failed: %w", err)
 	}
-
 	// Launch HTTP server
 	a.wg.Add(1)
 	go func() {
