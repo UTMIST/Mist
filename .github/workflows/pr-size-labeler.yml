@@ -23,4 +23,4 @@ jobs:
           s_max_size: '50'
           m_max_size: '200'
           l_max_size: '500'
-          xl_max_size: '1000'
+          xl_label: size/xl
