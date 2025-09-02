@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -13,9 +13,10 @@ import (
 type Scheduler struct {
 	client *redis.Client
 	ctx    context.Context
+	log    *slog.Logger
 }
 
-func NewScheduler(redisAddr string) *Scheduler {
+func NewScheduler(redisAddr string, log *slog.Logger) *Scheduler {
 	client := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
@@ -23,6 +24,7 @@ func NewScheduler(redisAddr string) *Scheduler {
 	return &Scheduler{
 		client: client,
 		ctx:    context.Background(),
+		log:    log,
 	}
 }
 
@@ -52,7 +54,7 @@ func (s *Scheduler) Enqueue(jobType string, payload map[string]interface{}) erro
 		return fmt.Errorf("failed to enqueue job: %w", result.Err())
 	}
 
-	log.Printf("Enqueued job %s of type %s", job.ID, job.Type)
+	s.log.Info("enqueued job", "job_id", job.ID, "job_type", job.Type)
 	return nil
 }
 
