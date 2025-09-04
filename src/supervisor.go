@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -18,9 +19,10 @@ type Supervisor struct {
 	consumerID  string
 	gpuType     string
 	wg          sync.WaitGroup
+	log         *slog.Logger
 }
 
-func NewSupervisor(redisAddr, consumerID, gpuType string) *Supervisor {
+func NewSupervisor(redisAddr, consumerID, gpuType string, log *slog.Logger) *Supervisor {
 	client := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
@@ -33,6 +35,7 @@ func NewSupervisor(redisAddr, consumerID, gpuType string) *Supervisor {
 		cancel:      cancel,
 		consumerID:  consumerID,
 		gpuType:     gpuType,
+		log:         log,
 	}
 }
 
@@ -46,7 +49,7 @@ func (s *Supervisor) Start() error {
 	s.wg.Add(1)
 	go s.processJobs()
 
-	log.Printf("Supervisor %s started with GPU: %s", s.consumerID, s.gpuType)
+	s.log.Info("supervisor started", "consumer_id", s.consumerID, "gpu_type", s.gpuType)
 	return nil
 }
 
@@ -63,6 +66,8 @@ func (s *Supervisor) createConsumerGroup() error {
 
 func (s *Supervisor) processJobs() {
 	defer s.wg.Done()
+	s.log.Info("job processor started", "consumer_id", s.consumerID)
+	defer s.log.Info("job processor stopped", "consumer_id", s.consumerID)
 
 	for {
 		select {
@@ -79,8 +84,8 @@ func (s *Supervisor) processJobs() {
 			})
 
 			if result.Err() != nil {
-				if result.Err() != redis.Nil {
-					log.Printf("Error reading from stream: %v", result.Err())
+				if !errors.Is(result.Err(), redis.Nil) {
+					s.log.Error("error reading from stream", "error", result.Err())
 				}
 				continue
 			}
@@ -98,36 +103,36 @@ func (s *Supervisor) processJobs() {
 func (s *Supervisor) handleMessage(message redis.XMessage) {
 	jobData, ok := message.Values["data"].(string)
 	if !ok {
-		log.Printf("Invalid job data in message %s", message.ID)
+		s.log.Error("invalid job data in message", "message_id", message.ID)
 		s.ackMessage(message.ID)
 		return
 	}
 
 	var job Job
 	if err := json.Unmarshal([]byte(jobData), &job); err != nil {
-		log.Printf("Failed to unmarshal job data: %v", err)
+		s.log.Error("failed to unmarshal job data", "error", err, "message_id", message.ID)
 		s.ackMessage(message.ID)
 		return
 	}
 
 	// certain jobs require a specific GPU
 	if !s.canHandleJob(job) {
-		log.Printf("Job %s requires GPU type %s, but supervisor has %s - skipping",
-			job.ID, job.RequiredGPU, s.gpuType)
+		s.log.Info("skipping job due to GPU mismatch",
+			"job_id", job.ID, "required_gpu", job.RequiredGPU, "supervisor_gpu", s.gpuType)
 		// let another supervisor can pick it up
 		return
 	}
 
-	log.Printf("Processing job %s:%s", job.ID, job.Type)
+	s.log.Info("processing job", "job_id", job.ID, "job_type", job.Type)
 
 	// Simulate job processing
 	success := s.processJob(job)
 
 	if success {
 		s.ackMessage(message.ID)
-		log.Printf("Job %s completed successfully", job.ID)
+		s.log.Info("job completed successfully", "job_id", job.ID)
 	} else {
-		log.Printf("Job %s failed", job.ID)
+		s.log.Error("job failed", "job_id", job.ID)
 		s.ackMessage(message.ID) // TODO: change this once we have docker support
 	}
 }
@@ -151,12 +156,12 @@ func (s *Supervisor) processJob(job Job) bool {
 func (s *Supervisor) ackMessage(messageID string) {
 	result := s.redisClient.XAck(s.ctx, StreamName, ConsumerGroup, messageID)
 	if result.Err() != nil {
-		log.Printf("Failed to ack message %s: %v", messageID, result.Err())
+		s.log.Error("failed to ack message", "message_id", messageID, "error", result.Err())
 	}
 }
 
 func (s *Supervisor) Stop() {
-	log.Printf("Stopping supervisor %s", s.consumerID)
+	s.log.Info("stopping supervisor", "consumer_id", s.consumerID)
 	s.cancel()
 	s.wg.Wait()
 	s.redisClient.Close()
