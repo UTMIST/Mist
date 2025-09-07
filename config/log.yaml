@@ -1,0 +1,10 @@
+output:
+  types:
+    - file
+    - stdout
+  directory: ./logs/
+
+components:
+  - app
+  - scheduler
+  - supervisor
