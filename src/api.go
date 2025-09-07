@@ -100,7 +100,11 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	log, err := createLogger("app")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
+		os.Exit(1)
+	}
 	app := NewApp("localhost:6379", "AMD", log)
 
 	if err := app.Start(); err != nil {

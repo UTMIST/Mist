@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"sync"
@@ -15,19 +14,28 @@ import (
 
 func TestIntegration(t *testing.T) {
 	redisAddr := "localhost:6379"
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-
+	schedulerLog, err := createLogger("scheduler")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
+		os.Exit(1)
+	}
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	defer client.Close()
 	if err := client.Ping(context.Background()).Err(); err != nil {
 		t.Errorf("Failed to connect to Redis: %v", err)
 	}
 
-	scheduler := NewScheduler(redisAddr, log)
+	scheduler := NewScheduler(redisAddr, schedulerLog)
 	defer scheduler.Close()
 
+	supervisorLog, err := createLogger("supervisor")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
+		os.Exit(1)
+	}
+
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
-	supervisor := NewSupervisor(redisAddr, consumerID, "AMD", log)
+	supervisor := NewSupervisor(redisAddr, consumerID, "AMD", supervisorLog)
 
 	if err := supervisor.Start(); err != nil {
 		t.Errorf("Failed to start supervisor: %v", err)
