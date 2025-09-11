@@ -56,6 +56,7 @@ Manages Docker containers and volumes, enforces resource limits, and tracks acti
 - `volumeLimit int` — Maximum allowed volumes.
 - `containers map[string]struct{}` — Tracks active container IDs.
 - `volumes map[string]struct{}` — Tracks active volume names.
+- `mu sync.Mutex` — Mutex for concurrency protection.
 
 ---
 
@@ -76,8 +77,8 @@ Returns an error if the volume does not exist or is in use (unless `force` is tr
 
 ---
 
-### `func (mgr *ContainerMgr) runContainerCuda(volumeName string) (string, error)`
-Creates and starts a container with the specified volume attached at `/data`.  
+### `func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volumeName string) (string, error)`
+Creates and starts a container with the specified image, runtime, and volume attached at `/data`.  
 Enforces the container limit.  
 Returns the container ID or an error.
 
