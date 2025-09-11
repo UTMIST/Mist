@@ -125,6 +125,18 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 	ctx := mgr.ctx
 	cli := mgr.cli
 
+	vols, _ := cli.VolumeList(ctx, volume.ListOptions{})
+	found := false
+	for _, v := range vols.Volumes {
+		if v.Name == volumeName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("volume %s does not exist", volumeName)
+	}
+
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
 		Image: imageName,
 		Cmd:   []string{"sleep", "1000"},
@@ -138,20 +150,10 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 			},
 		},
 	}, nil, nil, "")
-	vols, _ := cli.VolumeList(ctx, volume.ListOptions{})
-	found := false
-	for _, v := range vols.Volumes {
-		if v.Name == volumeName {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return "", fmt.Errorf("volume %s does not exist", volumeName)
-	}
 	if err != nil {
 		return "", err
 	}
+
 	mgr.containers[resp.ID] = struct{}{}
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return "", err
