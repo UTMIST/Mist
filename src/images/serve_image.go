@@ -40,7 +40,7 @@ func (mgr *ContainerMgr) stopContainer(containerID string) error {
 
 	err := cli.ContainerStop(ctx, containerID, container.StopOptions{})
 	if err != nil {
-		return err // Return the error to the caller for graceful handling
+		return err
 	}
 	return nil
 }
