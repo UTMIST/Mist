@@ -152,26 +152,3 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 	io.Copy(os.Stdout, out)
 	return resp.ID, nil
 }
-
-func main() {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		panic(err)
-	}
-
-	// Create a Docker volume
-	containerMgr := NewContainerMgr(cli, 10, 10)
-	imageName := "pytorch-cuda"
-	runtimeName := "nvidia"
-	volumeName := "my_volume1"
-
-	containerMgr.createVolume(volumeName)
-	id, err := containerMgr.runContainer(imageName, runtimeName, volumeName)
-	if err != nil {
-		fmt.Errorf("Failed to start container: %v", err.Error())
-	}
-	containerMgr.stopContainer(id)
-	containerMgr.removeContainer(id)
-	containerMgr.removeVolume(volumeName, true)
-
-}
