@@ -1,7 +1,9 @@
 output:
   types:
-    - file
-    - stdout
+    - type: file
+      level: INFO
+    - type: stdout
+      level: INFO
   directory: ./logs/
 
 components:
