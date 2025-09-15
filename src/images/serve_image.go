@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sync"
 
@@ -44,6 +45,7 @@ func (mgr *ContainerMgr) stopContainer(containerID string) error {
 
 	err := cli.ContainerStop(ctx, containerID, container.StopOptions{})
 	if err != nil {
+		slog.Error("Failed to stop container", "containerID", containerID, "error", err)
 		return err
 	}
 	return nil
@@ -58,6 +60,7 @@ func (mgr *ContainerMgr) removeContainer(containerID string) error {
 	cli := mgr.cli
 	err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{RemoveVolumes: true})
 	if err != nil {
+		slog.Error("Failed to remove container", "containerID", containerID, "error", err)
 		return err
 	}
 	delete(mgr.containers, containerID)
@@ -70,6 +73,7 @@ func (mgr *ContainerMgr) createVolume(volumeName string) (volume.Volume, error) 
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	if len(mgr.volumes) >= mgr.volumeLimit {
+		slog.Warn("Volume limit reached", "limit", mgr.volumeLimit)
 		return volume.Volume{}, fmt.Errorf("volume limit reached")
 	}
 	ctx := mgr.ctx
@@ -79,6 +83,7 @@ func (mgr *ContainerMgr) createVolume(volumeName string) (volume.Volume, error) 
 		Name: volumeName, // You can leave this empty for a random name
 	})
 	if err != nil {
+		slog.Error("Failed to create volume", "volumeName", volumeName, "error", err)
 		return volume.Volume{}, err
 	}
 	mgr.volumes[vol.Name] = struct{}{}
@@ -102,11 +107,13 @@ func (mgr *ContainerMgr) removeVolume(volumeName string, force bool) error {
 		}
 	}
 	if !found {
+		slog.Warn("Volume does not exist", "volumeName", volumeName)
 		return fmt.Errorf("volume %s does not exist", volumeName)
 	}
 
 	err := cli.VolumeRemove(ctx, volumeName, force)
 	if err != nil {
+		slog.Error("Failed to remove volume", "volumeName", volumeName, "error", err)
 		return err
 	}
 	delete(mgr.volumes, volumeName)
@@ -120,6 +127,7 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	if len(mgr.containers) >= mgr.containerLimit {
+		slog.Warn("Container limit reached", "limit", mgr.containerLimit)
 		return "", fmt.Errorf("container limit reached")
 	}
 	ctx := mgr.ctx
@@ -134,6 +142,7 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 		}
 	}
 	if !found {
+		slog.Error("Volume does not exist for container", "volumeName", volumeName)
 		return "", fmt.Errorf("volume %s does not exist", volumeName)
 	}
 
@@ -151,17 +160,20 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 		},
 	}, nil, nil, "")
 	if err != nil {
+		slog.Error("Failed to create container", "imageName", imageName, "runtimeName", runtimeName, "volumeName", volumeName, "error", err)
 		return "", err
 	}
 
 	mgr.containers[resp.ID] = struct{}{}
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		slog.Error("Failed to start container", "containerID", resp.ID, "error", err)
 		return "", err
 	}
 
 	out, err := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true})
 	if err != nil {
-		panic(err)
+		slog.Error("Failed to get container logs", "containerID", resp.ID, "error", err)
+		return resp.ID, err
 	}
 
 	io.Copy(os.Stdout, out)
