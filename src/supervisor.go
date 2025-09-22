@@ -150,12 +150,6 @@ func (s *Supervisor) canHandleJob(job Job) bool {
 
 // TODO: Actually schedule a container here
 func (s *Supervisor) processJob(job Job) bool {
-	s.log.Info("starting job processing", "job_id", job.ID, "payload", job.Payload)
-
-	// Simulate processing time
-	time.Sleep(100 * time.Millisecond)
-
-	s.log.Info("job processing completed", "job_id", job.ID)
 	return true
 }
 
