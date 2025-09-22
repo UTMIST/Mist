@@ -22,6 +22,14 @@ type Job struct {
 	RequiredGPU string                 `json:"gpu"`
 }
 
+type SupervisorStatus struct {
+	ConsumerID string    `json:"consumer_id"`
+	GPUType    string    `json:"gpu_type"`
+	Status     string    `json:"status"` // "active", "inactive", "failed"
+	LastSeen   time.Time `json:"last_seen"`
+	StartedAt  time.Time `json:"started_at"`
+}
+
 func generateJobID() string {
 	return fmt.Sprintf("job_%d_%d", time.Now().UnixNano(), os.Getpid())
 }

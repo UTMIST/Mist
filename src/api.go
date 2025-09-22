@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -16,34 +18,43 @@ import (
 )
 
 type App struct {
-	redisClient *redis.Client
-	scheduler   *Scheduler
-	supervisor  *Supervisor
-	httpServer  *http.Server
-	wg          sync.WaitGroup
-	log         *slog.Logger
+	redisClient    *redis.Client
+	scheduler      *Scheduler
+	supervisor     *Supervisor
+	httpServer     *http.Server
+	wg             sync.WaitGroup
+	log            *slog.Logger
+	statusRegistry *StatusRegistry
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	scheduler := NewScheduler(redisAddr, log)
+	statusRegistry := NewStatusRegistry(client, log)
 
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
 	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log)
 
+	// Add dummy supervisors for testing
+	addDummySupervisors(statusRegistry, log)
+
 	mux := http.NewServeMux()
 	a := &App{
-		redisClient: client,
-		scheduler:   scheduler,
-		supervisor:  supervisor,
-		httpServer:  &http.Server{Addr: ":3000", Handler: mux},
-		log:         log,
+		redisClient:    client,
+		scheduler:      scheduler,
+		supervisor:     supervisor,
+		httpServer:     &http.Server{Addr: ":3000", Handler: mux},
+		log:            log,
+		statusRegistry: statusRegistry,
 	}
 
 	mux.HandleFunc("/auth/login", a.login)
 	mux.HandleFunc("/auth/refresh", a.refresh)
 	mux.HandleFunc("/jobs", a.enqueueJob)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
+	mux.HandleFunc("/supervisors/status", a.getSupervisorStatus)
+	mux.HandleFunc("/supervisors/status/", a.getSupervisorStatusByID)
+	mux.HandleFunc("/supervisors", a.getAllSupervisors)
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
@@ -55,6 +66,12 @@ func (a *App) Start() error {
 	// Connect to redis
 	if err := a.redisClient.Ping(context.Background()).Err(); err != nil {
 		a.log.Error("redis ping failed", "err", err)
+		return err
+	}
+
+	// Start supervisor
+	if err := a.supervisor.Start(); err != nil {
+		a.log.Error("supervisor start failed", "err", err)
 		return err
 	}
 
@@ -167,4 +184,77 @@ func (a *App) enqueueJob(w http.ResponseWriter, r *http.Request) {
 func (a *App) getJobStatus(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	fmt.Fprintln(w, "job id=", id)
+}
+
+func (a *App) getSupervisorStatus(w http.ResponseWriter, r *http.Request) {
+	supervisors, err := a.statusRegistry.GetAllSupervisors()
+	if err != nil {
+		a.log.Error("failed to get supervisor status", "error", err)
+		http.Error(w, "failed to get supervisor status", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"supervisors": supervisors,
+		"count":       len(supervisors),
+	}); err != nil {
+		a.log.Error("failed to encode supervisor status response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
+	// extract consumer ID from URL path
+	path := strings.TrimPrefix(r.URL.Path, "/supervisors/status/")
+	if path == "" {
+		http.Error(w, "consumer ID required", http.StatusBadRequest)
+		return
+	}
+
+	supervisor, err := a.statusRegistry.GetSupervisor(path)
+	if err != nil {
+		a.log.Error("failed to get supervisor status", "consumer_id", path, "error", err)
+		http.Error(w, "supervisor not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(supervisor); err != nil {
+		a.log.Error("failed to encode supervisor status response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getAllSupervisors(w http.ResponseWriter, r *http.Request) {
+	// check if we want only active supervisors
+	activeOnly := r.URL.Query().Get("active") == "true"
+
+	var supervisors []SupervisorStatus
+	var err error
+
+	if activeOnly {
+		supervisors, err = a.statusRegistry.GetActiveSupervisors()
+	} else {
+		supervisors, err = a.statusRegistry.GetAllSupervisors()
+	}
+
+	if err != nil {
+		a.log.Error("failed to get supervisors", "active_only", activeOnly, "error", err)
+		http.Error(w, "failed to get supervisors", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"supervisors": supervisors,
+		"count":       len(supervisors),
+		"active_only": activeOnly,
+	}); err != nil {
+		a.log.Error("failed to encode supervisors response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
