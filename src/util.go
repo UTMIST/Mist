@@ -7,14 +7,10 @@ import (
 )
 
 const (
-	StreamName          = "jobs:stream"
-	ConsumerGroup       = "workers"
-	MaxRetries          = 3
-	RetryDelay          = 5 * time.Second
-	SupervisorRegistry  = "supervisors:registry"
-	SupervisorStatusKey = "supervisors:status"
-	HeartbeatInterval   = 10 * time.Second
-	HeartbeatTimeout    = 30 * time.Second
+	StreamName    = "jobs:stream"
+	ConsumerGroup = "workers"
+	MaxRetries    = 3
+	RetryDelay    = 5 * time.Second
 )
 
 type Job struct {
