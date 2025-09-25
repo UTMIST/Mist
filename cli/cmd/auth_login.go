@@ -1,14 +1,15 @@
 package cmd
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 )
 
 // TODO: What credentials are we taking?
 type LoginCmd struct {
-	Username string `arg:"" help:"Your account username"`
-	Password string `arg:"" help:"Your account password"`
 }
 
 func verifyUser(username, password string) error {
@@ -19,17 +20,27 @@ func verifyUser(username, password string) error {
 	return errors.New("invalid credentials")
 }
 
-// TODO: Figure out how to handle password input without exposing it in the terminal history
+// TODO: Figure out how to handle password input without exposing it in the terminal historyn  (go get golang.org/x/term)
 // TODO: Where are we storing auth token? Are we getting JWT?
-func (l *LoginCmd) Run() error {
-	// mist auth login <username> <password>
 
-	err := verifyUser(l.Username, l.Password)
+func (l *LoginCmd) Run() error {
+	// mist auth login
+
+	fmt.Print("Username: ")
+
+	reader := bufio.NewReader(os.Stdin)
+	username, _ := reader.ReadString('\n')
+	username = strings.TrimSpace(strings.ToLower(username))
+
+	fmt.Print("Password: ")
+	password, _ := reader.ReadString('\n')
+	password = strings.TrimSpace(strings.ToLower(password))
+	err := verifyUser(username, password)
 	if err != nil {
 		fmt.Println("Error during authentication:", err)
 	}
 
-	fmt.Println("Logging in with username:", l.Username)
+	fmt.Println("Logging in with username:", username)
 
 	return nil
 }
