@@ -6,8 +6,8 @@ import (
 
 type CLI struct {
 	// Define your CLI structure here
-	// Auth   AuthCmd   `cmd:"" help:"Authentication commands"`
-	Job JobCmd `cmd:"" help:"Job management commands"`
+	Auth AuthCmd `cmd:"" help:"Authentication commands"`
+	Job  JobCmd  `cmd:"" help:"Job management commands"`
 	// Config ConfigCmd `cmd:"" help:"Configuration commands"`
 	Help HelpCmd `cmd:"" help:"Show help information"`
 }
