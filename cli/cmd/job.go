@@ -1,7 +1,7 @@
 package cmd
 
 type JobCmd struct {
-	// Submit   SubmitCmd   `cmd:"" help:"Submit a new job"`
+	Submit JobSubmitCmd `cmd:"" help:"Submit a new job"`
 	Status JobStatusCmd `cmd:"" help:"Check the status of a job"`
 	// Cancel   CancelCmd   `cmd:"" help:"Cancel a running job"`
 	List ListCmd `cmd:"" help:"List all jobs" default:1`
