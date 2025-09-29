@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -19,44 +18,6 @@ func NewStatusRegistry(redisClient *redis.Client, log *slog.Logger) *StatusRegis
 	return &StatusRegistry{
 		redisClient: redisClient,
 		log:         log,
-	}
-}
-
-func addDummySupervisors(statusRegistry *StatusRegistry, log *slog.Logger) {
-	now := time.Now()
-
-	// three dummy supervisors with different statuses
-	dummySupervisors := []SupervisorStatus{
-		{
-			ConsumerID: "worker_amd_001",
-			GPUType:    "AMD",
-			Status:     SupervisorStateActive,
-			LastSeen:   now,                     // now
-			StartedAt:  now.Add(-2 * time.Hour), // 2hours ago
-		},
-		{
-			ConsumerID: "worker_nvidia_002",
-			GPUType:    "NVIDIA",
-			Status:     SupervisorStateActive,
-			LastSeen:   now.Add(-30 * time.Second), // 30 seconds ago
-			StartedAt:  now.Add(-1 * time.Hour),    // 1 hour ago
-		},
-		{
-			ConsumerID: "worker_tt_003",
-			GPUType:    "TT",
-			Status:     SupervisorStateInactive,
-			LastSeen:   now.Add(-5 * time.Minute), // seen 5 minutes ago
-			StartedAt:  now.Add(-3 * time.Hour),   // 3 hours ago
-		},
-	}
-
-	// Add each dummy supervisor to the registry
-	for _, supervisor := range dummySupervisors {
-		if err := statusRegistry.UpdateStatus(supervisor.ConsumerID, supervisor); err != nil {
-			log.Error("failed to add dummy supervisor", "consumer_id", supervisor.ConsumerID, "error", err)
-		} else {
-			log.Info("added dummy supervisor", "consumer_id", supervisor.ConsumerID, "gpu_type", supervisor.GPUType, "status", supervisor.Status)
-		}
 	}
 }
 
