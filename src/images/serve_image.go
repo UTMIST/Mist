@@ -79,9 +79,7 @@ func (mgr *ContainerMgr) createVolume(volumeName string) (volume.Volume, error) 
 	ctx := mgr.ctx
 	cli := mgr.cli
 
-	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{
-		Name: volumeName, // You can leave this empty for a random name
-	})
+	vol, err := cli.VolumeCreate(ctx, volume.CreateOptions{Name: volumeName})
 	if err != nil {
 		slog.Error("Failed to create volume", "volumeName", volumeName, "error", err)
 		return volume.Volume{}, err
@@ -146,19 +144,27 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 		return "", fmt.Errorf("volume %s does not exist", volumeName)
 	}
 
-	resp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image: imageName,
-		Cmd:   []string{"sleep", "1000"},
-	}, &container.HostConfig{
-		Runtime: runtimeName,
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeVolume,
-				Source: volumeName,
-				Target: "/data",
+	resp, err := cli.ContainerCreate(
+		ctx,
+		&container.Config{
+			Image: imageName,
+			Cmd:   []string{"sleep", "1000"},
+		},
+		&container.HostConfig{
+			Runtime: runtimeName,
+			Mounts: []mount.Mount{
+				{
+					Type:   mount.TypeVolume,
+					Source: volumeName,
+					Target: "/data",
+				},
 			},
 		},
-	}, nil, nil, "")
+		nil,
+		nil,
+		"",
+	)
+
 	if err != nil {
 		slog.Error("Failed to create container", "imageName", imageName, "runtimeName", runtimeName, "volumeName", volumeName, "error", err)
 		return "", err
