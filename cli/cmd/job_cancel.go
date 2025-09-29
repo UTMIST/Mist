@@ -14,7 +14,7 @@ type JobCancelCmd struct {
 
 }
 
-func (c* JobCancelCmd) Run() error {
+func (c *JobCancelCmd) Run() error {
 	
 	// Maybe no need to validate the compute type? 
 	fmt.Printf("Are you sure you want to cancel %s? (Y/N): \n", c.Script)

@@ -3,7 +3,7 @@ package cmd
 import "fmt"
 
 
-// Config flgas 
+// Config flags 
 type ConfigCmd struct{
 	DefaultCluster string `help:"Set the default compute cluster." optional: ""`
 	Show bool `help:"Show current configuration."`
@@ -15,6 +15,11 @@ func (h *ConfigCmd) Run() error {
 	defaultConfig := map[string]string{
 		"defaultCluster": "AMD-cluster-1",
 		"region": "us-east",
+	}
+
+	if h.Show && h.DefaultCluster!= "" {
+		fmt.Printf("Cannot use --show and --default-cluster together")
+		return nil
 	}
 
 	if h.DefaultCluster != "" {
