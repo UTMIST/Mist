@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,11 +13,6 @@ import (
 	diskinfo "github.com/shirou/gopsutil/v3/disk"
 	meminfo "github.com/shirou/gopsutil/v3/mem"
 )
-
-func handle() {
-	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(":2112", nil)
-}
 
 // http metrics
 var (
@@ -49,7 +45,7 @@ var (
 		Name: "jobs_failed_total",
 		Help: "Total number of jobs that failed.",
 	}, []string{"job_type", "gpu"})
-	runningJobs = promauto.NewCounterVec(prometheus.CounterOpts{
+	runningJobs = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "running_jobs",
 		Help: "Total jobs currently running",
 	}, []string{"gpu"})
@@ -85,8 +81,78 @@ var (
 	}, []string{"mountpoint"})
 )
 
-// this function may need to run per server to capture local system metrics
+type Metrics struct {
+	HTTPInFlight        prometheus.Gauge
+	HTTPRequestsTotal   *prometheus.CounterVec
+	HTTPRequestDuration *prometheus.HistogramVec
 
+	JobsStarted   *prometheus.CounterVec
+	JobsCompleted *prometheus.CounterVec
+	JobsFailed    *prometheus.CounterVec
+	RunningJobs   *prometheus.GaugeVec
+
+	SystemCPUPercent     prometheus.Gauge
+	SystemMemTotalBytes  prometheus.Gauge
+	SystemMemUsedBytes   prometheus.Gauge
+	SystemDiskTotalBytes *prometheus.GaugeVec
+	SystemDiskUsedBytes  *prometheus.GaugeVec
+}
+
+func NewMetrics() *Metrics {
+	return &Metrics{
+		HTTPInFlight:        httpInFlight,
+		HTTPRequestsTotal:   httpRequestsTotal,
+		HTTPRequestDuration: httpRequestDuration,
+
+		JobsStarted:   jobsStarted,
+		JobsCompleted: jobsCompleted,
+		JobsFailed:    jobsFailed,
+		RunningJobs:   runningJobs,
+
+		SystemCPUPercent:     systemCPUPercent,
+		SystemMemTotalBytes:  systemMemTotalBytes,
+		SystemMemUsedBytes:   systemMemUsedBytes,
+		SystemDiskTotalBytes: systemDiskTotalBytes,
+		SystemDiskUsedBytes:  systemDiskUsedBytes,
+	}
+}
+
+func (m *Metrics) StartCollecting(ctx context.Context) {
+	startSystemCollector(ctx)
+
+}
+
+// Wrap http wraps around the http handlers to collect metrics
+func (m *Metrics) WrapHTTP(name string, next http.Handler) http.Handler {
+	return promhttp.InstrumentHandlerInFlight(
+		httpInFlight,
+		promhttp.InstrumentHandlerDuration(
+			httpRequestDuration.MustCurryWith(prometheus.Labels{"handler": name}),
+			promhttp.InstrumentHandlerCounter(
+				httpRequestsTotal.MustCurryWith(prometheus.Labels{"handler": name}),
+				next,
+			),
+		),
+	)
+}
+
+func (m *Metrics) TrackJob(ctx context.Context, jobType, gpu string, fn func(context.Context) error) error {
+
+	jobsStarted.WithLabelValues(jobType, gpu).Inc()
+	runningJobs.WithLabelValues(gpu).Inc()
+	defer runningJobs.WithLabelValues(gpu).Dec()
+
+	err := fn(ctx)
+
+	if err != nil {
+		jobsFailed.WithLabelValues(jobType, gpu).Inc()
+		return err
+	}
+	jobsCompleted.WithLabelValues(jobType, gpu).Inc()
+	return nil
+}
+
+// Collects metrics from the host where this process is running, these values reflect the local machine
 func startSystemCollector(ctx context.Context) {
 
 	go func() {
@@ -107,7 +173,7 @@ func startSystemCollector(ctx context.Context) {
 				if err == nil && len(pct) > 0 {
 					systemCPUPercent.Set(pct[0])
 				} else {
-					// TODO: log err
+					slog.Error("failed to get cpu percent", "err", err)
 				}
 
 				// memory
@@ -116,7 +182,7 @@ func startSystemCollector(ctx context.Context) {
 					systemMemTotalBytes.Set(float64(m.Total))
 					systemMemUsedBytes.Set(float64(m.Used))
 				} else {
-					// TODO: log err
+					slog.Error("failed to get memory info", "err", err)
 				}
 
 				// disk capture
@@ -124,15 +190,15 @@ func startSystemCollector(ctx context.Context) {
 				if err == nil {
 					for _, p := range parts {
 						if u, err := diskinfo.Usage(p.Mountpoint); err == nil {
-							// Use a consistent label key (e.g., mountpoint)
+
 							systemDiskTotalBytes.WithLabelValues(u.Path).Set(float64(u.Total))
 							systemDiskUsedBytes.WithLabelValues(u.Path).Set(float64(u.Used))
 						} else {
-							// TODO: log err
+							slog.Error("failed to get disk usage", "mountpoint", p.Mountpoint)
 						}
 					}
 				} else {
-					// TODO: log err
+					slog.Error("failed to get disk partitions")
 				}
 			}
 		}
