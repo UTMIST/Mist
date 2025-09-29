@@ -7,10 +7,11 @@ import (
 )
 
 const (
-	StreamName    = "jobs:stream"
-	ConsumerGroup = "workers"
-	MaxRetries    = 3
-	RetryDelay    = 5 * time.Second
+	StreamName          = "jobs:stream"
+	ConsumerGroup       = "workers"
+	SupervisorStatusKey = "supervisors:status"
+	MaxRetries          = 3
+	RetryDelay          = 5 * time.Second
 )
 
 type Job struct {
@@ -22,12 +23,20 @@ type Job struct {
 	RequiredGPU string                 `json:"gpu"`
 }
 
+type SupervisorState string
+
+const (
+	SupervisorStateActive   SupervisorState = "active"
+	SupervisorStateInactive SupervisorState = "inactive"
+	SupervisorStateFailed   SupervisorState = "failed"
+)
+
 type SupervisorStatus struct {
-	ConsumerID string    `json:"consumer_id"`
-	GPUType    string    `json:"gpu_type"`
-	Status     string    `json:"status"` // "active", "inactive", "failed"
-	LastSeen   time.Time `json:"last_seen"`
-	StartedAt  time.Time `json:"started_at"`
+	ConsumerID string          `json:"consumer_id"`
+	GPUType    string          `json:"gpu_type"`
+	Status     SupervisorState `json:"status"`
+	LastSeen   time.Time       `json:"last_seen"`
+	StartedAt  time.Time       `json:"started_at"`
 }
 
 func generateJobID() string {

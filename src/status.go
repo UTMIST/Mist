@@ -30,21 +30,21 @@ func addDummySupervisors(statusRegistry *StatusRegistry, log *slog.Logger) {
 		{
 			ConsumerID: "worker_amd_001",
 			GPUType:    "AMD",
-			Status:     "active",
+			Status:     SupervisorStateActive,
 			LastSeen:   now,                     // now
 			StartedAt:  now.Add(-2 * time.Hour), // 2hours ago
 		},
 		{
 			ConsumerID: "worker_nvidia_002",
 			GPUType:    "NVIDIA",
-			Status:     "active",
+			Status:     SupervisorStateActive,
 			LastSeen:   now.Add(-30 * time.Second), // 30 seconds ago
 			StartedAt:  now.Add(-1 * time.Hour),    // 1 hour ago
 		},
 		{
 			ConsumerID: "worker_tt_003",
 			GPUType:    "TT",
-			Status:     "inactive",
+			Status:     SupervisorStateInactive,
 			LastSeen:   now.Add(-5 * time.Minute), // seen 5 minutes ago
 			StartedAt:  now.Add(-3 * time.Hour),   // 3 hours ago
 		},
@@ -103,7 +103,7 @@ func (sr *StatusRegistry) GetActiveSupervisors() ([]SupervisorStatus, error) {
 
 	var activeSupervisors []SupervisorStatus
 	for _, supervisor := range allSupervisors {
-		if supervisor.Status == "active" {
+		if supervisor.Status == SupervisorStateActive {
 			activeSupervisors = append(activeSupervisors, supervisor)
 		}
 	}
