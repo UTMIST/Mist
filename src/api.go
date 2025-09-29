@@ -225,7 +225,6 @@ func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) getAllSupervisors(w http.ResponseWriter, r *http.Request) {
-	// check if we want only active supervisors
 	activeOnly := r.URL.Query().Get("active") == "true"
 
 	var supervisors []SupervisorStatus
