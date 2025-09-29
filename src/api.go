@@ -35,9 +35,6 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
 	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log)
 
-	// Add dummy supervisors for testing
-	addDummySupervisors(statusRegistry, log)
-
 	mux := http.NewServeMux()
 	a := &App{
 		redisClient:    client,
