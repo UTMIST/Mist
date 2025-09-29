@@ -100,15 +100,15 @@ Returns an error if the operation fails.
 
 The test suite (`serve_image_test.go`) covers the following scenarios:
 
-- **T1:** Create a volume, check it exists, delete it, check it no longer exists.
-- **T3:** Create a volume with the same name twice (should not fail).
-- **T4:** Remove a volume that doesn't exist (should fail or return error).
-- **T5:** Remove a volume in use (should fail or return error).
-- **T6:** Attach a volume that does not exist (should fail or return error).
-- **T7:** Two containers attach to the same volume (should succeed in Docker, but test for your policy).
-- **T8:** Two containers try to attach to the same volume at the same time (should succeed in Docker).
-- **T9:** Set a limit of 100 volumes (should fail on 101st if you enforce a limit).
-- **T10:** Set a limit of 10 containers (should fail on 11th if you enforce a limit).
+- Create a volume, check it exists, delete it, check it no longer exists.
+- Create a volume with the same name twice (should not fail).
+- Remove a volume that doesn't exist (should fail or return error).
+- Remove a volume in use (should fail or return error).
+- Attach a volume that does not exist (should fail or return error).
+- Two containers attach to the same volume (should succeed in Docker, but test for your policy).
+- Two containers try to attach to the same volume at the same time (should succeed in Docker).
+- Set a limit of 100 volumes (should fail on 101st if you enforce a limit).
+- Set a limit of 10 containers (should fail on 11th if you enforce a limit).
 
 ---
 

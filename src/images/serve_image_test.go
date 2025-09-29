@@ -16,7 +16,7 @@ func setupMgr(t *testing.T) *ContainerMgr {
 	return NewContainerMgr(cli, 10, 100)
 }
 
-// T1: create a volume, check exists, delete, check not exists
+// Create a volume, check exists, delete, check not exists
 func TestCreateDeleteVolume(t *testing.T) {
 	mgr := setupMgr(t)
 	volName := "test_volume_t1"
@@ -47,7 +47,7 @@ func TestCreateDeleteVolume(t *testing.T) {
 	}
 }
 
-// T3: create a volume with same name twice (should not fail)
+// Create a volume with same name twice (should not fail)
 func TestCreateVolumeTwice(t *testing.T) {
 	mgr := setupMgr(t)
 	volName := "test_volume_t3"
@@ -62,7 +62,7 @@ func TestCreateVolumeTwice(t *testing.T) {
 	}
 }
 
-// T4: remove volume that doesn't exist (should fail or panic)
+// Remove volume that doesn't exist (should fail or panic)
 func TestRemoveNonexistentVolume(t *testing.T) {
 	mgr := setupMgr(t)
 	err := mgr.removeVolume("nonexistent_volume_t4", true)
@@ -73,7 +73,7 @@ func TestRemoveNonexistentVolume(t *testing.T) {
 	}
 }
 
-// T5: remove volume in use (should fail or panic)
+// Remove volume in use (should fail or panic)
 func TestRemoveVolumeInUse(t *testing.T) {
 	mgr := setupMgr(t)
 	imageName := "pytorch-cuda"
@@ -113,7 +113,7 @@ func TestRemoveVolumeInUse(t *testing.T) {
 	}
 }
 
-// T6: attach a volume that does not exist (should fail or panic)
+// Attach a volume that does not exist (should fail or panic)
 func TestAttachNonexistentVolume(t *testing.T) {
 	mgr := setupMgr(t)
 	imageName := "pytorch-cuda"
@@ -128,7 +128,7 @@ func TestAttachNonexistentVolume(t *testing.T) {
 	}
 }
 
-// T7: two containers attach to the same volume (should succeed in Docker, but test for your policy)
+// Two containers attach to the same volume (should succeed in Docker, but test for your policy)
 func TestTwoContainersSameVolume(t *testing.T) {
 	mgr := setupMgr(t)
 	imageName := "pytorch-cuda"
@@ -164,7 +164,7 @@ func TestTwoContainersSameVolume(t *testing.T) {
 	}
 }
 
-// T8: two containers try to attach to the same volume at the same time (should succeed in Docker)
+// Two containers try to attach to the same volume at the same time (should succeed in Docker)
 func TestTwoContainersSameVolumeConcurrent(t *testing.T) {
 	mgr := setupMgr(t)
 	imageName := "pytorch-cuda"
@@ -200,7 +200,7 @@ func TestTwoContainersSameVolumeConcurrent(t *testing.T) {
 	}
 }
 
-// T9: set a limit of 100 volumes (should fail on 101st if you enforce a limit)
+// Set a limit of 100 volumes (should fail on 101st if you enforce a limit)
 func TestVolumeLimit(t *testing.T) {
 	mgr := setupMgr(t)
 	limit := 100
@@ -232,7 +232,7 @@ func TestVolumeLimit(t *testing.T) {
 	// If your implementation doesn't enforce a limit, this test will fail
 }
 
-// T10: set a limit of 10 containers (should fail on 11th if you enforce a limit)
+// Set a limit of 10 containers (should fail on 11th if you enforce a limit)
 func TestContainerLimit(t *testing.T) {
 	mgr := setupMgr(t)
 	imageName := "pytorch-cuda"
