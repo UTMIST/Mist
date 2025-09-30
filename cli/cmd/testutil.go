@@ -8,6 +8,9 @@ import (
 	"os"
 )
 
+// Useful help functions. 
+// I actually don't know if we have something like this already. 
+
 func CaptureOutput(f func()) string{
 	old := os.Stdout 
 	r, w, _ := os.Pipe() 
@@ -21,6 +24,19 @@ func CaptureOutput(f func()) string{
 	var buf bytes.Buffer
 	io.Copy(&buf, r)
 	return buf.String() 
+}
+
+func contains(s, substr string) bool {
+	return bytes.Contains([]byte(s), []byte(substr))
+}
+
+func jobExists(jobs []Job, id string) bool {
+	for _, job := range jobs {
+		if job.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // Creating a helper function for capturing 

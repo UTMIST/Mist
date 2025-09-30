@@ -5,19 +5,49 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 
 type JobCancelCmd struct {
-	Script  string `arg:"" help:"Path to the job you want to cancel"`
-	Compute string `help:"Type of compute required for the job: AMD|TT|CPU" default:"AMD"`
-
+	ID  string `arg:"" help:"ID of job you want to cancel"`
 }
 
 func (c *JobCancelCmd) Run() error {
-	
-	// Maybe no need to validate the compute type? 
-	fmt.Printf("Are you sure you want to cancel %s? (Y/N): \n", c.Script)
+	// Same Mock data from job list. 
+	jobs := []Job{
+		{
+			ID:        "ID:1",
+			Name:      "docker_container_name_1",
+			Status:    "Running",
+			GPUType:   "AMD",
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        "ID:2",
+			Name:      "docker_container_name_2",
+			Status:    "Enqueued",
+			GPUType:   "TT",
+			CreatedAt: time.Now().Add(-time.Hour * 24),
+		},
+		{
+			ID:        "ID:3",
+			Name:      "docker_container_name_3",
+			Status:    "Running",
+			GPUType:   "TT",
+			CreatedAt: time.Now().Add(-time.Hour * 24),
+		},
+	}
+
+	// Check if job exists 
+	if !jobExists(jobs, c.ID) {
+		fmt.Printf("%s does not exist in your jobs.\n", c.ID)
+		fmt.Printf("Use the command \"job list\" for your list of jobs.")
+		return nil 
+	}
+
+
+	fmt.Printf("Are you sure you want to cancel %s? (Y/N): \n", c.ID)
 
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
@@ -28,8 +58,7 @@ func (c *JobCancelCmd) Run() error {
 
 		// Confirmed job cancellation logic 
 
-		fmt.Println("Cancelling job with script:", c.Script)
-		fmt.Println("Requested GPU type:", c.Compute)
+		fmt.Println("Cancelling job with ID:", c.ID)
 		println("Job cancelled successfully with ID: job_12345")
 		return nil
 	} else if input == "n" || input == "no"{

@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 	// "fmt"
-	"bytes"
+	// "bytes"
 )
 
 // No Flag config 
@@ -15,9 +15,8 @@ func TestConfigNoFlags(t *testing.T){
 	if want := "No config action specified. Use --help for options."; !contains(output, want){
 	t.Errorf("expected output to contain %q, got %q", want, output)
 	}
-
-
 }
+
 // Set Default Cluster to tt-gpu-cluster-1
 func TestConfigDefaultCluster(t *testing.T){
 	cmd := &ConfigCmd{DefaultCluster: "tt-gpu-cluster-1"} // Create config object 
@@ -56,8 +55,4 @@ func TestConfigBothFlagError(t *testing.T){
 		t.Errorf("Expected the error message of \"%s\", got %q", want, output)
 	}
 
-}
-
-func contains(s, substr string) bool {
-	return bytes.Contains([]byte(s), []byte(substr))
 }
