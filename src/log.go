@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"gopkg.in/yaml.v3"
 	"io"
 	"log/slog"
@@ -88,11 +90,20 @@ func getLogConfig(file string) (LogConfig, error) {
 	return config, nil
 }
 
+func fallbackLogger(component string) *slog.Logger {
+	return slog.New(
+		slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}),
+	).With("component", component)
+}
+
 func createLogger(component string) (*slog.Logger, error) {
 	logConfig, err := getLogConfig(LogConfigFilePath)
 	if err != nil {
-		return nil, err
+		fallback := fallbackLogger(component)
+		fallback.Warn("using fallback logger")
+		return fallback, fmt.Errorf("failed to load log config: %w", err)
 	}
+
 	writerLevels := make(map[io.Writer]slog.Level)
 	for _, t := range logConfig.Output.Types {
 		switch t.Type {
@@ -102,17 +113,28 @@ func createLogger(component string) (*slog.Logger, error) {
 			directory := logConfig.Output.Directory
 
 			if err := os.MkdirAll(directory, 0755); err != nil {
-				return nil, err
+				fallback := fallbackLogger(component)
+				fallback.Warn("using fallback logger")
+				return fallback, fmt.Errorf("failed to create log directory: %w", err)
 			}
 
 			filePath := filepath.Join(directory, component+".log")
 			file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 			if err != nil {
-				return nil, err
+				fallback := fallbackLogger(component)
+				fallback.Warn("using fallback logger")
+				return fallback, fmt.Errorf("failed to open log file %q: %w", filePath, err)
 			}
 			writerLevels[file] = levelMap[t.Level]
 		}
 	}
+
+	if len(writerLevels) == 0 {
+		fallback := fallbackLogger(component)
+		fallback.Warn("using fallback logger")
+		return fallback, errors.New("no valid log outputs configured")
+	}
+
 	handler := NewMultiHandler(writerLevels)
 	logger := slog.New(handler).With("component", component)
 	return logger, nil
