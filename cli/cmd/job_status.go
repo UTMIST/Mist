@@ -8,25 +8,27 @@ import (
 )
 
 type JobStatusCmd struct {
-	JobID string `arg:"" help:"The ID of the job to check the status for"`
+	ID string `arg:"" help:"The ID of the job to check the status for"`
 }
 
 func (j *JobStatusCmd) Run() error {
-
-	// Get job by id
-	// job, err := api.GetJob(j.JobID)
-	// if err != nil {
-	// 	fmt.Println("Error fetching job/Job id not found", err)
-
-	job := Job{
-		ID:        j.JobID,
+	// Mock data - pull from API in real implementation
+	jobs := []Job{{
+		ID:        "ID:1",
 		Name:      "docker_container_name_1",
 		Status:    "Running",
 		GPUType:   "AMD",
 		CreatedAt: time.Now(),
+	}}
+
+	job, err := findJobByID(jobs, j.ID)
+	if err != nil {
+		fmt.Printf("%s does not exist in your jobs.\n", j.ID)
+		fmt.Printf("Use the command \"job list\" for your list of jobs.")
+		return nil
 	}
 
-	println("Checking status for job ID:", j.JobID)
+	println("Checking status for job ID:", j.ID)
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "Job ID\tName\tStatus\tGPU Type\tCreated At")
 	fmt.Fprintln(w, "--------------------------------------------------------------")
