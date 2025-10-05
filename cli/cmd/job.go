@@ -10,7 +10,7 @@ type JobCmd struct {
 }
 
 func (j *JobCmd) Run() error {
-	// Possible fallback if no subcommand is provided
+	// Possible fallback if no subcommand is providFAre yed
 	// fmt.Println("(job root) – try 'mist job submit|status|list|cancel' or mist help")
 	return nil
 }

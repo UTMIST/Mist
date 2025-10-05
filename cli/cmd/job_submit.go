@@ -12,6 +12,7 @@ type JobSubmitCmd struct {
 	Compute string `help:"Type of compute required for the job: AMD|TT|CPU" default:"AMD"`
 }
 
+
 func (j *JobSubmitCmd) Run() error {
 	// mist job submit <script> <compute_type>
 
@@ -47,7 +48,6 @@ func (j *JobSubmitCmd) Run() error {
 		fmt.Println("Confirmed, proceeding...")
 
 		// CONFIRMED LOGIC
-
 		fmt.Println("Submitting job with script:", j.Script)
 		fmt.Println("Requested GPU type:", j.Compute)
 		println("Job submitted successfully with ID: job_12345")

@@ -38,6 +38,3 @@ func jobExists(jobs []Job, id string) bool {
 	}
 	return false
 }
-
-// Creating a helper function for capturing 
-// Stdout outputs 
