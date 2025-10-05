@@ -38,7 +38,7 @@ func (j *JobSubmitCmd) Run() error {
 	}
 
 	// Maybe turn this into some type of wrapper function later?
-	fmt.Print("Are you sure? (y/N): ")
+	fmt.Print("Are you sure? (y/n): ")
 
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')

@@ -47,7 +47,7 @@ func (c *JobCancelCmd) Run() error {
 	}
 
 
-	fmt.Printf("Are you sure you want to cancel %s? (Y/N): \n", c.ID)
+	fmt.Printf("Are you sure you want to cancel %s? (y/n): \n", c.ID)
 
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
@@ -59,7 +59,7 @@ func (c *JobCancelCmd) Run() error {
 		// Confirmed job cancellation logic 
 
 		fmt.Println("Cancelling job with ID:", c.ID)
-		println("Job cancelled successfully with ID: job_12345")
+		fmt.Printf("Job cancelled successfully with ID: %s\n", c.ID)
 		return nil
 	} else if input == "n" || input == "no"{
 		fmt.Println("Cancelled.")
