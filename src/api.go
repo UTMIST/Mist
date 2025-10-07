@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -24,11 +26,13 @@ type App struct {
 	wg          sync.WaitGroup
 	log         *slog.Logger
 	metrics     *Metrics
+	statusRegistry *StatusRegistry
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger, metrics *Metrics) *App {
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	scheduler := NewScheduler(redisAddr, log)
+	statusRegistry := NewStatusRegistry(client, log)
 
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
 	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log, metrics)
@@ -41,14 +45,16 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger, metrics *Metrics) *App 
 		httpServer:  &http.Server{Addr: ":3000", Handler: mux},
 		log:         log,
 		metrics:     metrics,
+    statusRegistry: statusRegistry,
 	}
 
 	mux.Handle("/auth/login", a.metrics.WrapHTTP("auth_login", http.HandlerFunc(a.login)))
-	mux.Handle("/auth/refresh", a.metrics.WrapHTTP("auth_refresh", http.HandlerFunc(a.refresh)))
-	mux.Handle("/jobs", a.metrics.WrapHTTP("jobs", http.HandlerFunc(a.enqueueJob)))
-	mux.Handle("/jobs/status", a.metrics.WrapHTTP("jobs_status", http.HandlerFunc(a.getJobStatus)))
-
-	mux.Handle("/metrics", promhttp.Handler())
+  mux.Handle("/auth/refresh", a.metrics.WrapHTTP("auth_refresh", http.HandlerFunc(a.refresh)))
+  mux.Handle("/jobs", a.metrics.WrapHTTP("jobs", http.HandlerFunc(a.enqueueJob)))
+  mux.Handle("/jobs/status", a.metrics.WrapHTTP("jobs_status", http.HandlerFunc(a.getJobStatus)))
+  mux.Handle("/supervisors/status", a.metrics.WrapHTTP("supervisors_status", http.HandlerFunc(a.getSupervisorStatus)))
+  mux.Handle("/supervisors/status/", a.metrics.WrapHTTP("supervisors_status_by_id", http.HandlerFunc(a.getSupervisorStatusByID)))
+  mux.Handle("/supervisors", a.metrics.WrapHTTP("supervisors", http.HandlerFunc(a.getAllSupervisors)))
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
@@ -60,6 +66,12 @@ func (a *App) Start() error {
 	// Connect to redis
 	if err := a.redisClient.Ping(context.Background()).Err(); err != nil {
 		a.log.Error("redis ping failed", "err", err)
+		return err
+	}
+
+	// Start supervisor
+	if err := a.supervisor.Start(); err != nil {
+		a.log.Error("supervisor start failed", "err", err)
 		return err
 	}
 
@@ -177,4 +189,76 @@ func (a *App) enqueueJob(w http.ResponseWriter, r *http.Request) {
 func (a *App) getJobStatus(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	fmt.Fprintln(w, "job id=", id)
+}
+
+func (a *App) getSupervisorStatus(w http.ResponseWriter, r *http.Request) {
+	supervisors, err := a.statusRegistry.GetAllSupervisors()
+	if err != nil {
+		a.log.Error("failed to get supervisor status", "error", err)
+		http.Error(w, "failed to get supervisor status", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"supervisors": supervisors,
+		"count":       len(supervisors),
+	}); err != nil {
+		a.log.Error("failed to encode supervisor status response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
+	// extract consumer ID from URL path
+	path := strings.TrimPrefix(r.URL.Path, "/supervisors/status/")
+	if path == "" {
+		http.Error(w, "consumer ID required", http.StatusBadRequest)
+		return
+	}
+
+	supervisor, err := a.statusRegistry.GetSupervisor(path)
+	if err != nil {
+		a.log.Error("failed to get supervisor status", "consumer_id", path, "error", err)
+		http.Error(w, "supervisor not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(supervisor); err != nil {
+		a.log.Error("failed to encode supervisor status response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getAllSupervisors(w http.ResponseWriter, r *http.Request) {
+	activeOnly := r.URL.Query().Get("active") == "true"
+
+	var supervisors []SupervisorStatus
+	var err error
+
+	if activeOnly {
+		supervisors, err = a.statusRegistry.GetActiveSupervisors()
+	} else {
+		supervisors, err = a.statusRegistry.GetAllSupervisors()
+	}
+
+	if err != nil {
+		a.log.Error("failed to get supervisors", "active_only", activeOnly, "error", err)
+		http.Error(w, "failed to get supervisors", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"supervisors": supervisors,
+		"count":       len(supervisors),
+		"active_only": activeOnly,
+	}); err != nil {
+		a.log.Error("failed to encode supervisors response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
