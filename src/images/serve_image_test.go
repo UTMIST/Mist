@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/docker/docker/api/types/volume"
@@ -9,7 +10,7 @@ import (
 )
 
 func setupMgr(t *testing.T) *ContainerMgr {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.41"))
 	if err != nil {
 		t.Fatalf("Failed to create Docker client: %v", err)
 	}
@@ -271,4 +272,71 @@ func TestContainerLimit(t *testing.T) {
 			t.Logf("Cleanup: failed to remove volume %s: %v", volName, err)
 		}
 	}()
+}
+
+// query container logs
+func TestQueryContainerLogs(t *testing.T) {
+	mgr := setupMgr(t)
+	imageName := "pytorch-cuda"
+	runtimeName := "nvidia"
+	volName := "test_query_container_logs"
+	_, err := mgr.createVolume(volName)
+	if err != nil {
+		t.Fatalf("Failed to create volume %s: %v", volName, err)
+	}
+	containerID, err := mgr.runContainer(imageName, runtimeName, volName)
+	if err != nil {
+		t.Fatalf("Failed to start container: %v", err)
+	}
+	defer func() {
+		// Cleanup: stop and remove container, then remove volume
+		if err := mgr.stopContainer(containerID); err != nil {
+			t.Logf("Cleanup: failed to stop container %s: %v", containerID, err)
+		} else {
+			t.Logf("Cleanup: stopped container %s successfully", containerID)
+		}
+		if err := mgr.removeContainer(containerID); err != nil {
+			t.Logf("Cleanup: failed to remove container %s: %v", containerID, err)
+		} else {
+			t.Logf("Cleanup: removed container %s successfully", containerID)
+		}
+		if err := mgr.removeVolume(volName, true); err != nil {
+			t.Logf("Cleanup: failed to remove volume %s: %v", volName, err)
+		} else {
+			t.Logf("Cleanup: removed volume %s successfully", volName)
+		}
+	}()
+
+	rc, err := mgr.GetContainerLogs(containerID, 0, false, "", "")
+	if err != nil {
+		t.Fatalf("Failed to get container logs: %v", err)
+	}
+	defer rc.Close()
+	bytes, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("Failed to read container logs: %v", err)
+	}
+
+	str := string(bytes)
+	fmt.Printf("Log output (length: %d): %q\n", len(str), str)
+	// Container runs "sleep 1000" which doesn't produce output
+	// Just verify we can successfully read logs (even if empty)
+	if err != nil {
+		t.Errorf("Failed to read logs: %v", err)
+	}
+	// Logs might be empty for a sleep container, that's expected
+	t.Logf("Successfully retrieved container logs (length: %d bytes)", len(bytes))
+
+	// readCloser.Read()
+	// readCloser.Read
+	// _, err = io.Copy(os.Stdout, reader)
+	// if err != nil && !errors.Is(err, io.EOF) {
+	// 	log.Fatal(err)
+	// }
+	// err = mgr.removeVolume(volName, true) // Should error: volume is in use by a running container
+	// if err == nil {
+	// 	t.Errorf("Expected error when removing volume in use, but no error")
+	// } else {
+	// 	t.Logf("Correctly got error when removing volume in use: %v", err)
+	// }
 }

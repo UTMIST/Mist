@@ -185,3 +185,37 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 	io.Copy(os.Stdout, out)
 	return resp.ID, nil
 }
+
+// GetContainerLogs fetches container logs from Docker for the specified container.
+// Returns a ReadCloser that can be used to read the logs, or an error if the operation fails.
+// Options:
+//   - tail: number of lines to return from the end of logs (0 = all)
+//   - follow: whether to follow log output (default: false)
+//   - since: return logs since this timestamp (RFC3339 format)
+//   - until: return logs before this timestamp (RFC3339 format)
+func (mgr *ContainerMgr) GetContainerLogs(containerID string, tail int, follow bool, since, until string) (io.ReadCloser, error) {
+	ctx := mgr.ctx
+	cli := mgr.cli
+
+	opts := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     follow,
+		Tail:       fmt.Sprintf("%d", tail),
+		Timestamps: false, // Don't include timestamps in output
+	}
+
+	if since != "" {
+		opts.Since = since
+	}
+	if until != "" {
+		opts.Until = until
+	}
+
+	reader, err := cli.ContainerLogs(ctx, containerID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get container logs: %w", err)
+	}
+
+	return reader, nil
+}
