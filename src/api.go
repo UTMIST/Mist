@@ -19,13 +19,13 @@ import (
 )
 
 type App struct {
-	redisClient *redis.Client
-	scheduler   *Scheduler
-	supervisor  *Supervisor
-	httpServer  *http.Server
-	wg          sync.WaitGroup
-	log         *slog.Logger
-	metrics     *Metrics
+	redisClient    *redis.Client
+	scheduler      *Scheduler
+	supervisor     *Supervisor
+	httpServer     *http.Server
+	wg             sync.WaitGroup
+	log            *slog.Logger
+	metrics        *Metrics
 	statusRegistry *StatusRegistry
 }
 
@@ -38,23 +38,26 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger, metrics *Metrics) *App 
 	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log, metrics)
 
 	mux := http.NewServeMux()
+
+	mux.Handle("/metrics", promhttp.Handler())
+
 	a := &App{
-		redisClient: client,
-		scheduler:   scheduler,
-		supervisor:  supervisor,
-		httpServer:  &http.Server{Addr: ":3000", Handler: mux},
-		log:         log,
-		metrics:     metrics,
-    statusRegistry: statusRegistry,
+		redisClient:    client,
+		scheduler:      scheduler,
+		supervisor:     supervisor,
+		httpServer:     &http.Server{Addr: ":3000", Handler: mux},
+		log:            log,
+		metrics:        metrics,
+		statusRegistry: statusRegistry,
 	}
 
 	mux.Handle("/auth/login", a.metrics.WrapHTTP("auth_login", http.HandlerFunc(a.login)))
-  mux.Handle("/auth/refresh", a.metrics.WrapHTTP("auth_refresh", http.HandlerFunc(a.refresh)))
-  mux.Handle("/jobs", a.metrics.WrapHTTP("jobs", http.HandlerFunc(a.enqueueJob)))
-  mux.Handle("/jobs/status", a.metrics.WrapHTTP("jobs_status", http.HandlerFunc(a.getJobStatus)))
-  mux.Handle("/supervisors/status", a.metrics.WrapHTTP("supervisors_status", http.HandlerFunc(a.getSupervisorStatus)))
-  mux.Handle("/supervisors/status/", a.metrics.WrapHTTP("supervisors_status_by_id", http.HandlerFunc(a.getSupervisorStatusByID)))
-  mux.Handle("/supervisors", a.metrics.WrapHTTP("supervisors", http.HandlerFunc(a.getAllSupervisors)))
+	mux.Handle("/auth/refresh", a.metrics.WrapHTTP("auth_refresh", http.HandlerFunc(a.refresh)))
+	mux.Handle("/jobs", a.metrics.WrapHTTP("jobs", http.HandlerFunc(a.enqueueJob)))
+	mux.Handle("/jobs/status", a.metrics.WrapHTTP("jobs_status", http.HandlerFunc(a.getJobStatus)))
+	mux.Handle("/supervisors/status", a.metrics.WrapHTTP("supervisors_status", http.HandlerFunc(a.getSupervisorStatus)))
+	mux.Handle("/supervisors/status/", a.metrics.WrapHTTP("supervisors_status_by_id", http.HandlerFunc(a.getSupervisorStatusByID)))
+	mux.Handle("/supervisors", a.metrics.WrapHTTP("supervisors", http.HandlerFunc(a.getAllSupervisors)))
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
