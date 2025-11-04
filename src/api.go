@@ -48,7 +48,7 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 
 	mux.HandleFunc("/auth/login", a.login)
 	mux.HandleFunc("/auth/refresh", a.refresh)
-	mux.HandleFunc("/jobs", a.enqueueJob)
+	mux.HandleFunc("/jobs", a.handleJobs)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
 	mux.HandleFunc("/supervisors/status", a.getSupervisorStatus)
 	mux.HandleFunc("/supervisors/status/", a.getSupervisorStatusByID)
@@ -167,25 +167,95 @@ func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello, world!\n")
 }
 
-func (a *App) enqueueJob(w http.ResponseWriter, r *http.Request) {
-	a.log.Info("enqueueJob handler accessed", "remote_address", r.RemoteAddr)
-	payload := map[string]interface{}{
-		"task_id": 123,
-		"data":    "test_data_123",
-	}
-	if err := a.scheduler.Enqueue("jobType", payload); err != nil {
-		a.log.Error("enqueue failed", "err", err, "payload", payload)
-		http.Error(w, "enqueue failed", http.StatusInternalServerError)
+type CreateJobRequest struct {
+	Type        string                 `json:"type"`
+	Payload     map[string]interface{} `json:"payload"`
+	RequiredGPU string                 `json:"gpu,omitempty"`
+}
+
+type CreateJobResponse struct {
+	JobID string `json:"job_id"`
+}
+
+func (a *App) handleJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		a.createJob(w, r)
 		return
 	}
-	a.log.Info("job enqueued", "payload", payload)
-	w.WriteHeader(http.StatusAccepted)
-	fmt.Fprint(w, "enqueued")
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+func (a *App) createJob(w http.ResponseWriter, r *http.Request) {
+
+	a.log.Info("createJob handler accessed", "remote_address", r.RemoteAddr)
+
+	var req CreateJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.log.Error("failed to decode request body", "err", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Type == "" {
+		http.Error(w, "Job type is required", http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Actual container creation code should go here
+
+	jobID, err := a.scheduler.Enqueue(req.Type, req.Payload, req.RequiredGPU)
+	if err != nil {
+		a.log.Error("enqueue failed", "err", err, "type", req.Type)
+		http.Error(w, fmt.Sprintf("Failed to create job: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	a.log.Info("job created", "job_id", jobID, "type", req.Type, "gpu", req.RequiredGPU)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	response := CreateJobResponse{JobID: jobID}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.log.Error("failed to encode response", "err", err)
+	}
 }
 
 func (a *App) getJobStatus(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	fmt.Fprintln(w, "job id=", id)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	jobID := r.URL.Query().Get("id")
+	if jobID == "" {
+		// Try to get from path if query param not provided
+		path := strings.TrimPrefix(r.URL.Path, "/jobs/status/")
+		if path != "" && path != "/jobs/status" {
+			jobID = path
+		}
+	}
+
+	if jobID == "" {
+		http.Error(w, "Job ID is required", http.StatusBadRequest)
+		return
+	}
+
+	a.log.Info("getJobStatus handler accessed", "job_id", jobID, "remote_address", r.RemoteAddr)
+
+	job, err := a.statusRegistry.GetJobStatus(jobID)
+	if err != nil {
+		a.log.Error("failed to get job status", "job_id", jobID, "error", err)
+		http.Error(w, fmt.Sprintf("Job not found: %s", jobID), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(job); err != nil {
+		a.log.Error("failed to encode job status response", "error", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (a *App) getSupervisorStatus(w http.ResponseWriter, r *http.Request) {
