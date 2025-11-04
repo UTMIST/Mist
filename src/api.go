@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	log2 "mist/multilogger"
 	"net/http"
 	"os"
 	"os/signal"
@@ -120,7 +121,11 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 func main() {
-	log, err := createLogger("app")
+	cfg, err := log2.GetLogConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get log config: %v\n", err)
+	}
+	log, err := log2.CreateLogger("app", &cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"mist/multilogger"
 	"os"
 	"os/signal"
 	"sync"
@@ -55,7 +56,8 @@ func TestIntegration(t *testing.T) {
 	defer os.Unsetenv("ENV")
 
 	redisAddr := "localhost:6379"
-	schedulerLog, err := createLogger("scheduler")
+	config, _ := multilogger.GetLogConfig()
+	schedulerLog, err := multilogger.CreateLogger("scheduler", &config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
@@ -69,7 +71,7 @@ func TestIntegration(t *testing.T) {
 	scheduler := NewScheduler(redisAddr, schedulerLog)
 	defer scheduler.Close()
 
-	supervisorLog, err := createLogger("supervisor")
+	supervisorLog, err := multilogger.CreateLogger("supervisor", &config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
