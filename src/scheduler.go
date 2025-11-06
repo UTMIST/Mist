@@ -28,30 +28,52 @@ func NewScheduler(redisAddr string, log *slog.Logger) *Scheduler {
 	}
 }
 
-func (s *Scheduler) Enqueue(jobType string, payload map[string]interface{}) error {
+func (s *Scheduler) Enqueue(jobType string, requiredGPU string, payload map[string]interface{}) error {
+	// create a new job
 	job := Job{
-		ID:      generateJobID(),
-		Type:    jobType,
-		Payload: payload,
-		Retries: 0,
-		Created: time.Now(),
+		ID:          generateJobID(),
+		Type:        jobType,
+		Payload:     payload,
+		Retries:     0,
+		Created:     time.Now(),
+		RequiredGPU: requiredGPU,
+		JobState:    JobStateScheduled,
 	}
 
-	jobData, err := json.Marshal(job)
+	// marshal the payload
+	payloadJSON, err := json.Marshal(job.Payload)
 	if err != nil {
-		return fmt.Errorf("failed to marshal job: %w", err)
+		s.log.Error("failed to marshal job payload", "error", err)
+		return err
 	}
 
-	result := s.client.XAdd(s.ctx, &redis.XAddArgs{
+	// start redis pipeline
+	pipe := s.client.Pipeline()
+
+	// add payload to redis stream
+	pipe.XAdd(s.ctx, &redis.XAddArgs{
 		Stream: StreamName,
 		Values: map[string]interface{}{
-			"job_id": job.ID,
-			"data":   string(jobData),
+			"job_id":  job.ID,
+			"payload": string(payloadJSON),
+			"job_state": job.JobState,
 		},
 	})
 
-	if result.Err() != nil {
-		return fmt.Errorf("failed to enqueue job: %w", result.Err())
+	// store metadata in a redis hash
+	metadataKey := fmt.Sprintf("job:%s", job.ID)
+	pipe.HSet(s.ctx, metadataKey, map[string]interface{}{
+		"type":         job.Type,
+		"retries":      job.Retries,
+		"created":      "created": job.Created.Format(time.RFC3339),
+		"required_gpu": job.RequiredGPU,
+		"job_state":    job.JobState,
+	})
+
+	// execute pipeline
+	if _, err := pipe.Exec(s.ctx); err != nil {
+		s.log.Error("failed to enqueue job", "error", err)
+		return err
 	}
 
 	s.log.Info("enqueued job", "job_id", job.ID, "job_type", job.Type)
