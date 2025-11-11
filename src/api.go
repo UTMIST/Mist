@@ -173,7 +173,7 @@ func (a *App) enqueueJob(w http.ResponseWriter, r *http.Request) {
 		"task_id": 123,
 		"data":    "test_data_123",
 	}
-	if err := a.scheduler.Enqueue("jobType", payload); err != nil {
+	if err := a.scheduler.Enqueue("jobType", "gpuType", payload); err != nil {
 		a.log.Error("enqueue failed", "err", err, "payload", payload)
 		http.Error(w, "enqueue failed", http.StatusInternalServerError)
 		return
