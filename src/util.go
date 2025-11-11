@@ -9,6 +9,7 @@ import (
 const (
 	StreamName          = "jobs:stream"
 	ConsumerGroup       = "workers"
+	JobEventStream		= "jobs:events"
 	SupervisorStatusKey = "supervisors:status"
 	MaxRetries          = 3
 	RetryDelay          = 5 * time.Second

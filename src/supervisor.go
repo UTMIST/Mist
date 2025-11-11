@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+	"strconv"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -101,18 +102,56 @@ func (s *Supervisor) processJobs() {
 }
 
 func (s *Supervisor) handleMessage(message redis.XMessage) {
-	jobData, ok := message.Values["data"].(string)
+	jobID, ok := message.Values["job_id"].(string)
 	if !ok {
-		s.log.Error("invalid job data in message", "message_id", message.ID)
+		s.log.Error("invalid job_id in message", "message_id", message.ID)
 		s.ackMessage(message.ID)
 		return
 	}
 
-	var job Job
-	if err := json.Unmarshal([]byte(jobData), &job); err != nil {
-		s.log.Error("failed to unmarshal job data", "error", err, "message_id", message.ID)
+	payloadData, ok := message.Values["payload"].(string)
+	if !ok {
+		s.log.Error("invalid payload in message", "message_id", message.ID)
 		s.ackMessage(message.ID)
 		return
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(payloadData), &payload); err != nil {
+		s.log.Error("failed to unmarshal payload data", "error", err, "message_id", message.ID)
+		s.ackMessage(message.ID)
+		return
+	}
+
+	jobKey := fmt.Sprintf("job:%s", jobID)
+	metadata, err := s.redisClient.HGetAll(s.ctx, jobKey).Result()
+	if err != nil {
+		s.log.Error("failed to fetch job metadata", "job_id", jobID, "error", err)
+		s.ackMessage(message.ID)
+		return
+	}
+
+	if len(metadata) == 0 {
+    s.log.Error("job metadata not found", "job_id", jobID)
+    s.ackMessage(message.ID)
+    return
+	}
+
+	jobType := metadata["type"]
+	requiredGPU := metadata["required_gpu"]
+	jobState := metadata["job_state"]
+
+	createdTime, _ := time.Parse(time.RFC3339, metadata["created"])
+	retries, _ := strconv.Atoi(metadata["retries"])
+	
+	job := Job{
+		ID:          jobID,
+		Type:        jobType,
+		Payload:     payload,
+		Retries:     retries,
+		Created:     createdTime,
+		RequiredGPU: requiredGPU,
+		JobState:    JobState(jobState),
 	}
 
 	// certain jobs require a specific GPU
@@ -123,7 +162,7 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 		return
 	}
 
-	s.log.Info("processing job", "job_id", job.ID, "job_type", job.Type)
+	s.emitJobEvent(job.ID, JobStateInProgress)
 
 	// Simulate job processing
 	success := s.processJob(job)
@@ -152,6 +191,27 @@ func (s *Supervisor) canHandleJob(job Job) bool {
 func (s *Supervisor) processJob(job Job) bool {
 	return true
 }
+
+
+func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
+	event := map[string]interface{}{
+		"job_id":  jobID,
+		"state":  string(state),
+		"timestamp":  time.Now().Format(time.RFC3339),
+		"supervisor": s.consumerID,
+		"gpu_type":   s.gpuType,
+	}
+
+	if err := s.redisClient.XAdd(s.ctx, &redis.XAddArgs{
+		Stream: JobEventStream,
+		Values: event,
+	}).Err(); err != nil {
+		s.log.Error("failed to emit job event", "job_id", jobID, "state", state, "error", err)
+	} else {
+		s.log.Info("emitted job event", "job_id", jobID, "state", state)
+	}
+}
+
 
 func (s *Supervisor) ackMessage(messageID string) {
 	result := s.redisClient.XAck(s.ctx, StreamName, ConsumerGroup, messageID)
