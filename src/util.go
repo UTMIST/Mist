@@ -10,6 +10,7 @@ const (
 	StreamName          = "jobs:stream"
 	ConsumerGroup       = "workers"
 	SupervisorStatusKey = "supervisors:status"
+	JobStatusKey        = "jobs:status"
 	MaxRetries          = 3
 	RetryDelay          = 5 * time.Second
 )

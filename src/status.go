@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -85,5 +86,39 @@ func (sr *StatusRegistry) UpdateStatus(consumerID string, status SupervisorStatu
 	}
 
 	sr.log.Info("supervisor status updated", "consumer_id", consumerID, "status", status.Status)
+	return nil
+}
+
+func (sr *StatusRegistry) GetJobStatus(jobID string) (*Job, error) {
+	ctx := context.Background()
+	result := sr.redisClient.HGet(ctx, JobStatusKey, jobID)
+	if result.Err() != nil {
+		if errors.Is(result.Err(), redis.Nil) {
+			return nil, fmt.Errorf("job not found: %s", jobID)
+		}
+		return nil, fmt.Errorf("failed to get job status: %w", result.Err())
+	}
+
+	var job Job
+	if err := json.Unmarshal([]byte(result.Val()), &job); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal job status: %w", err)
+	}
+
+	return &job, nil
+}
+
+func (sr *StatusRegistry) UpdateJobStatus(jobID string, job Job) error {
+	ctx := context.Background()
+	statusJSON, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("failed to marshal job status: %w", err)
+	}
+
+	result := sr.redisClient.HSet(ctx, JobStatusKey, jobID, string(statusJSON))
+	if result.Err() != nil {
+		return fmt.Errorf("failed to update job status: %w", result.Err())
+	}
+
+	sr.log.Info("job status updated", "job_id", jobID, "status", job.JobState)
 	return nil
 }

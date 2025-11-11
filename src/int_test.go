@@ -100,7 +100,7 @@ func TestIntegration(t *testing.T) {
 				"data":    fmt.Sprintf("test_data_%d", i),
 			}
 
-			if err := scheduler.Enqueue(jobType, payload); err != nil {
+			if _, err := scheduler.Enqueue(jobType, payload, ""); err != nil {
 				t.Errorf("Failed to enqueue job: %v", err)
 			}
 		}

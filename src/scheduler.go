@@ -28,18 +28,29 @@ func NewScheduler(redisAddr string, log *slog.Logger) *Scheduler {
 	}
 }
 
-func (s *Scheduler) Enqueue(jobType string, payload map[string]interface{}) error {
+func (s *Scheduler) Enqueue(jobType string, payload map[string]interface{}, requiredGPU string) (string, error) {
 	job := Job{
-		ID:      generateJobID(),
-		Type:    jobType,
-		Payload: payload,
-		Retries: 0,
-		Created: time.Now(),
+		ID:          generateJobID(),
+		Type:        jobType,
+		Payload:     payload,
+		Retries:     0,
+		Created:     time.Now(),
+		RequiredGPU: requiredGPU,
+		JobState:    JobStateScheduled,
 	}
 
 	jobData, err := json.Marshal(job)
 	if err != nil {
-		return fmt.Errorf("failed to marshal job: %w", err)
+		return "", fmt.Errorf("failed to marshal job: %w", err)
+	}
+
+	statusJSON, err := json.Marshal(job)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal job status: %w", err)
+	}
+
+	if err := s.client.HSet(s.ctx, JobStatusKey, job.ID, string(statusJSON)).Err(); err != nil {
+		return "", fmt.Errorf("failed to store job status: %w", err)
 	}
 
 	result := s.client.XAdd(s.ctx, &redis.XAddArgs{
@@ -51,11 +62,12 @@ func (s *Scheduler) Enqueue(jobType string, payload map[string]interface{}) erro
 	})
 
 	if result.Err() != nil {
-		return fmt.Errorf("failed to enqueue job: %w", result.Err())
+		s.client.HDel(s.ctx, JobStatusKey, job.ID)
+		return "", fmt.Errorf("failed to enqueue job: %w", result.Err())
 	}
 
-	s.log.Info("enqueued job", "job_id", job.ID, "job_type", job.Type)
-	return nil
+	s.log.Info("enqueued job", "job_id", job.ID, "job_type", job.Type, "gpu", requiredGPU)
+	return job.ID, nil
 }
 
 func (s *Scheduler) Close() error {
