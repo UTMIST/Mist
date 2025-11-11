@@ -1,0 +1,35 @@
+{
+  "grafana_queries": {
+    "http_metrics": {
+      "http_requests_per_second": "sum by (job) (rate(http_requests_total{job=\"$job\"}[$__rate_interval]))",
+      "http_in_flight_requests": "sum by (handler) (http_in_flight_requests{job=\"$job\"})",
+      "http_failure_rate_percent": "100 * sum(rate(http_requests_total{job=\"$job\", code=~\"5..\"}[$__rate_interval])) / sum(rate(http_requests_total{job=\"$job\"}[$__rate_interval]))",
+      "http_latency_p50": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"$job\"}[$__rate_interval])))",
+      "http_latency_p99": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"$job\"}[$__rate_interval])))"
+    },
+
+    "system_metrics": {
+      "cpu_usage_cores": "rate(process_cpu_seconds_total{job=\"$job\"}[$__rate_interval])",
+      "memory_resident_bytes": "process_resident_memory_bytes{job=\"$job\"}",
+      "heap_alloc_bytes": "go_memstats_heap_alloc_bytes{job=\"$job\"}",
+      "goroutines": "go_goroutines{job=\"$job\"}",
+      "threads": "go_threads{job=\"$job\"}",
+      "gc_pause_seconds_avg": "rate(go_gc_duration_seconds_sum{job=\"$job\"}[$__rate_interval]) / rate(go_gc_duration_seconds_count{job=\"$job\"}[$__rate_interval])",
+      "gc_pause_seconds_p99": "histogram_quantile(0.99, sum by (le) (rate(go_gc_duration_seconds_bucket{job=\"$job\"}[$__rate_interval])))",
+      "process_uptime_seconds": "time() - process_start_time_seconds{job=\"$job\"}"
+    },
+
+    "disk_metrics": {
+      "disk_usage_bytes": "node_filesystem_size_bytes{fstype!=\"tmpfs\", job=\"$job\"} - node_filesystem_free_bytes{fstype!=\"tmpfs\", job=\"$job\"}",
+      "disk_free_bytes": "node_filesystem_free_bytes{fstype!=\"tmpfs\", job=\"$job\"}",
+      "disk_io_reads_per_second": "rate(node_disk_reads_completed_total{job=\"$job\"}[$__rate_interval])",
+      "disk_io_writes_per_second": "rate(node_disk_writes_completed_total{job=\"$job\"}[$__rate_interval])"
+    },
+
+    "health_and_status": {
+      "target_up": "up{job=\"$job\"}",
+      "scrape_duration_seconds": "prometheus_target_interval_length_seconds{quantile=\"0.99\"}",
+      "scrape_sample_rate": "sum by (job) (rate(prometheus_tsdb_head_samples_appended_total[$__rate_interval]))"
+    }
+  }
+}
