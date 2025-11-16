@@ -19,7 +19,7 @@ type Job struct {
 	CreatedAt time.Time
 }
 
-func (l *ListCmd) Run() error {
+func (l *ListCmd) Run(ctx *AppContext) error {
 	// Mock data - pull from API in real implementation
 	jobs := []Job{
 		{

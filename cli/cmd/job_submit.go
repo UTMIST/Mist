@@ -12,8 +12,7 @@ type JobSubmitCmd struct {
 	Compute string `help:"Type of compute required for the job: AMD|TT|CPU" default:"AMD"`
 }
 
-
-func (j *JobSubmitCmd) Run() error {
+func (j *JobSubmitCmd) Run(ctx *AppContext) error {
 	// mist job submit <script> <compute_type>
 
 	// TODO: ADD AUTH CHECK

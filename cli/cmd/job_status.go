@@ -11,7 +11,7 @@ type JobStatusCmd struct {
 	ID string `arg:"" help:"The ID of the job to check the status for"`
 }
 
-func (j *JobStatusCmd) Run() error {
+func (j *JobStatusCmd) Run(ctx *AppContext) error {
 	// Mock data - pull from API in real implementation
 	jobs := []Job{{
 		ID:        "ID:1",

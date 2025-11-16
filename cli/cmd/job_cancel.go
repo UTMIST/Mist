@@ -8,13 +8,12 @@ import (
 	"time"
 )
 
-
 type JobCancelCmd struct {
-	ID  string `arg:"" help:"ID of job you want to cancel"`
+	ID string `arg:"" help:"ID of job you want to cancel"`
 }
 
-func (c *JobCancelCmd) Run() error {
-	// Same Mock data from job list. 
+func (c *JobCancelCmd) Run(ctx *AppContext) error {
+	// Same Mock data from job list.
 	jobs := []Job{
 		{
 			ID:        "ID:1",
@@ -39,13 +38,12 @@ func (c *JobCancelCmd) Run() error {
 		},
 	}
 
-	// Check if job exists 
+	// Check if job exists
 	if !jobExists(jobs, c.ID) {
 		fmt.Printf("%s does not exist in your jobs.\n", c.ID)
 		fmt.Printf("Use the command \"job list\" for your list of jobs.")
-		return nil 
+		return nil
 	}
-
 
 	fmt.Printf("Are you sure you want to cancel %s? (y/n): \n", c.ID)
 
@@ -53,22 +51,22 @@ func (c *JobCancelCmd) Run() error {
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
 
-	if input == "y" || input == "yes"{
+	if input == "y" || input == "yes" {
 		fmt.Println("Confirmed, proceeding job cancellation....")
 
-		// Confirmed job cancellation logic 
+		// Confirmed job cancellation logic
 
 		fmt.Println("Cancelling job with ID:", c.ID)
 		fmt.Printf("Job cancelled successfully with ID: %s\n", c.ID)
 		return nil
-	} else if input == "n" || input == "no"{
+	} else if input == "n" || input == "no" {
 		fmt.Println("Cancelled.")
 		return nil
-	} else{
+	} else {
 		fmt.Println("Invalid response.")
 		return nil
 	}
 
-	return nil 
+	return nil
 
 }
