@@ -61,9 +61,22 @@ func getLongLivedToken(shortLivedToken string) (string, error) {
 func (l *LoginCmd) Run(ctx *AppContext) error {
 	// mist auth login
 	if ctx.Config != nil && ctx.Config.AccessToken != "" {
+
+		// Already logged in, ask if they want to re-login
 		fmt.Println("Already logged in with token:", ctx.Config.AccessToken)
+		fmt.Print("Re-enter token? (y/N): ")
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "y" && answer != "yes" {
+			fmt.Println("Aborting login.")
+			return nil
+		}
 	}
+
 	fmt.Println("Opening browser for authentication...")
+	fmt.Printf("If your browser didn't open, click here: \033]8;;%s\033\\%s\033]8;;\033\\\n", authUrl, authUrl)
+
 	err := openUrl()
 	if err != nil {
 		fmt.Println("Error opening browser:", err)
