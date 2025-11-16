@@ -23,7 +23,7 @@ func verifyUser(username, password string) error {
 // TODO: Figure out how to handle password input without exposing it in the terminal historyn  (go get golang.org/x/term)
 // TODO: Where are we storing auth token? Are we getting JWT?
 
-func (l *LoginCmd) Run() error {
+func (l *LoginCmd) Run(ctx *AppContext) error {
 	// mist auth login
 
 	fmt.Print("Username: ")
