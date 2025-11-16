@@ -9,6 +9,7 @@ import (
 const (
 	StreamName          = "jobs:stream"
 	ConsumerGroup       = "workers"
+	JobEventStream		= "jobs:events"
 	SupervisorStatusKey = "supervisors:status"
 	JobStatusKey        = "jobs:status"
 	MaxRetries          = 3
@@ -26,13 +27,19 @@ const (
 )
 
 type Job struct {
-	ID          string                 `json:"id"`
-	Type        string                 `json:"type"`
-	Payload     map[string]interface{} `json:"payload"`
-	Retries     int                    `json:"retries"`
-	Created     time.Time              `json:"created"`
-	RequiredGPU string                 `json:"gpu"`
-	JobState    JobState               `json:"job_state"`
+	ID           	 string                 `json:"id"`
+	Type         	 string                 `json:"type"`
+	Payload      	 map[string]interface{} `json:"payload"`
+	Retries      	 int                    `json:"retries"`
+	Created      	 time.Time              `json:"created"`
+	RequiredGPU  	 string                 `json:"required_gpu,omitempty"`
+	JobState     	 JobState               `json:"job_state"`
+	ConsumerID	     *string				`json:"consumer_id,omitempty"`
+	TimeAssigned     *time.Time				`json:"time_assigned,omitempty"`			
+	TimeStarted		 *time.Time				`json:"time_started,omitempty"` 
+	TimeCompleted	 *time.Time				`json:"time_completed,omitempty"`
+	Result		     map[string]interface{}	`json:"result,omitempty"`
+	Error		     *string				`json:"error,omitempty"`
 }
 
 type SupervisorState string

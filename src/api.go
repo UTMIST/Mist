@@ -200,13 +200,9 @@ func (a *App) createJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Job type is required", http.StatusBadRequest)
 		return
 	}
-
-	// TODO: Actual container creation code should go here
-
-	jobID, err := a.scheduler.Enqueue(req.Type, req.Payload, req.RequiredGPU)
-	if err != nil {
-		a.log.Error("enqueue failed", "err", err, "type", req.Type)
-		http.Error(w, fmt.Sprintf("Failed to create job: %v", err), http.StatusInternalServerError)
+	if err := a.scheduler.Enqueue("jobType", "gpuType", payload); err != nil {
+		a.log.Error("enqueue failed", "err", err, "payload", payload)
+		http.Error(w, "enqueue failed", http.StatusInternalServerError)
 		return
 	}
 
