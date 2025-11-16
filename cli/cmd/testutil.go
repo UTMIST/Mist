@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	// "strings"
 )
 
@@ -20,7 +21,6 @@ func MockInput(input string, f func()) {
 	f()
 	os.Stdin = old
 }
-
 
 func CaptureOutput(f func()) string {
 	old := os.Stdout
@@ -57,6 +57,15 @@ func findJobByID(jobs []Job, id string) (Job, error) {
 		}
 	}
 	return Job{}, fmt.Errorf("job with ID %s not found", id)
+}
+
+func defaultConfigPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, ".config", "mist", "config.json")
+	}
+	return filepath.Join(dir, "mist", "config.json")
 }
 
 // Creating a helper function for capturing
