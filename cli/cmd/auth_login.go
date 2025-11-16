@@ -52,6 +52,12 @@ func saveTokenToConfig(ctx *AppContext, token string) error {
 	return nil
 }
 
+func getLongLivedToken(shortLivedToken string) (string, error) {
+	// Placeholder for actual implementation to exchange short-lived token for long-lived token
+	// In a real scenario, this would involve making an HTTP request to the auth server
+	return shortLivedToken + "_long_lived", nil
+}
+
 func (l *LoginCmd) Run(ctx *AppContext) error {
 	// mist auth login
 	if ctx.Config != nil && ctx.Config.AccessToken != "" {
@@ -69,9 +75,16 @@ func (l *LoginCmd) Run(ctx *AppContext) error {
 	token, _ := reader.ReadString('\n')
 	token = strings.TrimSpace(strings.ToLower(token))
 
+	token, err = getLongLivedToken(token)
+	if err != nil {
+		fmt.Println("Error obtaining long-lived token:", err)
+		return err
+	}
+
 	err = saveTokenToConfig(ctx, token)
 	if err != nil {
-		fmt.Println("Error during authentication:", err)
+		fmt.Println("Error during token saving")
+		return err
 	}
 
 	fmt.Println("Saved token to config")
