@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/alecthomas/kong"
@@ -33,15 +32,6 @@ type CLI struct {
 	// Config ConfigCmd `cmd:"" help:"Configuration commands"`
 	Help HelpCmd `cmd:"" help:"Show help information"`
 	// Config ConfigCmd `cmd:"" help: "Display Cluster Configuration"`
-}
-
-func defaultConfigPath() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".config", "mist", "config.json")
-	}
-	return filepath.Join(dir, "mist", "config.json")
 }
 
 func loadConfig(path string) (*Config, error) {

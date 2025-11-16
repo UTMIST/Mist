@@ -2,45 +2,79 @@ package cmd
 
 import (
 	"bufio"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
-// TODO: What credentials are we taking?
+// TODO: Update with real auth URL
+const authUrl = "https://example.com/login"
+
 type LoginCmd struct {
 }
 
-func verifyUser(username, password string) error {
-	// Placeholder for actual authentication logic
-	if username == "admin" && password == "password" {
-		return nil
+func openUrl() error {
+
+	var cmd *exec.Cmd
+	url := authUrl
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default: // Linux, BSD, etc.
+		cmd = exec.Command("xdg-open", url)
 	}
-	return errors.New("invalid credentials")
+
+	return cmd.Start()
 }
 
-// TODO: Figure out how to handle password input without exposing it in the terminal historyn  (go get golang.org/x/term)
-// TODO: Where are we storing auth token? Are we getting JWT?
+func saveTokenToConfig(ctx *AppContext, token string) error {
+	configPath := defaultConfigPath()
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+	cfg := &Config{
+		AccessToken: token,
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	fmt.Println("Token saved:", token)
+	return nil
+}
 
 func (l *LoginCmd) Run(ctx *AppContext) error {
 	// mist auth login
-
-	fmt.Print("Username: ")
+	if ctx.Config != nil && ctx.Config.AccessToken != "" {
+		fmt.Println("Already logged in with token:", ctx.Config.AccessToken)
+	}
+	fmt.Println("Opening browser for authentication...")
+	err := openUrl()
+	if err != nil {
+		fmt.Println("Error opening browser:", err)
+		return err
+	}
+	fmt.Print("token: ")
 
 	reader := bufio.NewReader(os.Stdin)
-	username, _ := reader.ReadString('\n')
-	username = strings.TrimSpace(strings.ToLower(username))
+	token, _ := reader.ReadString('\n')
+	token = strings.TrimSpace(strings.ToLower(token))
 
-	fmt.Print("Password: ")
-	password, _ := reader.ReadString('\n')
-	password = strings.TrimSpace(strings.ToLower(password))
-	err := verifyUser(username, password)
+	err = saveTokenToConfig(ctx, token)
 	if err != nil {
 		fmt.Println("Error during authentication:", err)
 	}
 
-	fmt.Println("Logging in with username:", username)
+	fmt.Println("Saved token to config")
 
 	return nil
 }
