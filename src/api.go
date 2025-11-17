@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -25,34 +26,39 @@ type App struct {
 	httpServer     *http.Server
 	wg             sync.WaitGroup
 	log            *slog.Logger
+	metrics        *Metrics
 	statusRegistry *StatusRegistry
 }
 
-func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
+func NewApp(redisAddr, gpuType string, log *slog.Logger, metrics *Metrics) *App {
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	scheduler := NewScheduler(redisAddr, log)
 	statusRegistry := NewStatusRegistry(client, log)
 
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
-	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log)
+	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log, metrics)
 
 	mux := http.NewServeMux()
+
+	mux.Handle("/metrics", promhttp.Handler())
+
 	a := &App{
 		redisClient:    client,
 		scheduler:      scheduler,
 		supervisor:     supervisor,
 		httpServer:     &http.Server{Addr: ":3000", Handler: mux},
 		log:            log,
+		metrics:        metrics,
 		statusRegistry: statusRegistry,
 	}
 
-	mux.HandleFunc("/auth/login", a.login)
-	mux.HandleFunc("/auth/refresh", a.refresh)
-	mux.HandleFunc("/jobs", a.enqueueJob)
-	mux.HandleFunc("/jobs/status", a.getJobStatus)
-	mux.HandleFunc("/supervisors/status", a.getSupervisorStatus)
-	mux.HandleFunc("/supervisors/status/", a.getSupervisorStatusByID)
-	mux.HandleFunc("/supervisors", a.getAllSupervisors)
+	mux.Handle("/auth/login", a.metrics.WrapHTTP("auth_login", http.HandlerFunc(a.login)))
+	mux.Handle("/auth/refresh", a.metrics.WrapHTTP("auth_refresh", http.HandlerFunc(a.refresh)))
+	mux.Handle("/jobs", a.metrics.WrapHTTP("jobs", http.HandlerFunc(a.enqueueJob)))
+	mux.Handle("/jobs/status", a.metrics.WrapHTTP("jobs_status", http.HandlerFunc(a.getJobStatus)))
+	mux.Handle("/supervisors/status", a.metrics.WrapHTTP("supervisors_status", http.HandlerFunc(a.getSupervisorStatus)))
+	mux.Handle("/supervisors/status/", a.metrics.WrapHTTP("supervisors_status_by_id", http.HandlerFunc(a.getSupervisorStatusByID)))
+	mux.Handle("/supervisors", a.metrics.WrapHTTP("supervisors", http.HandlerFunc(a.getAllSupervisors)))
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
@@ -124,7 +130,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
 	}
-	app := NewApp("localhost:6379", "AMD", log)
+
+	metrics := NewMetrics()
+	app := NewApp("localhost:6379", "AMD", log, metrics)
 
 	if err := app.Start(); err != nil {
 		log.Error("failed to start app", "err", err)
@@ -133,6 +141,9 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go app.metrics.StartCollecting(ctx)
+
 	<-ctx.Done()
 	log.Info("shutdown signal received")
 

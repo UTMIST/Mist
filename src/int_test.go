@@ -76,9 +76,9 @@ func TestIntegration(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
 	}
-
+	metrics := NewMetrics()
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
-	supervisor := NewSupervisor(redisAddr, consumerID, "AMD", supervisorLog)
+	supervisor := NewSupervisor(redisAddr, consumerID, "AMD", supervisorLog, metrics)
 
 	if err := supervisor.Start(); err != nil {
 		t.Errorf("Failed to start supervisor: %v", err)

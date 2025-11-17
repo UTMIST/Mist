@@ -21,9 +21,10 @@ type Supervisor struct {
 	gpuType     string
 	wg          sync.WaitGroup
 	log         *slog.Logger
+	metrics     *Metrics
 }
 
-func NewSupervisor(redisAddr, consumerID, gpuType string, log *slog.Logger) *Supervisor {
+func NewSupervisor(redisAddr, consumerID, gpuType string, log *slog.Logger, metrics *Metrics) *Supervisor {
 	client := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
@@ -37,6 +38,7 @@ func NewSupervisor(redisAddr, consumerID, gpuType string, log *slog.Logger) *Sup
 		consumerID:  consumerID,
 		gpuType:     gpuType,
 		log:         log,
+		metrics:     metrics,
 	}
 }
 
@@ -165,9 +167,15 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 	s.emitJobEvent(job.ID, JobStateInProgress)
 
 	// Simulate job processing
-	success := s.processJob(job)
+	gpuLabel := s.gpuType // e.g. "AMD" or "NVIDIA"
+	err := s.metrics.TrackJob(context.Background(), job.Type, gpuLabel, func(ctx context.Context) error {
+		if s.processJob(job) {
+			return nil
+		}
+		return fmt.Errorf("job failed")
+	})
 
-	if success {
+	if err == nil {
 		s.ackMessage(message.ID)
 		s.log.Info("job completed successfully", "job_id", job.ID)
 	} else {
