@@ -3,7 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	// "fmt"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -51,9 +51,67 @@ func (c *APIClient) GetJobStatus(jobID string) (string, error){
 	if err != nil {
 		return "", err
 	}
+
+	defer resp.Body.Close() 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	
 	if resp.StatusCode != http.StatusOK{
 		return "", fmt.Errorf("server return %s: %s", resp.Status, body)
 	}
 
+	return string(body), nil
+}
+
+func (c *APIClient) GetSupervisors(active bool) (string, error){
+	url := c.BaseURL + "/supervisors"
+	if active {
+		url += "?active=true"
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+
+	defer resp.Body.Close() 
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func (c * APIClient) GetAllSupervisorsStatuses() (string, error) {
+	url := c.BaseURL + "/supervisors/status"
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close() 
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil	
+}
+
+func (c * APIClient) GetSupervisorStatusByID(id string) (string, error) {
+	url := fmt.Sprintf("%s/supervisors/status/%s", c.BaseURL, id)
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close() 
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
 	return string(body), nil
 }
