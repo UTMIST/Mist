@@ -66,9 +66,11 @@ func Main() {
 
 	if cfg, err := loadConfig(cli.ConfigPath); err == nil {
 		appCtx.Config = cfg
+	} else if !os.IsNotExist(err) {
+		// config file is present but broken
+		kctx.FatalIfErrorf(err)
 	}
 
 	err := kctx.Run()
 	kctx.FatalIfErrorf(err)
-	// fmt.Println("Command executed successfully")
 }
