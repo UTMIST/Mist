@@ -38,10 +38,13 @@ func saveTokenToConfig(ctx *AppContext, token string) error {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-	cfg := &Config{
-		AccessToken: token,
+
+	if ctx.Config == nil {
+		ctx.Config = &Config{}
 	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	ctx.Config.AccessToken = token
+
+	data, err := json.MarshalIndent(ctx.Config, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -86,7 +89,7 @@ func (l *LoginCmd) Run(ctx *AppContext) error {
 
 	reader := bufio.NewReader(os.Stdin)
 	token, _ := reader.ReadString('\n')
-	token = strings.TrimSpace(strings.ToLower(token))
+	token = strings.TrimSpace(token)
 
 	token, err = getLongLivedToken(token)
 	if err != nil {
