@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"mist/cli/api"
 )
 
 type JobSubmitCmd struct {
@@ -47,10 +48,23 @@ func (j *JobSubmitCmd) Run() error {
 	if input == "y" || input == "yes" {
 		fmt.Println("Confirmed, proceeding...")
 
+		// Using API Client 
+		client := cli.NewAPIClient("http://localhost:3000")
+		resp, err := client.SubmitJob(j.Script, j.Compute)
+		if err != nil {
+			fmt.Println("Error submitting job:", err)
+			return err
+		}
+
+
 		// CONFIRMED LOGIC
-		fmt.Println("Submitting job with script:", j.Script)
-		fmt.Println("Requested GPU type:", j.Compute)
-		println("Job submitted successfully with ID: job_12345")
+		// fmt.Println("Submitting job with script:", j.Script)
+		// fmt.Println("Requested GPU type:", j.Compute)
+		// println("Job submitted successfully with ID: job_12345")
+
+		// CONFIRMED JOB SUBMISSION 
+		fmt.Println("Job submitted successfully!!!")
+		fmt.Println("Server response:", resp)
 
 		return nil
 

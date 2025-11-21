@@ -11,6 +11,7 @@ type CLI struct {
 	// Config ConfigCmd `cmd:"" help:"Configuration commands"`
 	Help HelpCmd `cmd:"" help:"Show help information"`
 	Config ConfigCmd `cmd:"" help: "Display Cluster Configuration"`
+	Supervisor SupervisorCmd `cmd:"" help:"Supervisor commands"`
 }
 
 func Main() {
