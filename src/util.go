@@ -11,6 +11,7 @@ const (
 	ConsumerGroup       = "workers"
 	JobEventStream		= "jobs:events"
 	SupervisorStatusKey = "supervisors:status"
+	JobStatusKey        = "jobs:status"
 	MaxRetries          = 3
 	RetryDelay          = 5 * time.Second
 )

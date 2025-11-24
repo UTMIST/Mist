@@ -84,8 +84,8 @@ func (s *Scheduler) Enqueue(jobType string, requiredGPU string, payload map[stri
 		return err
 	}
 
-	s.log.Info("enqueued job", "job_id", job.ID, "job_type", job.Type)
-	return nil
+	s.log.Info("enqueued job", "job_id", job.ID, "job_type", job.Type, "gpu", requiredGPU)
+	return job.ID, nil
 }
 
 func (s *Scheduler) Close() error {
