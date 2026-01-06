@@ -4,7 +4,7 @@ output:
       level: INFO
     - type: stdout
       level: INFO
-  directory: ./logs/
+  directory: ../logs/
 
 components:
   - app
