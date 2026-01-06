@@ -14,6 +14,19 @@ import (
 	meminfo "github.com/shirou/gopsutil/v3/mem"
 )
 
+// health check metrics
+var (
+	healthCheckOK = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "health_check_ok",
+		Help: "1 if the named health check is passing, else 0.",
+	}, []string{"check"})
+
+	healthCheckLatency = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "health_check_latency_seconds",
+		Help: "Latency of the named health check in seconds.",
+	}, []string{"check"})
+)
+
 // http metrics
 var (
 	httpInFlight = promauto.NewGauge(prometheus.GaugeOpts{

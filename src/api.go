@@ -27,6 +27,7 @@ type App struct {
 	log            *slog.Logger
 	metrics        *Metrics
 	statusRegistry *StatusRegistry
+	health         *HealthChecker
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger, metrics *Metrics) *App {
@@ -49,6 +50,7 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger, metrics *Metrics) *App 
 		log:            log,
 		metrics:        metrics,
 		statusRegistry: statusRegistry,
+		health:         NewHealthChecker(client, log, 5*time.Second),
 	}
 
 	mux.Handle("/auth/login", a.metrics.WrapHTTP("auth_login", http.HandlerFunc(a.login)))
@@ -58,6 +60,19 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger, metrics *Metrics) *App 
 	mux.Handle("/supervisors/status", a.metrics.WrapHTTP("supervisors_status", http.HandlerFunc(a.getSupervisorStatus)))
 	mux.Handle("/supervisors/status/", a.metrics.WrapHTTP("supervisors_status_by_id", http.HandlerFunc(a.getSupervisorStatusByID)))
 	mux.Handle("/supervisors", a.metrics.WrapHTTP("supervisors", http.HandlerFunc(a.getAllSupervisors)))
+	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	mux.Handle("/readyz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ready, _ := a.health.Ready() // we really don't need much with the results currently
+
+		if !ready {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
@@ -138,6 +153,7 @@ func main() {
 	defer stop()
 
 	go app.metrics.StartCollecting(ctx)
+	go app.health.Start(ctx)
 
 	<-ctx.Done()
 	log.Info("shutdown signal received")
