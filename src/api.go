@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	log2 "mist/multilogger"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,19 +22,21 @@ import (
 )
 
 type App struct {
-	redisClient  *redis.Client
-	scheduler    *Scheduler
-	supervisor   *Supervisor
-	httpServer   *http.Server
-	wg           sync.WaitGroup
-	log          *slog.Logger
-	dockerClient *dockerClient.Client
-	containerMgr *ContainerMgr
+	redisClient    *redis.Client
+	scheduler      *Scheduler
+	supervisor     *Supervisor
+	httpServer     *http.Server
+	wg             sync.WaitGroup
+	log            *slog.Logger
+	statusRegistry *StatusRegistry
+  dockerClient   *dockerClient.Client
+	containerMgr   *ContainerMgr
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) (*App, error) {
 	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
 	scheduler := NewScheduler(redisAddr, log)
+	statusRegistry := NewStatusRegistry(client, log)
 
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
 	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log)
@@ -49,20 +53,24 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) (*App, error) {
 
 	mux := http.NewServeMux()
 	a := &App{
-		redisClient:  redisClient,
-		scheduler:    scheduler,
-		supervisor:   supervisor,
-		httpServer:   &http.Server{Addr: ":3000", Handler: mux},
-		log:          log,
-		dockerClient: dockerClient,
-		containerMgr: containerMgr,
+		redisClient:    redisClient,
+		scheduler:      scheduler,
+		supervisor:     supervisor,
+		httpServer:     &http.Server{Addr: ":3000", Handler: mux},
+		log:            log,
+		statusRegistry: statusRegistry,
+    dockerClient:   dockerClient,
+		containerMgr:   containerMgr,
 	}
 
 	mux.HandleFunc("/auth/login", a.login)
 	mux.HandleFunc("/auth/refresh", a.refresh)
-	mux.HandleFunc("/jobs", a.enqueueJob)
+	mux.HandleFunc("/jobs", a.handleJobs)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
 	mux.HandleFunc("/containers/", a.handleContainerLogs)
+	mux.HandleFunc("/supervisors/status", a.getSupervisorStatus)
+	mux.HandleFunc("/supervisors/status/", a.getSupervisorStatusByID)
+	mux.HandleFunc("/supervisors", a.getAllSupervisors)
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
@@ -74,6 +82,12 @@ func (a *App) Start() error {
 	// Connect to redis
 	if err := a.redisClient.Ping(context.Background()).Err(); err != nil {
 		a.log.Error("redis ping failed", "err", err)
+		return err
+	}
+
+	// Start supervisor
+	if err := a.supervisor.Start(); err != nil {
+		a.log.Error("supervisor start failed", "err", err)
 		return err
 	}
 
@@ -127,7 +141,11 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 func main() {
-	log, err := createLogger("app")
+	cfg, err := log2.GetLogConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get log config: %v\n", err)
+	}
+	log, err := log2.CreateLogger("app", &cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
@@ -179,25 +197,235 @@ func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello, world!\n")
 }
 
-func (a *App) enqueueJob(w http.ResponseWriter, r *http.Request) {
-	a.log.Info("enqueueJob handler accessed", "remote_address", r.RemoteAddr)
-	payload := map[string]interface{}{
-		"task_id": 123,
-		"data":    "test_data_123",
+type CreateJobRequest struct {
+	Type        string                 `json:"type"`
+	Payload     map[string]interface{} `json:"payload"`
+	RequiredGPU string                 `json:"gpu,omitempty"`
+}
+
+type CreateJobResponse struct {
+	JobID string `json:"job_id"`
+}
+
+func (a *App) handleJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		a.createJob(w, r)
+		return
 	}
-	if err := a.scheduler.Enqueue("jobType", payload); err != nil {
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+func (a *App) createJob(w http.ResponseWriter, r *http.Request) {
+
+	a.log.Info("createJob handler accessed", "remote_address", r.RemoteAddr)
+
+	var req CreateJobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.log.Error("failed to decode request body", "err", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Type == "" {
+		http.Error(w, "Job type is required", http.StatusBadRequest)
+		return
+	}
+	if err := a.scheduler.Enqueue("jobType", "gpuType", payload); err != nil {
 		a.log.Error("enqueue failed", "err", err, "payload", payload)
 		http.Error(w, "enqueue failed", http.StatusInternalServerError)
 		return
 	}
-	a.log.Info("job enqueued", "payload", payload)
-	w.WriteHeader(http.StatusAccepted)
-	fmt.Fprint(w, "enqueued")
+
+	a.log.Info("job created", "job_id", jobID, "type", req.Type, "gpu", req.RequiredGPU)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	response := CreateJobResponse{JobID: jobID}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		a.log.Error("failed to encode response", "err", err)
+	}
 }
 
 func (a *App) getJobStatus(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	fmt.Fprintln(w, "job id=", id)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	jobID := r.URL.Query().Get("id")
+	if jobID == "" {
+		// Try to get from path if query param not provided
+		path := strings.TrimPrefix(r.URL.Path, "/jobs/status/")
+		if path != "" && path != "/jobs/status" {
+			jobID = path
+		}
+	}
+
+	if jobID == "" {
+		http.Error(w, "Job ID is required", http.StatusBadRequest)
+		return
+	}
+
+	a.log.Info("getJobStatus handler accessed", "job_id", jobID, "remote_address", r.RemoteAddr)
+
+	job, err := a.statusRegistry.GetJobStatus(jobID)
+	if err != nil {
+		a.log.Error("failed to get job status", "job_id", jobID, "error", err)
+		http.Error(w, fmt.Sprintf("Job not found: %s", jobID), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(job); err != nil {
+		a.log.Error("failed to encode job status response", "error", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getSupervisorStatus(w http.ResponseWriter, r *http.Request) {
+	supervisors, err := a.statusRegistry.GetAllSupervisors()
+	if err != nil {
+		a.log.Error("failed to get supervisor status", "error", err)
+		http.Error(w, "failed to get supervisor status", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"supervisors": supervisors,
+		"count":       len(supervisors),
+	}); err != nil {
+		a.log.Error("failed to encode supervisor status response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
+	// extract consumer ID from URL path
+	path := strings.TrimPrefix(r.URL.Path, "/supervisors/status/")
+	if path == "" {
+		http.Error(w, "consumer ID required", http.StatusBadRequest)
+		return
+	}
+
+	supervisor, err := a.statusRegistry.GetSupervisor(path)
+	if err != nil {
+		a.log.Error("failed to get supervisor status", "consumer_id", path, "error", err)
+		http.Error(w, "supervisor not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(supervisor); err != nil {
+		a.log.Error("failed to encode supervisor status response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getAllSupervisors(w http.ResponseWriter, r *http.Request) {
+	activeOnly := r.URL.Query().Get("active") == "true"
+
+	var supervisors []SupervisorStatus
+	var err error
+
+	if activeOnly {
+		supervisors, err = a.statusRegistry.GetActiveSupervisors()
+	} else {
+		supervisors, err = a.statusRegistry.GetAllSupervisors()
+	}
+
+	if err != nil {
+		a.log.Error("failed to get supervisors", "active_only", activeOnly, "error", err)
+		http.Error(w, "failed to get supervisors", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"supervisors": supervisors,
+		"count":       len(supervisors),
+		"active_only": activeOnly,
+	}); err != nil {
+		a.log.Error("failed to encode supervisors response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getSupervisorStatus(w http.ResponseWriter, r *http.Request) {
+	supervisors, err := a.statusRegistry.GetAllSupervisors()
+	if err != nil {
+		a.log.Error("failed to get supervisor status", "error", err)
+		http.Error(w, "failed to get supervisor status", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"supervisors": supervisors,
+		"count":       len(supervisors),
+	}); err != nil {
+		a.log.Error("failed to encode supervisor status response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
+	// extract consumer ID from URL path
+	path := strings.TrimPrefix(r.URL.Path, "/supervisors/status/")
+	if path == "" {
+		http.Error(w, "consumer ID required", http.StatusBadRequest)
+		return
+	}
+
+	supervisor, err := a.statusRegistry.GetSupervisor(path)
+	if err != nil {
+		a.log.Error("failed to get supervisor status", "consumer_id", path, "error", err)
+		http.Error(w, "supervisor not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(supervisor); err != nil {
+		a.log.Error("failed to encode supervisor status response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) getAllSupervisors(w http.ResponseWriter, r *http.Request) {
+	activeOnly := r.URL.Query().Get("active") == "true"
+
+	var supervisors []SupervisorStatus
+	var err error
+
+	if activeOnly {
+		supervisors, err = a.statusRegistry.GetActiveSupervisors()
+	} else {
+		supervisors, err = a.statusRegistry.GetAllSupervisors()
+	}
+
+	if err != nil {
+		a.log.Error("failed to get supervisors", "active_only", activeOnly, "error", err)
+		http.Error(w, "failed to get supervisors", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"supervisors": supervisors,
+		"count":       len(supervisors),
+		"active_only": activeOnly,
+	}); err != nil {
+		a.log.Error("failed to encode supervisors response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 // AssociateContainerWithUser stores the container-user association in Redis.
