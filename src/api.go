@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis/v8"
 )
 
 type App struct {
@@ -26,6 +26,7 @@ type App struct {
 	wg             sync.WaitGroup
 	log            *slog.Logger
 	statusRegistry *StatusRegistry
+	oauthServer    *OAuthServer
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
@@ -36,6 +37,13 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
 	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log)
 
+	// Initialize OAuth2 server
+	oauthServer, err := NewOAuthServer(redisAddr, client, log)
+	if err != nil {
+		log.Error("failed to initialize oauth server", "err", err)
+		// For now, we don't exit, but we should probably handle this better
+	}
+
 	mux := http.NewServeMux()
 	a := &App{
 		redisClient:    client,
@@ -44,6 +52,7 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 		httpServer:     &http.Server{Addr: ":3000", Handler: mux},
 		log:            log,
 		statusRegistry: statusRegistry,
+		oauthServer:    oauthServer,
 	}
 
 	mux.HandleFunc("/auth/login", a.login)
@@ -53,6 +62,10 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 	mux.HandleFunc("/supervisors/status", a.getSupervisorStatus)
 	mux.HandleFunc("/supervisors/status/", a.getSupervisorStatusByID)
 	mux.HandleFunc("/supervisors", a.getAllSupervisors)
+
+	// OAuth2 routes
+	mux.HandleFunc("/oauth/authorize", a.handleAuthorize)
+	mux.HandleFunc("/oauth/token", a.handleToken)
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
@@ -167,6 +180,22 @@ func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello, world!\n")
 }
 
+func (a *App) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+	err := a.oauthServer.Server.HandleAuthorizeRequest(w, r)
+	if err != nil {
+		a.log.Error("authorization request failed", "error", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+func (a *App) handleToken(w http.ResponseWriter, r *http.Request) {
+	err := a.oauthServer.Server.HandleTokenRequest(w, r)
+	if err != nil {
+		a.log.Error("token request failed", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 type CreateJobRequest struct {
 	Type        string                 `json:"type"`
 	Payload     map[string]interface{} `json:"payload"`
@@ -200,8 +229,9 @@ func (a *App) createJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Job type is required", http.StatusBadRequest)
 		return
 	}
-	if err := a.scheduler.Enqueue("jobType", "gpuType", payload); err != nil {
-		a.log.Error("enqueue failed", "err", err, "payload", payload)
+	jobID, err := a.scheduler.Enqueue(req.Type, req.RequiredGPU, req.Payload)
+	if err != nil {
+		a.log.Error("enqueue failed", "err", err, "payload", req.Payload)
 		http.Error(w, "enqueue failed", http.StatusInternalServerError)
 		return
 	}
@@ -250,78 +280,6 @@ func (a *App) getJobStatus(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(job); err != nil {
 		a.log.Error("failed to encode job status response", "error", err)
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (a *App) getSupervisorStatus(w http.ResponseWriter, r *http.Request) {
-	supervisors, err := a.statusRegistry.GetAllSupervisors()
-	if err != nil {
-		a.log.Error("failed to get supervisor status", "error", err)
-		http.Error(w, "failed to get supervisor status", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"supervisors": supervisors,
-		"count":       len(supervisors),
-	}); err != nil {
-		a.log.Error("failed to encode supervisor status response", "error", err)
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
-	// extract consumer ID from URL path
-	path := strings.TrimPrefix(r.URL.Path, "/supervisors/status/")
-	if path == "" {
-		http.Error(w, "consumer ID required", http.StatusBadRequest)
-		return
-	}
-
-	supervisor, err := a.statusRegistry.GetSupervisor(path)
-	if err != nil {
-		a.log.Error("failed to get supervisor status", "consumer_id", path, "error", err)
-		http.Error(w, "supervisor not found", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(supervisor); err != nil {
-		a.log.Error("failed to encode supervisor status response", "error", err)
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (a *App) getAllSupervisors(w http.ResponseWriter, r *http.Request) {
-	activeOnly := r.URL.Query().Get("active") == "true"
-
-	var supervisors []SupervisorStatus
-	var err error
-
-	if activeOnly {
-		supervisors, err = a.statusRegistry.GetActiveSupervisors()
-	} else {
-		supervisors, err = a.statusRegistry.GetAllSupervisors()
-	}
-
-	if err != nil {
-		a.log.Error("failed to get supervisors", "active_only", activeOnly, "error", err)
-		http.Error(w, "failed to get supervisors", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"supervisors": supervisors,
-		"count":       len(supervisors),
-		"active_only": activeOnly,
-	}); err != nil {
-		a.log.Error("failed to encode supervisors response", "error", err)
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
 	}
 }

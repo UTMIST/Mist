@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis/v8"
 )
 
 func addDummySupervisors(statusRegistry *StatusRegistry, log *slog.Logger) {
@@ -100,7 +100,7 @@ func TestIntegration(t *testing.T) {
 				"data":    fmt.Sprintf("test_data_%d", i),
 			}
 
-			if err := scheduler.Enqueue(jobType, "TT", payload); err != nil {
+			if _, err := scheduler.Enqueue(jobType, "TT", payload); err != nil {
 				t.Errorf("Failed to enqueue job: %v", err)
 			}
 		}
