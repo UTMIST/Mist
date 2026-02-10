@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
-	"strconv"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis/v8"
 )
 
 type Supervisor struct {
@@ -132,9 +132,9 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 	}
 
 	if len(metadata) == 0 {
-    s.log.Error("job metadata not found", "job_id", jobID)
-    s.ackMessage(message.ID)
-    return
+		s.log.Error("job metadata not found", "job_id", jobID)
+		s.ackMessage(message.ID)
+		return
 	}
 
 	jobType := metadata["type"]
@@ -143,7 +143,7 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 
 	createdTime, _ := time.Parse(time.RFC3339, metadata["created"])
 	retries, _ := strconv.Atoi(metadata["retries"])
-	
+
 	job := Job{
 		ID:          jobID,
 		Type:        jobType,
@@ -192,11 +192,10 @@ func (s *Supervisor) processJob(job Job) bool {
 	return true
 }
 
-
 func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 	event := map[string]interface{}{
-		"job_id":  jobID,
-		"state":  string(state),
+		"job_id":     jobID,
+		"state":      string(state),
 		"timestamp":  time.Now().Format(time.RFC3339),
 		"supervisor": s.consumerID,
 		"gpu_type":   s.gpuType,
@@ -211,7 +210,6 @@ func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 		s.log.Info("emitted job event", "job_id", jobID, "state", state)
 	}
 }
-
 
 func (s *Supervisor) ackMessage(messageID string) {
 	result := s.redisClient.XAck(s.ctx, StreamName, ConsumerGroup, messageID)
