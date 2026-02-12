@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"mist/images"
+	"mist/docker"
 
 	"github.com/docker/docker/client"
 	"github.com/redis/go-redis/v9"
@@ -28,7 +28,7 @@ type Supervisor struct {
 	cancel        context.CancelFunc
 	consumerID    string
 	gpuType       string
-	dockerMgr  *images.DockerMgr
+	dockerMgr     *docker.DockerMgr
 	wg            sync.WaitGroup
 	log           *slog.Logger
 }
@@ -40,12 +40,12 @@ func NewSupervisor(redisAddr, consumerID, gpuType string, log *slog.Logger) *Sup
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var dockerMgr *images.DockerMgr
+	var dockerMgr *docker.DockerMgr
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		log.Warn("Docker client unavailable, containers will not be started", "error", err)
 	} else {
-		dockerMgr = images.NewDockerMgr(dockerCli, 10, 100)
+		dockerMgr = docker.NewDockerMgr(dockerCli, 10, 100)
 		log.Info("Docker client initialized for container execution")
 	}
 

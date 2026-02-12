@@ -7,10 +7,10 @@ require (
 	github.com/redis/go-redis/v9 v9.10.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
-	mist/images v0.0.0
+	mist/docker v0.0.0
 )
 
-replace mist/images => ./images
+replace mist/docker => ./docker
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect

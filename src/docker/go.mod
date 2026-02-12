@@ -1,4 +1,4 @@
-module mist/images
+module mist/docker
 
 go 1.24.6
 

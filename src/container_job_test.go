@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"mist/images"
+	"mist/docker"
 	"mist/multilogger"
 
 	"github.com/docker/docker/client"
@@ -124,7 +124,7 @@ func TestRunContainerCPUIntegration(t *testing.T) {
 		t.Skipf("pytorch-cpu image not found. Build with: cd src/images/pytorch-cpu && docker build -t pytorch-cpu .")
 	}
 
-	mgr := images.NewDockerMgr(dockerCli, 10, 100)
+	mgr := docker.NewDockerMgr(dockerCli, 10, 100)
 
 	volName := "test_cpu_job_vol"
 	vol, err := mgr.CreateVolume(volName)

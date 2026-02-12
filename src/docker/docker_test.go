@@ -1,4 +1,4 @@
-package images
+package docker
 
 import (
 	"fmt"
