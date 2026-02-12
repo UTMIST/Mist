@@ -29,7 +29,7 @@ func NewScheduler(redisAddr string, log *slog.Logger) *Scheduler {
 	}
 }
 
-func (s *Scheduler) Enqueue(jobType string, requiredGPU string, payload map[string]interface{}) error {
+func (s *Scheduler) Enqueue(jobType string, requiredGPU string, payload map[string]interface{}) (string, error) {
 	// create a new job
 	job := Job{
 		ID:          generateJobID(),
@@ -42,17 +42,17 @@ func (s *Scheduler) Enqueue(jobType string, requiredGPU string, payload map[stri
 	}
 
 	if ok, err := s.JobExists(job.ID); err != nil {
-    return err
+		return "", err
 	} else if ok {
 		s.log.Warn("duplicate job skipped", "job_id", job.ID)
-		return nil
+		return job.ID, nil
 	}
 
 	// marshal the payload
 	payloadJSON, err := json.Marshal(job.Payload)
 	if err != nil {
 		s.log.Error("failed to marshal job payload", "error", err)
-		return err
+		return "", err
 	}
 
 	// start redis pipeline
@@ -81,7 +81,7 @@ func (s *Scheduler) Enqueue(jobType string, requiredGPU string, payload map[stri
 	// execute pipeline
 	if _, err := pipe.Exec(s.ctx); err != nil {
 		s.log.Error("failed to enqueue job", "error", err)
-		return err
+		return "", err
 	}
 
 	s.log.Info("enqueued job", "job_id", job.ID, "job_type", job.Type, "gpu", requiredGPU)

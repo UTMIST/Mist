@@ -12,7 +12,8 @@ docker run -it --rm --gpus all <image name> bash
 ```
 ## Test
 ```
-sh run_tests.sh
+run_tests.sh
+run_container_job_test.sh
 ```
 ## Troubleshooting
 
@@ -40,13 +41,13 @@ sh run_tests.sh
 
 ## Overview
 
-The `mist/images` package provides a `ContainerMgr` struct and related methods for managing Docker containers and volumes programmatically using the Docker Go SDK. It enforces limits on the number of containers and volumes, and provides safe creation, deletion, and lifecycle management.
+The `mist/images` package provides a `DockerMgr` struct and related methods for managing Docker containers and volumes programmatically using the Docker Go SDK. It enforces limits on the number of containers and volumes, and provides safe creation, deletion, and lifecycle management.
 
 ---
 
 ## Main APIs
 
-### `type ContainerMgr struct`
+### `type DockerMgr struct`
 Manages Docker containers and volumes, enforces resource limits, and tracks active resources.
 
 **Fields:**
@@ -60,37 +61,37 @@ Manages Docker containers and volumes, enforces resource limits, and tracks acti
 
 ---
 
-### `func NewContainerMgr(client *client.Client, containerLimit, volumeLimit int) *ContainerMgr`
-Creates a new `ContainerMgr` with the specified Docker client and resource limits.
+### `func NewDockerMgr(client *client.Client, containerLimit, volumeLimit int) *DockerMgr`
+Creates a new `DockerMgr` with the specified Docker client and resource limits.
 
 ---
 
-### `func (mgr *ContainerMgr) createVolume(volumeName string) (volume.Volume, error)`
+### `func (mgr *DockerMgr) createVolume(volumeName string) (volume.Volume, error)`
 Creates a Docker volume with the given name, enforcing the volume limit.  
 Returns the created volume or an error.
 
 ---
 
-### `func (mgr *ContainerMgr) removeVolume(volumeName string, force bool) error`
+### `func (mgr *DockerMgr) removeVolume(volumeName string, force bool) error`
 Removes a Docker volume by name.  
 Returns an error if the volume does not exist or is in use (unless `force` is true).
 
 ---
 
-### `func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volumeName string) (string, error)`
+### `func (mgr *DockerMgr) runContainer(imageName string, runtimeName string, volumeName string) (string, error)`
 Creates and starts a container with the specified image, runtime, and volume attached at `/data`.  
 Enforces the container limit.  
 Returns the container ID or an error.
 
 ---
 
-### `func (mgr *ContainerMgr) stopContainer(containerID string) error`
+### `func (mgr *DockerMgr) stopContainer(containerID string) error`
 Stops a running container by ID.  
 Returns an error if the operation fails.
 
 ---
 
-### `func (mgr *ContainerMgr) removeContainer(containerID string) error`
+### `func (mgr *DockerMgr) removeContainer(containerID string) error`
 Removes a container by ID and deletes it from the internal tracking map.  
 Returns an error if the operation fails.
 
@@ -98,7 +99,7 @@ Returns an error if the operation fails.
 
 ## Test Plan
 
-The test suite (`serve_image_test.go`) covers the following scenarios:
+The test suite (`docker_test.go`) covers the following scenarios:
 
 - Create a volume, check it exists, delete it, check it no longer exists.
 - Create a volume with the same name twice (should not fail).
@@ -116,7 +117,7 @@ The test suite (`serve_image_test.go`) covers the following scenarios:
 
 ```go
 cli, _ := client.NewClientWithOpts(client.FromEnv)
-mgr := NewContainerMgr(cli, 10, 100)
+mgr := NewDockerMgr(cli, 10, 100)
 
 vol, err := mgr.createVolume("myvol")
 if err != nil { /* handle error */ }
@@ -139,4 +140,4 @@ _ = mgr.removeVolume("myvol", true)
 
 ---
 
-**For more details, see the source code and comments in `serve_image.go
+**For more details, see the source code and comments in `docker.go`.

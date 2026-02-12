@@ -200,8 +200,9 @@ func (a *App) createJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Job type is required", http.StatusBadRequest)
 		return
 	}
-	if err := a.scheduler.Enqueue("jobType", "gpuType", payload); err != nil {
-		a.log.Error("enqueue failed", "err", err, "payload", payload)
+	jobID, err := a.scheduler.Enqueue(req.Type, req.RequiredGPU, req.Payload)
+	if err != nil {
+		a.log.Error("enqueue failed", "err", err, "payload", req.Payload)
 		http.Error(w, "enqueue failed", http.StatusInternalServerError)
 		return
 	}
@@ -250,78 +251,6 @@ func (a *App) getJobStatus(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(job); err != nil {
 		a.log.Error("failed to encode job status response", "error", err)
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (a *App) getSupervisorStatus(w http.ResponseWriter, r *http.Request) {
-	supervisors, err := a.statusRegistry.GetAllSupervisors()
-	if err != nil {
-		a.log.Error("failed to get supervisor status", "error", err)
-		http.Error(w, "failed to get supervisor status", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"supervisors": supervisors,
-		"count":       len(supervisors),
-	}); err != nil {
-		a.log.Error("failed to encode supervisor status response", "error", err)
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
-	// extract consumer ID from URL path
-	path := strings.TrimPrefix(r.URL.Path, "/supervisors/status/")
-	if path == "" {
-		http.Error(w, "consumer ID required", http.StatusBadRequest)
-		return
-	}
-
-	supervisor, err := a.statusRegistry.GetSupervisor(path)
-	if err != nil {
-		a.log.Error("failed to get supervisor status", "consumer_id", path, "error", err)
-		http.Error(w, "supervisor not found", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(supervisor); err != nil {
-		a.log.Error("failed to encode supervisor status response", "error", err)
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (a *App) getAllSupervisors(w http.ResponseWriter, r *http.Request) {
-	activeOnly := r.URL.Query().Get("active") == "true"
-
-	var supervisors []SupervisorStatus
-	var err error
-
-	if activeOnly {
-		supervisors, err = a.statusRegistry.GetActiveSupervisors()
-	} else {
-		supervisors, err = a.statusRegistry.GetAllSupervisors()
-	}
-
-	if err != nil {
-		a.log.Error("failed to get supervisors", "active_only", activeOnly, "error", err)
-		http.Error(w, "failed to get supervisors", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"supervisors": supervisors,
-		"count":       len(supervisors),
-		"active_only": activeOnly,
-	}); err != nil {
-		a.log.Error("failed to encode supervisors response", "error", err)
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
 	}
 }
