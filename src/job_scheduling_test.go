@@ -36,7 +36,7 @@ func TestJobEnqueueAndSupervisor(t *testing.T) {
 	// Enqueue jobs
 	for i := 0; i < 3; i++ {
 		payload := map[string]interface{}{"task": i}
-		if err := scheduler.Enqueue("test_job_type", "AMD", payload); err != nil {
+		if _, err := scheduler.Enqueue("test_job_type", "AMD", payload); err != nil {
 			t.Errorf("Failed to enqueue job %d: %v", i, err)
 		}
 	}

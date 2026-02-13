@@ -1,11 +1,9 @@
-package main
+package docker
 
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
-	"os"
 	"sync"
 
 	"github.com/docker/docker/api/types/container"
@@ -14,8 +12,8 @@ import (
 	"github.com/docker/docker/client"
 )
 
-// ContainerMgr manages Docker containers and volumes, enforces resource limits, and tracks active resources.
-type ContainerMgr struct {
+// DockerMgr manages Docker containers and volumes, enforces resource limits, and tracks active resources.
+type DockerMgr struct {
 	ctx            context.Context
 	cli            *client.Client
 	containerLimit int
@@ -25,9 +23,9 @@ type ContainerMgr struct {
 	mu             sync.Mutex
 }
 
-// NewContainerMgr creates a new ContainerMgr with the specified Docker client and resource limits.
-func NewContainerMgr(client *client.Client, containerLimit, volumeLimit int) *ContainerMgr {
-	return &ContainerMgr{
+// NewDockerMgr creates a new DockerMgr with the specified Docker client and resource limits.
+func NewDockerMgr(client *client.Client, containerLimit, volumeLimit int) *DockerMgr {
+	return &DockerMgr{
 		ctx:            context.Background(),
 		cli:            client,
 		containerLimit: containerLimit,
@@ -37,9 +35,9 @@ func NewContainerMgr(client *client.Client, containerLimit, volumeLimit int) *Co
 	}
 }
 
-// stopContainer stops a running container by its ID.
+// StopContainer stops a running container by its ID.
 // Returns an error if the operation fails.
-func (mgr *ContainerMgr) stopContainer(containerID string) error {
+func (mgr *DockerMgr) StopContainer(containerID string) error {
 	ctx := mgr.ctx
 	cli := mgr.cli
 
@@ -51,9 +49,9 @@ func (mgr *ContainerMgr) stopContainer(containerID string) error {
 	return nil
 }
 
-// removeContainer removes a container by its ID and deletes it from the internal tracking map.
+// RemoveContainer removes a container by its ID and deletes it from the internal tracking map.
 // Returns an error if the operation fails.
-func (mgr *ContainerMgr) removeContainer(containerID string) error {
+func (mgr *DockerMgr) RemoveContainer(containerID string) error {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	ctx := mgr.ctx
@@ -67,9 +65,9 @@ func (mgr *ContainerMgr) removeContainer(containerID string) error {
 	return nil
 }
 
-// createVolume creates a Docker volume with the given name, enforcing the volume limit.
+// CreateVolume creates a Docker volume with the given name, enforcing the volume limit.
 // Returns the created volume or an error.
-func (mgr *ContainerMgr) createVolume(volumeName string) (volume.Volume, error) {
+func (mgr *DockerMgr) CreateVolume(volumeName string) (volume.Volume, error) {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	if len(mgr.volumes) >= mgr.volumeLimit {
@@ -88,9 +86,9 @@ func (mgr *ContainerMgr) createVolume(volumeName string) (volume.Volume, error) 
 	return vol, nil
 }
 
-// removeVolume removes a Docker volume by name.
+// RemoveVolume removes a Docker volume by name.
 // Returns an error if the volume does not exist or is in use (unless force is true).
-func (mgr *ContainerMgr) removeVolume(volumeName string, force bool) error {
+func (mgr *DockerMgr) RemoveVolume(volumeName string, force bool) error {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	ctx := mgr.ctx
@@ -118,10 +116,10 @@ func (mgr *ContainerMgr) removeVolume(volumeName string, force bool) error {
 	return nil
 }
 
-// runContainer creates and starts a container with the specified image, runtime, and volume attached at /data.
+// RunContainer creates and starts a container with the specified image, runtime, and volume attached at /data.
 // Enforces the container limit and checks that the volume exists.
 // Returns the container ID or an error.
-func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volumeName string) (string, error) {
+func (mgr *DockerMgr) RunContainer(imageName string, runtimeName string, volumeName string) (string, error) {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	if len(mgr.containers) >= mgr.containerLimit {
@@ -176,12 +174,5 @@ func (mgr *ContainerMgr) runContainer(imageName string, runtimeName string, volu
 		return "", err
 	}
 
-	out, err := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{ShowStdout: true})
-	if err != nil {
-		slog.Error("Failed to get container logs", "containerID", resp.ID, "error", err)
-		return resp.ID, err
-	}
-
-	io.Copy(os.Stdout, out)
 	return resp.ID, nil
 }

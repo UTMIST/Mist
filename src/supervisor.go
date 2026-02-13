@@ -6,37 +6,57 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
-	"strconv"
 
+	"mist/docker"
+
+	"github.com/docker/docker/client"
 	"github.com/redis/go-redis/v9"
 )
 
+// CPUImage and CPURuntime are used when running CPU-only jobs (no GPU).
+const (
+	CPUImage  = "pytorch-cpu"
+	CPURuntime = "runc"
+)
+
 type Supervisor struct {
-	redisClient *redis.Client
-	ctx         context.Context
-	cancel      context.CancelFunc
-	consumerID  string
-	gpuType     string
-	wg          sync.WaitGroup
-	log         *slog.Logger
+	redisClient   *redis.Client
+	ctx           context.Context
+	cancel        context.CancelFunc
+	consumerID    string
+	gpuType       string
+	dockerMgr     *docker.DockerMgr
+	wg            sync.WaitGroup
+	log           *slog.Logger
 }
 
 func NewSupervisor(redisAddr, consumerID, gpuType string, log *slog.Logger) *Supervisor {
-	client := redis.NewClient(&redis.Options{
+	redisClient := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	var dockerMgr *docker.DockerMgr
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		log.Warn("Docker client unavailable, containers will not be started", "error", err)
+	} else {
+		dockerMgr = docker.NewDockerMgr(dockerCli, 10, 100)
+		log.Info("Docker client initialized for container execution")
+	}
+
 	return &Supervisor{
-		redisClient: client,
-		ctx:         ctx,
-		cancel:      cancel,
-		consumerID:  consumerID,
-		gpuType:     gpuType,
-		log:         log,
+		redisClient:  redisClient,
+		ctx:          ctx,
+		cancel:       cancel,
+		consumerID:   consumerID,
+		gpuType:      gpuType,
+		dockerMgr: dockerMgr,
+		log:          log,
 	}
 }
 
@@ -164,15 +184,18 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 
 	s.emitJobEvent(job.ID, JobStateInProgress)
 
-	// Simulate job processing
 	success := s.processJob(job)
 
 	if success {
+		s.emitJobEvent(job.ID, JobStateSuccess)
+		s.updateJobState(job.ID, JobStateSuccess)
 		s.ackMessage(message.ID)
 		s.log.Info("job completed successfully", "job_id", job.ID)
 	} else {
+		s.emitJobEvent(job.ID, JobStateFailure)
+		s.updateJobState(job.ID, JobStateFailure)
+		s.ackMessage(message.ID)
 		s.log.Error("job failed", "job_id", job.ID)
-		s.ackMessage(message.ID) // TODO: change this once we have docker support
 	}
 }
 
@@ -187,9 +210,59 @@ func (s *Supervisor) canHandleJob(job Job) bool {
 	return job.RequiredGPU == s.gpuType
 }
 
-// TODO: Actually schedule a container here
+// processJob executes the job by starting a container. For CPU jobs only (no GPU).
+// Returns true if the job completed successfully.
 func (s *Supervisor) processJob(job Job) bool {
+	// Only run CPU containers on this machine (no GPU support)
+	if !s.isCPUJob(job) {
+		s.log.Info("skipping container start for GPU job on CPU-only machine", "job_id", job.ID)
+		return true // Ack without running - let GPU supervisor handle
+	}
+
+	if s.dockerMgr == nil {
+		s.log.Warn("no container manager, simulating job success", "job_id", job.ID)
+		return true
+	}
+
+	volumeName := fmt.Sprintf("job_%s_data", job.ID)
+	_, err := s.dockerMgr.CreateVolume(volumeName)
+	if err != nil {
+		s.log.Error("failed to create volume for job", "job_id", job.ID, "error", err)
+		return false
+	}
+
+	containerID, err := s.dockerMgr.RunContainer(CPUImage, CPURuntime, volumeName)
+	if err != nil {
+		s.log.Error("failed to run container for job", "job_id", job.ID, "error", err)
+		_ = s.dockerMgr.RemoveVolume(volumeName, true)
+		return false
+	}
+
+	// Run for a short time to simulate work, then clean up
+	time.Sleep(2 * time.Second)
+
+	if err := s.dockerMgr.StopContainer(containerID); err != nil {
+		s.log.Error("failed to stop container", "job_id", job.ID, "container_id", containerID, "error", err)
+	}
+	if err := s.dockerMgr.RemoveContainer(containerID); err != nil {
+		s.log.Error("failed to remove container", "job_id", job.ID, "container_id", containerID, "error", err)
+	}
+	if err := s.dockerMgr.RemoveVolume(volumeName, true); err != nil {
+		s.log.Warn("failed to remove volume", "job_id", job.ID, "volume", volumeName, "error", err)
+	}
+
+	s.log.Info("job container completed", "job_id", job.ID, "container_id", containerID)
 	return true
+}
+
+// isCPUJob returns true if the job can run on CPU (no GPU required).
+func (s *Supervisor) isCPUJob(job Job) bool {
+	switch job.RequiredGPU {
+	case "", "CPU":
+		return true
+	default:
+		return false
+	}
 }
 
 
@@ -212,6 +285,13 @@ func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 	}
 }
 
+
+func (s *Supervisor) updateJobState(jobID string, state JobState) {
+	jobKey := fmt.Sprintf("job:%s", jobID)
+	if err := s.redisClient.HSet(s.ctx, jobKey, "job_state", string(state)).Err(); err != nil {
+		s.log.Error("failed to update job state", "job_id", jobID, "error", err)
+	}
+}
 
 func (s *Supervisor) ackMessage(messageID string) {
 	result := s.redisClient.XAck(s.ctx, StreamName, ConsumerGroup, messageID)
