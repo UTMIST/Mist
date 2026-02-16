@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const (
@@ -56,7 +57,7 @@ func openUrl(url string) error {
 	return cmd.Start()
 }
 
-func saveTokenToConfig(ctx *AppContext, token string) error {
+func saveTokenToConfig(ctx *AppContext, token string, refreshToken string) error {
 	configPath := defaultConfigPath()
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
@@ -136,6 +137,12 @@ func (l *LoginCmd) Run(ctx *AppContext) error {
 	if !ok {
 		return fmt.Errorf("invalid token response: missing access_token")
 	}
+
+	refreshToken, _ := tokenResp["refresh_token"].(string)
+	expiresIn, _ := tokenResp["expires_int"].(float64)
+	tokenType, _ := tokenResp["token_type"].(string)
+
+	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
 
 	return saveTokenToConfig(ctx, accessToken)
 }
