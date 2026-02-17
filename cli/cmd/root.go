@@ -10,9 +10,9 @@ import (
 )
 
 type Config struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string
-	ExpiresAt    time.Time
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	ExpiresAt    time.Time `json:"expires_at"`
 	// maybe APIBaseURL, etc.
 }
 

@@ -57,7 +57,7 @@ func openUrl(url string) error {
 	return cmd.Start()
 }
 
-func saveTokenToConfig(ctx *AppContext, token string, refreshToken string) error {
+func saveTokenToConfig(ctx *AppContext, token string, refreshToken string, expiresAt time.Time) error {
 	configPath := defaultConfigPath()
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
@@ -67,6 +67,8 @@ func saveTokenToConfig(ctx *AppContext, token string, refreshToken string) error
 		ctx.Config = &Config{}
 	}
 	ctx.Config.AccessToken = token
+	ctx.Config.RefreshToken = refreshToken
+	ctx.Config.ExpiresAt = expiresAt
 
 	data, err := json.MarshalIndent(ctx.Config, "", "  ")
 	if err != nil {
@@ -76,6 +78,48 @@ func saveTokenToConfig(ctx *AppContext, token string, refreshToken string) error
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 	fmt.Println("Token saved")
+	return nil
+}
+
+func (ctx *AppContext) RefreshAccessToken() error {
+	data := url.Values{}
+	data.Set("grant_type", "refresh_token")
+	data.Set("client_id", clientID)
+	data.Set("refresh_token", ctx.Config.RefreshToken)
+
+	resp, err := http.PostForm(tokenUrl, data)
+	if err != nil {
+		return fmt.Errorf("failed to refresh token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("token refresh failed: %s", body)
+	}
+
+	var tokenResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return fmt.Errorf("failed to decode token response: %w", err)
+	}
+
+	accessToken, _ := tokenResp["access_token"].(string)
+	refreshToken, _ := tokenResp["refresh_token"].(string)
+	expiresIn, _ := tokenResp["expires_in"].(float64)
+	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
+
+	return saveTokenToConfig(ctx, accessToken, refreshToken, expiresAt)
+}
+
+func (ctx *AppContext) CheckValidToken() error {
+	if ctx.Config == nil || ctx.Config.AccessToken == "" {
+		return fmt.Errorf("not logged in")
+	}
+
+	if time.Now().Add(30 * time.Second).After(ctx.Config.ExpiresAt) {
+		return ctx.RefreshAccessToken()
+	}
+
 	return nil
 }
 
@@ -139,10 +183,9 @@ func (l *LoginCmd) Run(ctx *AppContext) error {
 	}
 
 	refreshToken, _ := tokenResp["refresh_token"].(string)
-	expiresIn, _ := tokenResp["expires_int"].(float64)
-	tokenType, _ := tokenResp["token_type"].(string)
+	expiresIn, _ := tokenResp["expires_in"].(float64)
 
 	expiresAt := time.Now().Add(time.Duration(expiresIn) * time.Second)
 
-	return saveTokenToConfig(ctx, accessToken)
+	return saveTokenToConfig(ctx, accessToken, refreshToken, expiresAt)
 }
