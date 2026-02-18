@@ -1,8 +1,10 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 )
 
 // DockerMgr manages Docker containers and volumes, enforces resource limits, and tracks active resources.
@@ -116,10 +119,11 @@ func (mgr *DockerMgr) RemoveVolume(volumeName string, force bool) error {
 	return nil
 }
 
-// RunContainer creates and starts a container with the specified image, runtime, and volume attached at /data.
+// RunContainer creates and starts a container with the specified image, runtime, volume, and name.
+// containerName is used as the Docker container name (e.g. job ID for log lookup by name).
 // Enforces the container limit and checks that the volume exists.
 // Returns the container ID or an error.
-func (mgr *DockerMgr) RunContainer(imageName string, runtimeName string, volumeName string) (string, error) {
+func (mgr *DockerMgr) RunContainer(imageName string, runtimeName string, volumeName string, containerName string) (string, error) {
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
 	if len(mgr.containers) >= mgr.containerLimit {
@@ -146,7 +150,7 @@ func (mgr *DockerMgr) RunContainer(imageName string, runtimeName string, volumeN
 		ctx,
 		&container.Config{
 			Image: imageName,
-			Cmd:   []string{"sleep", "1000"},
+			Cmd:   []string{"sh", "-c", "echo hello-from-container && sleep 1000"},
 		},
 		&container.HostConfig{
 			Runtime: runtimeName,
@@ -160,7 +164,7 @@ func (mgr *DockerMgr) RunContainer(imageName string, runtimeName string, volumeN
 		},
 		nil,
 		nil,
-		"",
+		containerName,
 	)
 
 	if err != nil {
@@ -175,4 +179,70 @@ func (mgr *DockerMgr) RunContainer(imageName string, runtimeName string, volumeN
 	}
 
 	return resp.ID, nil
+}
+
+// LogOptions configures how container logs are fetched.
+type LogOptions struct {
+	ShowStdout bool
+	ShowStderr bool
+	Tail       string // e.g. "100" for last 100 lines, or "all"
+	Since      string // RFC3339 timestamp
+	Until      string // RFC3339 timestamp
+	Timestamps bool
+}
+
+// IsContainerRunning returns true if the container exists and is running.
+func (mgr *DockerMgr) IsContainerRunning(ctx context.Context, containerID string) (bool, error) {
+	inspect, err := mgr.cli.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return false, err
+	}
+	return inspect.State.Running, nil
+}
+
+// GetContainerLogs fetches logs from a running Docker container.
+// Returns an error if the container does not exist, is not running, or logs cannot be read.
+func (mgr *DockerMgr) GetContainerLogs(ctx context.Context, containerID string, opts LogOptions) ([]byte, error) {
+	running, err := mgr.IsContainerRunning(ctx, containerID)
+	if err != nil {
+		return nil, fmt.Errorf("container not found: %w", err)
+	}
+	if !running {
+		return nil, fmt.Errorf("container is not running; logs only available for running containers")
+	}
+	if opts.ShowStdout == false && opts.ShowStderr == false {
+		opts.ShowStdout = true
+		opts.ShowStderr = true
+	}
+
+	options := container.LogsOptions{
+		ShowStdout: opts.ShowStdout,
+		ShowStderr: opts.ShowStderr,
+		Timestamps: opts.Timestamps,
+	}
+	if opts.Tail != "" {
+		options.Tail = opts.Tail
+	}
+	if opts.Since != "" {
+		options.Since = opts.Since
+	}
+	if opts.Until != "" {
+		options.Until = opts.Until
+	}
+
+	reader, err := mgr.cli.ContainerLogs(ctx, containerID, options)
+	if err != nil {
+		slog.Error("Failed to get container logs", "containerID", containerID, "error", err)
+		return nil, fmt.Errorf("failed to get container logs: %w", err)
+	}
+	defer reader.Close()
+
+	var buf bytes.Buffer
+	_, err = stdcopy.StdCopy(&buf, &buf, reader)
+	if err != nil && err != io.EOF {
+		slog.Error("Failed to demultiplex container logs", "containerID", containerID, "error", err)
+		return nil, fmt.Errorf("failed to read container logs: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }
