@@ -84,6 +84,7 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 	mux.HandleFunc("/auth/refresh", a.refresh)
 	mux.HandleFunc("/jobs", a.requireAuth(a.handleJobs))
 	mux.HandleFunc("/jobs/status", a.requireAuth(a.getJobStatus))
+	mux.HandleFunc("/jobs/logs/", a.requireAuth(a.getJobLogs))
 	mux.HandleFunc("/supervisors/status", a.requireAuth(a.getSupervisorStatus))
 	mux.HandleFunc("/supervisors/status/", a.requireAuth(a.getSupervisorStatusByID))
 	mux.HandleFunc("/supervisors", a.requireAuth(a.getAllSupervisors))
@@ -229,7 +230,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
 	}
-	app := NewApp("localhost:6379", "AMD", log)
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	gpuType := os.Getenv("GPU_TYPE")
+	if gpuType == "" {
+		gpuType = "CPU" // default CPU so local dev/smoke test can run container jobs
+	}
+	app := NewApp(redisAddr, gpuType, log)
 
 	if err := app.Start(); err != nil {
 		log.Error("failed to start app", "err", err)
@@ -456,6 +465,38 @@ func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
 		a.log.Error("failed to encode supervisor status response", "error", err)
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
+	}
+}
+
+func (a *App) getJobLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/jobs/logs/")
+	jobID := strings.Trim(path, "/")
+	if jobID == "" {
+		jobID = r.URL.Query().Get("id")
+	}
+	if jobID == "" {
+		http.Error(w, "Job ID is required", http.StatusBadRequest)
+		return
+	}
+
+	a.log.Info("getJobLogs handler accessed", "job_id", jobID, "remote_address", r.RemoteAddr)
+
+	logs, err := a.supervisor.GetContainerLogsForJob(jobID)
+	if err != nil {
+		a.log.Error("failed to get job logs", "job_id", jobID, "error", err)
+		http.Error(w, fmt.Sprintf("Logs not available for job: %s (container must be running)", jobID), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(logs); err != nil {
+		a.log.Error("failed to write job logs response", "job_id", jobID, "error", err)
 	}
 }
 

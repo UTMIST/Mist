@@ -56,16 +56,17 @@ func TestIntegration(t *testing.T) {
 	defer os.Unsetenv("ENV")
 
 	redisAddr := "localhost:6379"
+	client := redis.NewClient(&redis.Options{Addr: redisAddr})
+	defer client.Close()
+	if err := client.Ping(context.Background()).Err(); err != nil {
+		t.Skipf("Redis not running at %s, skipping: %v (run: docker-compose up -d)", redisAddr, err)
+	}
+
 	config, _ := multilogger.GetLogConfig()
 	schedulerLog, err := multilogger.CreateLogger("scheduler", &config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
-	}
-	client := redis.NewClient(&redis.Options{Addr: redisAddr})
-	defer client.Close()
-	if err := client.Ping(context.Background()).Err(); err != nil {
-		t.Errorf("Failed to connect to Redis: %v", err)
 	}
 
 	scheduler := NewScheduler(redisAddr, schedulerLog)
@@ -118,9 +119,11 @@ func TestDummySupervisors(t *testing.T) {
 	os.Setenv("ENV", "test")
 	defer os.Unsetenv("ENV")
 
-	// Clean up Redis data before test
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	defer client.Close()
+	if err := client.Ping(context.Background()).Err(); err != nil {
+		t.Skipf("Redis not running at %s, skipping: %v (run: docker-compose up -d)", redisAddr, err)
+	}
 	client.FlushDB(context.Background())
 
 	app := NewApp(redisAddr, "AMD", log)
@@ -131,7 +134,7 @@ func TestDummySupervisors(t *testing.T) {
 
 	supervisors, err := app.statusRegistry.GetAllSupervisors()
 	if err != nil {
-		t.Errorf("Failed to get supervisors: %v", err)
+		t.Fatalf("Failed to get supervisors: %v", err)
 	}
 	// Verify dummy supervisor IDs exist
 	dummyIDs := []string{"worker_amd_001", "worker_nvidia_002", "worker_tt_003"}
@@ -156,6 +159,9 @@ func TestStatusRegistry_BasicOperations(t *testing.T) {
 
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	defer client.Close()
+	if err := client.Ping(context.Background()).Err(); err != nil {
+		t.Skipf("Redis not running at %s, skipping: %v (run: docker-compose up -d)", redisAddr, err)
+	}
 	client.FlushDB(context.Background())
 
 	registry := NewStatusRegistry(client, log)
@@ -174,13 +180,13 @@ func TestStatusRegistry_BasicOperations(t *testing.T) {
 	// Add status
 	err := registry.UpdateStatus(status.ConsumerID, status)
 	if err != nil {
-		t.Errorf("UpdateStatus failed: %v", err)
+		t.Fatalf("UpdateStatus failed: %v", err)
 	}
 
 	// Retrieve status
 	retrievedStatus, err := registry.GetSupervisor(status.ConsumerID)
 	if err != nil {
-		t.Errorf("GetSupervisor failed: %v", err)
+		t.Fatalf("GetSupervisor failed: %v", err)
 	}
 
 	if retrievedStatus.Status != status.Status {
@@ -200,10 +206,11 @@ func TestStatusRegistry_BasicOperations(t *testing.T) {
 	// Test getting active supervisors
 	activeSupervisors, err := registry.GetActiveSupervisors()
 	if err != nil {
-		t.Errorf("GetActiveSupervisors failed: %v", err)
+		t.Fatalf("GetActiveSupervisors failed: %v", err)
 	}
 
 	if len(activeSupervisors) != 1 {
 		t.Errorf("Expected 1 active supervisor, got %d", len(activeSupervisors))
 	}
 }
+
