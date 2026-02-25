@@ -152,9 +152,9 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 	}
 
 	if len(metadata) == 0 {
-    s.log.Error("job metadata not found", "job_id", jobID)
-    s.ackMessage(message.ID)
-    return
+		s.log.Error("job metadata not found", "job_id", jobID)
+		s.ackMessage(message.ID)
+		return
 	}
 
 	jobType := metadata["type"]
@@ -163,7 +163,7 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 
 	createdTime, _ := time.Parse(time.RFC3339, metadata["created"])
 	retries, _ := strconv.Atoi(metadata["retries"])
-	
+
 	job := Job{
 		ID:          jobID,
 		Type:        jobType,
@@ -265,11 +265,10 @@ func (s *Supervisor) isCPUJob(job Job) bool {
 	}
 }
 
-
 func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 	event := map[string]interface{}{
-		"job_id":  jobID,
-		"state":  string(state),
+		"job_id":     jobID,
+		"state":      string(state),
 		"timestamp":  time.Now().Format(time.RFC3339),
 		"supervisor": s.consumerID,
 		"gpu_type":   s.gpuType,
@@ -284,7 +283,6 @@ func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 		s.log.Info("emitted job event", "job_id", jobID, "state", state)
 	}
 }
-
 
 func (s *Supervisor) updateJobState(jobID string, state JobState) {
 	jobKey := fmt.Sprintf("job:%s", jobID)
