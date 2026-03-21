@@ -13,8 +13,6 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as MachinesRouteImport } from './routes/machines'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as AboutRouteImport } from './routes/about'
-import { Route as IndexRouteImport } from './routes/index'
 
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
@@ -36,28 +34,14 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/dashboard': typeof DashboardRoute
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
   '/profile': typeof ProfileRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/dashboard': typeof DashboardRoute
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
@@ -65,8 +49,6 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
   '/dashboard': typeof DashboardRoute
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
@@ -74,22 +56,13 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/dashboard' | '/jobs' | '/machines' | '/profile'
+  fullPaths: '/dashboard' | '/jobs' | '/machines' | '/profile'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/dashboard' | '/jobs' | '/machines' | '/profile'
-  id:
-    | '__root__'
-    | '/'
-    | '/about'
-    | '/dashboard'
-    | '/jobs'
-    | '/machines'
-    | '/profile'
+  to: '/dashboard' | '/jobs' | '/machines' | '/profile'
+  id: '__root__' | '/dashboard' | '/jobs' | '/machines' | '/profile'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AboutRoute: typeof AboutRoute
   DashboardRoute: typeof DashboardRoute
   JobsRoute: typeof JobsRoute
   MachinesRoute: typeof MachinesRoute
@@ -126,26 +99,10 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AboutRoute: AboutRoute,
   DashboardRoute: DashboardRoute,
   JobsRoute: JobsRoute,
   MachinesRoute: MachinesRoute,
