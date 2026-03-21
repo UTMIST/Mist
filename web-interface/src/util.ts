@@ -11,7 +11,12 @@ export function getUser() : User {
   const user = {
     username: "TheArchons",
     profilePicture: "/sample-avatar.png" // real avatars should probably be stored in a bucket
-  }
+  };
 
   return user
+}
+
+export function logout() {
+  // TODO: Call API - we only log a message for now
+  console.log("logout called");
 }
