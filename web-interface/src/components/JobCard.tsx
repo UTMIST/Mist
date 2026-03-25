@@ -212,25 +212,25 @@ export default function JobCard({
         <div className="flex gap-2">
           <button
             onClick={() => onStart(job.id)}
-            className="px-3 py-1 text-xs font-semibold rounded bg-green-500 text-white hover:bg-green-600"
+            className="px-3 py-1 text-xs font-semibold rounded bg-green-200 text-green-800 hover:bg-green-300"
           >
             Start
           </button>
           <button
             onClick={() => onShutdown(job.id)}
-            className="px-3 py-1 text-xs font-semibold rounded bg-yellow-400 text-white hover:bg-yellow-500"
+            className="px-3 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800 hover:bg-yellow-300"
           >
             Shutdown
           </button>
           <button
             onClick={() => onRestart(job.id)}
-            className="px-3 py-1 text-xs font-semibold rounded bg-yellow-400 text-white hover:bg-yellow-500"
+            className="px-3 py-1 text-xs font-semibold rounded bg-yellow-200 text-yellow-800 hover:bg-yellow-300"
           >
             Restart
           </button>
           <button
             onClick={() => onDelete(job.id)}
-            className="px-3 py-1 text-xs font-semibold rounded bg-red-500 text-white hover:bg-red-600"
+            className="px-3 py-1 text-xs font-semibold rounded bg-red-200 text-red-800 hover:bg-red-300"
           >
             Delete
           </button>
