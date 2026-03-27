@@ -36,7 +36,7 @@ export default function Navbar() {
           <img src={ user.profilePicture } alt="Profile Picture" className="w-7 h-7 rounded-full"></img>
         </div>
         { dropdown &&
-            <div className="absolute top-full right-0 border-1 rounded-b m-2 p-1 pr-3 pl-3 text-xl">
+            <div className="absolute top-full right-0 border rounded-b m-2 p-1 pr-3 pl-3 text-xl bg-white">
               <ul>
                   <li><Link to="/profile" className="block px-2 py-1 rounded hover:bg-gray-100 transition-colors duration-200">Profile</Link></li>
                   <li><button onClick={logout} className="block w-full text-left px-2 py-1 rounded hover:bg-gray-100 transition-colors duration-200">Logout</button></li>
