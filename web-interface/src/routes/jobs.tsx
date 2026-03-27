@@ -12,15 +12,42 @@ export const Route = createFileRoute('/jobs')({
   component: JobsPage,
 })
 
-// Sample GPU utilization data (24 data points for 24 hours)
-function generateGpuData(): number[] {
-  return Array.from({ length: 25 }, (_, i) => {
-    if (i < 6) return 5 + Math.random() * 10
-    if (i < 10) return 10 + Math.random() * 20
-    if (i < 14) return 50 + Math.random() * 45
-    if (i < 18) return 70 + Math.random() * 25
-    return 30 + Math.random() * 30
-  })
+// Sample utilization data
+type UsageData = {
+  component: string // Component that we observe. E.g. GPU, CPU, etc.
+  observations: number[]
+}
+
+function generateUsageData(): UsageData {
+  const components = ['GPU', 'CPU', 'RAM']
+
+  return {
+    component: components[Math.floor(Math.random() * components.length)], // of course these should be ordered, but this is sample data. When we use the real Grafana data we will throw this out anyway.
+    observations: Array.from({ length: 25 }, (_, i) => {
+      if (i < 6) return 5 + Math.random() * 10
+      if (i < 10) return 10 + Math.random() * 20
+      if (i < 14) return 50 + Math.random() * 45
+      if (i < 18) return 70 + Math.random() * 25
+      return 30 + Math.random() * 30
+    }),
+  }
+}
+
+export type Job = {
+  id: string
+  name: string
+  created: string
+  accessed: string
+  machine: string
+  gpu: string
+  cpu: string
+  dockerImage: string
+  ip: string
+  ram: string
+  diskUsage: string
+  cpuUtilization: string
+  networkIO: { down: string; up: string }
+  usageHistory: UsageData[]
 }
 
 const sampleJobs: Job[] = [
@@ -38,12 +65,12 @@ const sampleJobs: Job[] = [
     diskUsage: '70GB/128GB (55%)',
     cpuUtilization: '95%',
     networkIO: { down: '1.2 GB/s', up: '340 MB/s' },
-    gpuHistory: [
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
+    usageHistory: [
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
     ],
   },
   {
@@ -60,12 +87,12 @@ const sampleJobs: Job[] = [
     diskUsage: '70GB/128GB (55%)',
     cpuUtilization: '95%',
     networkIO: { down: '1.2 GB/s', up: '340 MB/s' },
-    gpuHistory: [
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
+    usageHistory: [
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
     ],
   },
   {
@@ -82,12 +109,12 @@ const sampleJobs: Job[] = [
     diskUsage: '70GB/128GB (55%)',
     cpuUtilization: '95%',
     networkIO: { down: '1.2 GB/s', up: '340 MB/s' },
-    gpuHistory: [
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
+    usageHistory: [
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
     ],
   },
   {
@@ -104,32 +131,15 @@ const sampleJobs: Job[] = [
     diskUsage: '70GB/128GB (55%)',
     cpuUtilization: '95%',
     networkIO: { down: '1.2 GB/s', up: '340 MB/s' },
-    gpuHistory: [
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
-      generateGpuData(),
+    usageHistory: [
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
+      generateUsageData(),
     ],
   },
 ]
-
-export type Job = {
-  id: string
-  name: string
-  created: string
-  accessed: string
-  machine: string
-  gpu: string
-  cpu: string
-  dockerImage: string
-  ip: string
-  ram: string
-  diskUsage: string
-  cpuUtilization: string
-  networkIO: { down: string; up: string }
-  gpuHistory: number[][] // array of [hour, percentage] data points per GPU
-}
 
 type JobCardProps = {
   job: Job
@@ -139,16 +149,16 @@ type JobCardProps = {
   onDelete: (id: string) => void
 }
 
-function GpuChart({
+function Chart({
   data,
-  gpuIndex,
-  totalGpus,
+  index,
+  numComponents,
   onPrev,
   onNext,
 }: {
-  data: number[]
-  gpuIndex: number
-  totalGpus: number
+  data: UsageData
+  index: number
+  numComponents: number
   onPrev: () => void
   onNext: () => void
 }) {
@@ -162,8 +172,8 @@ function GpuChart({
   const chartW = width - padLeft - padRight
   const chartH = height - padTop - padBottom
 
-  const points = data.map((val, i) => {
-    const x = padLeft + (i / (data.length - 1)) * chartW
+  const points = data.observations.map((val, i) => {
+    const x = padLeft + (i / (data.observations.length - 1)) * chartW
     const y = padTop + chartH - (val / max) * chartH
     return `${x},${y}`
   })
@@ -195,12 +205,14 @@ function GpuChart({
 
   return (
     <div className="mt-4">
-      <h3 className="text-center font-semibold text-sm mb-1">GPU</h3>
+      <h3 className="text-center font-semibold text-sm mb-1">
+        {data.component}
+      </h3>
       <div className="flex items-center gap-2">
         <button
           onClick={onPrev}
           className="text-gray-400 hover:text-main p-1"
-          aria-label="Previous GPU"
+          aria-label="Previous Component"
         >
           <ChevronLeft size={24} />
         </button>
@@ -259,17 +271,17 @@ function GpuChart({
         <button
           onClick={onNext}
           className="text-gray-400 hover:text-main p-1"
-          aria-label="Next GPU"
+          aria-label="Next Component"
         >
           <ChevronRight size={24} />
         </button>
       </div>
       {/* Pagination dots */}
       <div className="flex justify-center gap-1.5 mt-1">
-        {Array.from({ length: totalGpus }).map((_, i) => (
+        {Array.from({ length: numComponents }).map((_, i) => (
           <span
             key={i}
-            className={`w-2 h-2 rounded-full ${i === gpuIndex ? 'bg-main' : 'bg-gray-300'}`}
+            className={`w-2 h-2 rounded-full ${i === index ? 'bg-main' : 'bg-gray-300'}`}
           />
         ))}
       </div>
@@ -284,11 +296,13 @@ function JobCard({
   onRestart,
   onDelete,
 }: JobCardProps) {
-  const [gpuIndex, setGpuIndex] = useState(0)
-  const totalGpus = job.gpuHistory.length
+  const [componentIndex, setComponentIndex] = useState(0)
+  const totalComponents = job.usageHistory.length
 
-  const prevGpu = () => setGpuIndex((i) => (i - 1 + totalGpus) % totalGpus)
-  const nextGpu = () => setGpuIndex((i) => (i + 1) % totalGpus)
+  const prevComponent = () =>
+    setComponentIndex((i) => (i - 1 + totalComponents) % totalComponents)
+  const nextComponent = () =>
+    setComponentIndex((i) => (i + 1) % totalComponents)
 
   return (
     <Card>
@@ -317,13 +331,13 @@ function JobCard({
         <CardInfoField label="RAM" value={job.ram} />
       </div>
 
-      {/* GPU Chart */}
-      <GpuChart
-        data={job.gpuHistory[gpuIndex]}
-        gpuIndex={gpuIndex}
-        totalGpus={totalGpus}
-        onPrev={prevGpu}
-        onNext={nextGpu}
+      {/* Component Usage Chart */}
+      <Chart
+        data={job.usageHistory[componentIndex]}
+        index={componentIndex}
+        numComponents={totalComponents}
+        onPrev={prevComponent}
+        onNext={nextComponent}
       />
     </Card>
   )
