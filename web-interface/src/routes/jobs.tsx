@@ -1,8 +1,12 @@
-import {createFileRoute} from '@tanstack/react-router'
-import Card, {CardHeader, CardInfoField} from '#/components/Card.tsx'
-import {ChevronLeft, ChevronRight} from "lucide-react";
-import {useState} from "react";
-import {ButtonDanger, ButtonSuccess, ButtonWarning} from "#/components/Buttons.tsx";
+import { createFileRoute } from '@tanstack/react-router'
+import Card, { CardHeader, CardInfoField } from '#/components/Card.tsx'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
+import {
+  ButtonDanger,
+  ButtonSuccess,
+  ButtonWarning,
+} from '#/components/Buttons.tsx'
 
 export const Route = createFileRoute('/jobs')({
   component: JobsPage,
@@ -136,12 +140,12 @@ type JobCardProps = {
 }
 
 function GpuChart({
-                    data,
-                    gpuIndex,
-                    totalGpus,
-                    onPrev,
-                    onNext,
-                  }: {
+  data,
+  gpuIndex,
+  totalGpus,
+  onPrev,
+  onNext,
+}: {
   data: number[]
   gpuIndex: number
   totalGpus: number
@@ -274,12 +278,12 @@ function GpuChart({
 }
 
 function JobCard({
-                   job,
-                   onStart,
-                   onShutdown,
-                   onRestart,
-                   onDelete,
-                 }: JobCardProps) {
+  job,
+  onStart,
+  onShutdown,
+  onRestart,
+  onDelete,
+}: JobCardProps) {
   const [gpuIndex, setGpuIndex] = useState(0)
   const totalGpus = job.gpuHistory.length
 
@@ -303,11 +307,7 @@ function JobCard({
         <CardInfoField label="Accessed" value={job.accessed} />
         <CardInfoField label="GPU" value={job.gpu} />
         <CardInfoField label="CPU Utilization" value={job.cpuUtilization} />
-        <CardInfoField
-          label="Docker Image"
-          value={job.dockerImage}
-          link="#"
-        />
+        <CardInfoField label="Docker Image" value={job.dockerImage} link="#" />
         <CardInfoField label="CPU" value={job.cpu} />
         <CardInfoField
           label="Network I/O"

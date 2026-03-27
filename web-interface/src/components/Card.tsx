@@ -1,12 +1,11 @@
 import { Link } from '@tanstack/react-router'
-import type {ReactNode} from "react";
-
+import type { ReactNode } from 'react'
 
 export function CardInfoField({
-                     label,
-                     value,
-                     link,
-                   }: {
+  label,
+  value,
+  link,
+}: {
   label: string
   value: string
   link?: string
@@ -25,22 +24,24 @@ export function CardInfoField({
   )
 }
 
-export function CardHeader({ header, children }: { header: string, children: ReactNode }) {
+export function CardHeader({
+  header,
+  children,
+}: {
+  header: string
+  children: ReactNode
+}) {
   return (
     <div className="flex items-center justify-between mb-4">
       <h2 className="text-lg font-bold">{header}</h2>
       <div className="flex gap-2">
         {/* Actions */}
-        { children }
+        {children}
       </div>
     </div>
   )
 }
 
 export default function Card({ children }: { children: ReactNode }) {
-  return (
-    <div className="border border-gray-200 rounded-xl p-5">
-      { children }
-    </div>
-  )
+  return <div className="border border-gray-200 rounded-xl p-5">{children}</div>
 }
