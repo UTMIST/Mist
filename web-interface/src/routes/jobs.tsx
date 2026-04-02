@@ -2,11 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import Card, { CardHeader, CardInfoField } from '#/components/Card.tsx'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import {
-  ButtonDanger,
-  ButtonSuccess,
-  ButtonWarning,
-} from '#/components/Buttons.tsx'
+import { Button } from '#/components/Buttons.tsx'
 
 export const Route = createFileRoute('/jobs')({
   component: JobsPage,
@@ -307,10 +303,26 @@ function JobCard({
   return (
     <Card>
       <CardHeader header={job.name}>
-        <ButtonSuccess onClick={() => onStart(job.id)} text="Start" />
-        <ButtonWarning onClick={() => onShutdown(job.id)} text="Shutdown" />
-        <ButtonWarning onClick={() => onRestart(job.id)} text="Restart" />
-        <ButtonDanger onClick={() => onDelete(job.id)} text="Delete" />
+        <Button
+          onClick={() => onStart(job.id)}
+          text="Start"
+          variant="success"
+        />
+        <Button
+          onClick={() => onShutdown(job.id)}
+          text="Shutdown"
+          variant="warning"
+        />
+        <Button
+          onClick={() => onRestart(job.id)}
+          text="Restart"
+          variant="warning"
+        />
+        <Button
+          onClick={() => onDelete(job.id)}
+          text="Delete"
+          variant="danger"
+        />
       </CardHeader>
 
       {/* Info grid */}
