@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { SquarePen } from 'lucide-react'
 import { getUser } from '#/util.ts'
-import type { User } from '#/util.ts'
 import { useImmer } from 'use-immer'
+import {Button} from "#/components/Buttons.tsx";
 
 export const Route = createFileRoute('/profile')({
   component: ProfilePage,
@@ -118,20 +118,17 @@ function ProfilePage() {
           />
 
           <div className="flex gap-3 mt-2">
-            <button
+            <Button
               onClick={handleSave}
-              className="px-6 py-2 text-sm font-semibold rounded-lg text-white hover:opacity-90"
-              style={{ backgroundColor: '#3C5BDB' }}
-            >
-              Save
-            </button>
-            <button
+              variant="normal"
+              fontSize="base"
+            >Save</Button>
+            <Button
               onClick={handleCancel}
-              className="px-6 py-2 text-sm font-semibold rounded-lg text-white hover:opacity-90"
-              style={{ backgroundColor: '#EF4443' }}
-            >
+              variant="danger"
+              fontSize="base">
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -143,16 +140,18 @@ function ProfilePage() {
               alt="Profile Picture"
               className="w-48 h-48 rounded-full object-cover border-2 border-gray-200"
             />
-            <button
-              onClick={() => {
-                // TODO: open file picker to upload new avatar
-                console.log('Edit profile picture')
-              }}
-              className="absolute bottom-3 left-3 flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold rounded text-white hover:opacity-90"
-              style={{ backgroundColor: '#3C5BDB' }}
-            >
-              Edit <SquarePen size={16} />
-            </button>
+            <div className="absolute bottom-3 left-3">
+              <Button
+                onClick={() => {
+                  // TODO: open file picker to upload new avatar
+                  console.log('Edit profile picture')
+                }}
+                variant="normal"
+                fontSize="base"
+              >
+                Edit <SquarePen size={16} />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
