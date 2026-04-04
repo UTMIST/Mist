@@ -1,23 +1,23 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
 import { SquarePen } from 'lucide-react'
 import { getUser } from '#/util.ts'
+import type { User } from '#/util.ts'
+import { useImmer } from 'use-immer'
 
 export const Route = createFileRoute('/profile')({
   component: ProfilePage,
+  loader: getUser,
 })
 
 function ProfileField({
-                        label,
-                        value,
-                        type = 'text',
-                        disabled,
-                        onChange,
-                      }: {
+  label,
+  value,
+  type = 'text',
+  onChange,
+}: {
   label: string
   value: string
   type?: string
-  disabled: boolean
   onChange: (val: string) => void
 }) {
   return (
@@ -26,7 +26,6 @@ function ProfileField({
       <input
         type={type}
         value={value}
-        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm disabled:bg-white disabled:text-gray-700"
       />
@@ -35,19 +34,33 @@ function ProfileField({
 }
 
 function ProfilePage() {
-  const user = getUser()
-  const [editing, setEditing] = useState(false)
-
-  const [name, setName] = useState('John Doe')
-  const [role, setRole] = useState('Software Developer')
-  const [email, setEmail] = useState('john@utmist.ca')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const loaderData = Route.useLoaderData()
+  const [user, setUser] = useImmer({
+    ...loaderData,
+    password: '',
+    confirmPassword: '',
+  })
 
   function handleSave() {
     // TODO: call API to update profile
-    console.log('Save profile:', { name, role, email, password })
-    setEditing(false)
+    console.log('Save profile:', {
+      username: user.username,
+      role: user.role,
+      email: user.email,
+      password: user.password,
+    })
+  }
+
+  function handleCancel() {
+    const confirmCancel = confirm("Are you sure you want to cancel?");
+
+    if (confirmCancel) {
+      setUser({
+        ...loaderData,
+        password: '',
+        confirmPassword: '',
+      });
+    }
   }
 
   return (
@@ -56,37 +69,52 @@ function ProfilePage() {
         {/* Left: form fields */}
         <div className="flex-1 min-w-80 flex flex-col gap-5">
           <ProfileField
-            label="Name"
-            value={name}
-            disabled={!editing}
-            onChange={setName}
+            label="Username"
+            value={user.username}
+            onChange={(username) =>
+              setUser((draft) => {
+                draft.username = username
+              })
+            }
           />
           <ProfileField
             label="Role"
-            value={role}
-            disabled={!editing}
-            onChange={setRole}
+            value={user.role}
+            onChange={(role) =>
+              setUser((draft) => {
+                draft.role = role
+              })
+            }
           />
           <ProfileField
             label="Email"
-            value={email}
+            value={user.email}
             type="email"
-            disabled={!editing}
-            onChange={setEmail}
+            onChange={(email) =>
+              setUser((draft) => {
+                draft.email = email
+              })
+            }
           />
           <ProfileField
             label="Password"
-            value={password}
+            value={user.password}
             type="password"
-            disabled={!editing}
-            onChange={setPassword}
+            onChange={(password) =>
+              setUser((draft) => {
+                draft.password = password
+              })
+            }
           />
           <ProfileField
             label="Confirm Password"
-            value={confirmPassword}
+            value={user.confirmPassword}
             type="password"
-            disabled={!editing}
-            onChange={setConfirmPassword}
+            onChange={(confirmPassword) =>
+              setUser((draft) => {
+                draft.confirmPassword = confirmPassword
+              })
+            }
           />
 
           <div className="flex gap-3 mt-2">
@@ -98,11 +126,11 @@ function ProfilePage() {
               Save
             </button>
             <button
-              onClick={() => setEditing(!editing)}
-              className="px-6 py-2 text-sm font-semibold rounded-lg border hover:opacity-80"
-              style={{ borderColor: '#3C5BDB', color: '#3C5BDB' }}
+              onClick={handleCancel}
+              className="px-6 py-2 text-sm font-semibold rounded-lg text-white hover:opacity-90"
+              style={{ backgroundColor: '#EF4443' }}
             >
-              Edit
+              Cancel
             </button>
           </div>
         </div>
