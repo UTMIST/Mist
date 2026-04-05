@@ -3,6 +3,8 @@ import { SquarePen } from 'lucide-react'
 import { getUser } from '#/util.ts'
 import { useImmer } from 'use-immer'
 import { Button } from '#/components/Buttons.tsx'
+import { useRef } from 'react'
+import type { ChangeEvent } from 'react'
 
 export const Route = createFileRoute('/profile')({
   component: ProfilePage,
@@ -43,6 +45,16 @@ function ProfilePage() {
     password: '',
     confirmPassword: '',
   })
+  const avatarUploadRef = useRef<HTMLInputElement>(null)
+
+  function handleAvatarUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+
+    if (!file) return
+
+    // TODO: call API to upload avatar
+    console.log(`Uploaded image ${file.name}`)
+  }
 
   function handleSave() {
     // TODO: call API to update profile
@@ -186,15 +198,19 @@ function ProfilePage() {
             />
             <div className="absolute bottom-3 left-3">
               <Button
-                onClick={() => {
-                  // TODO: open file picker to upload new avatar
-                  console.log('Edit profile picture')
-                }}
+                onClick={() => avatarUploadRef.current?.click()}
                 variant="normal"
                 fontSize="base"
               >
                 Edit <SquarePen size={16} />
               </Button>
+              <input
+                type="file"
+                className="hidden"
+                accept="image/*"
+                ref={avatarUploadRef}
+                onChange={handleAvatarUpload}
+              />
             </div>
           </div>
         </div>
