@@ -78,7 +78,7 @@ function ProfilePage() {
     }
   }
 
-  function getUserErrors(field: string): string | undefined {
+  function getUserErrors(field: keyof typeof user): string | undefined {
     switch (field) {
       case 'username':
       case 'role':
@@ -107,7 +107,7 @@ function ProfilePage() {
 
   function hasError(): boolean {
     for (const field in user) {
-      if (getUserErrors(field)) {
+      if (getUserErrors(field as keyof typeof user)) {
         return true
       }
     }
