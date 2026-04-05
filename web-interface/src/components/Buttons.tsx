@@ -8,7 +8,17 @@ const variantStyles = {
   disabled: 'bg-gray-200 text-gray-800',
 }
 
+const fontSizeStyles = {
+  xs: 'text-xs',
+  sm: 'text-sm',
+  base: 'text-base',
+  lg: 'text-lg',
+  xl: 'text-xl',
+};
+
+
 type ButtonVariant = keyof typeof variantStyles
+type ButtonFontSize = keyof typeof fontSizeStyles
 
 export function Button({
   children,
@@ -19,12 +29,12 @@ export function Button({
   children: ReactNode
   onClick: () => void
   variant: ButtonVariant
-  fontSize: 'xs' | 'sm' | 'base' | 'lg' | 'xl'
+  fontSize: ButtonFontSize
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1 text-${fontSize} rounded ${variantStyles[variant]}`}
+      className={`flex items-center gap-1.5 px-3 py-1 ${fontSizeStyles[fontSize]} rounded ${variantStyles[variant]}`}
       disabled={variant === 'disabled'}
     >
       {children}
