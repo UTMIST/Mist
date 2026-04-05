@@ -162,26 +162,26 @@ function JobCard({
   return (
     <Card>
       <CardHeader header={job.name}>
-        <Button
-          onClick={() => onStart(job.id)}
-          variant="success"
-          fontSize="xs"
-        >Start</Button>
+        <Button onClick={() => onStart(job.id)} variant="success" fontSize="xs">
+          Start
+        </Button>
         <Button
           onClick={() => onShutdown(job.id)}
           variant="warning"
           fontSize="xs"
-        >Shutdown</Button>
+        >
+          Shutdown
+        </Button>
         <Button
           onClick={() => onRestart(job.id)}
           variant="warning"
           fontSize="xs"
-        >Restart</Button>
-        <Button
-          onClick={() => onDelete(job.id)}
-          variant="danger"
-          fontSize="xs"
-        >Delete</Button>
+        >
+          Restart
+        </Button>
+        <Button onClick={() => onDelete(job.id)} variant="danger" fontSize="xs">
+          Delete
+        </Button>
       </CardHeader>
 
       {/* Info grid */}
