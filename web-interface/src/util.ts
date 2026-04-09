@@ -1,6 +1,8 @@
-type User = {
+export type User = {
   username: string
+  role: string
   profilePicture: string
+  email: string
 }
 
 export function getUser(): User {
@@ -10,6 +12,8 @@ export function getUser(): User {
   const user = {
     username: 'TheArchons',
     profilePicture: '/sample-avatar.png', // real avatars should probably be stored in a bucket
+    role: 'Software Developer',
+    email: 'thearchons@utmist.ca',
   }
 
   return user

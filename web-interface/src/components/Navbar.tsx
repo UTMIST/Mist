@@ -52,7 +52,7 @@ export default function Navbar() {
           ></img>
         </div>
         {dropdown && (
-          <div className="absolute top-full right-0 border rounded-b m-2 p-1 pr-3 pl-3 text-xl bg-white">
+          <div className="absolute top-full right-0 border rounded-b m-2 p-1 pr-3 pl-3 text-xl bg-white z-100">
             <ul>
               <li>
                 <Link
