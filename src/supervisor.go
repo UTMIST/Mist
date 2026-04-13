@@ -231,7 +231,7 @@ func (s *Supervisor) processJob(job Job) bool {
 		return false
 	}
 
-	containerID, err := s.dockerMgr.RunContainer(CPUImage, CPURuntime, volumeName)
+	containerID, err := s.dockerMgr.RunContainer(CPUImage, CPURuntime, volumeName, job.ID)
 	if err != nil {
 		s.log.Error("failed to run container for job", "job_id", job.ID, "error", err)
 		_ = s.dockerMgr.RemoveVolume(volumeName, true)
@@ -291,6 +291,17 @@ func (s *Supervisor) updateJobState(jobID string, state JobState) {
 	if err := s.redisClient.HSet(s.ctx, jobKey, "job_state", string(state)).Err(); err != nil {
 		s.log.Error("failed to update job state", "job_id", jobID, "error", err)
 	}
+}
+
+// GetContainerLogsForJob fetches logs from Docker for a job whose container is currently running.
+// The container is named with the job ID, so we use jobID directly to fetch logs.
+// Returns an error if the container does not exist or is not running.
+// Logs are not persisted; they are only available while the container is running.
+func (s *Supervisor) GetContainerLogsForJob(jobID string) ([]byte, error) {
+	if s.dockerMgr == nil {
+		return nil, fmt.Errorf("Docker not available")
+	}
+	return s.dockerMgr.GetContainerLogs(s.ctx, jobID, docker.LogOptions{})
 }
 
 func (s *Supervisor) ackMessage(messageID string) {

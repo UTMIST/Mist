@@ -1,8 +1,11 @@
 package docker
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
@@ -11,7 +14,11 @@ import (
 func setupMgr(t *testing.T) *DockerMgr {
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
-		t.Fatalf("Failed to create Docker client: %v", err)
+		t.Skipf("Docker not available: %v", err)
+	}
+	ctx := context.Background()
+	if _, err := cli.Ping(ctx); err != nil {
+		t.Skipf("Docker daemon not reachable: %v", err)
 	}
 	return NewDockerMgr(cli, 10, 100)
 }
@@ -93,7 +100,7 @@ func TestRunContainerCPU(t *testing.T) {
 		t.Fatalf("Failed to create volume %s: %v", volName, err)
 	}
 	defer mgr.RemoveVolume(volName, true)
-	containerID, err := mgr.RunContainer(imageName, runtimeName, volName)
+	containerID, err := mgr.RunContainer(imageName, runtimeName, volName, "test_run_cpu")
 	if err != nil {
 		t.Fatalf("Failed to start CPU container: %v", err)
 	}
@@ -113,7 +120,7 @@ func TestRemoveVolumeInUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create volume %s: %v", volName, err)
 	}
-	containerID, err := mgr.RunContainer(imageName, runtimeName, volName)
+	containerID, err := mgr.RunContainer(imageName, runtimeName, volName, "test_remove_vol_in_use")
 	if err != nil {
 		t.Fatalf("Failed to start container: %v", err)
 	}
@@ -148,7 +155,7 @@ func TestAttachNonexistentVolume(t *testing.T) {
 	mgr := setupMgr(t)
 	imageName, runtimeName := cpuImageAndRuntime(t, mgr)
 	volName := "nonexistent_volume_t6"
-	id, err := mgr.RunContainer(imageName, runtimeName, volName)
+	id, err := mgr.RunContainer(imageName, runtimeName, volName, "test_attach_nonexistent")
 	// If Docker auto-creates the volume, this may not error; check your policy
 	if id != "" && err != nil {
 		t.Errorf("Expected error when attaching nonexistent volume, but got id=%v, err=%v", id, err)
@@ -166,11 +173,11 @@ func TestTwoContainersSameVolume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create volume %s: %v", volName, err)
 	}
-	id1, err := mgr.RunContainer(imageName, runtimeName, volName)
+	id1, err := mgr.RunContainer(imageName, runtimeName, volName, "test_two_vol_1")
 	if err != nil {
 		t.Fatalf("Failed to start first container: %v", err)
 	}
-	id2, err := mgr.RunContainer(imageName, runtimeName, volName)
+	id2, err := mgr.RunContainer(imageName, runtimeName, volName, "test_two_vol_2")
 	if err != nil {
 		t.Fatalf("Failed to start second container: %v", err)
 	}
@@ -201,11 +208,11 @@ func TestTwoContainersSameVolumeConcurrent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create volume %s: %v", volName, err)
 	}
-	id1, err := mgr.RunContainer(imageName, runtimeName, volName)
+	id1, err := mgr.RunContainer(imageName, runtimeName, volName, "test_two_concurrent_1")
 	if err != nil {
 		t.Fatalf("Failed to start first container: %v", err)
 	}
-	id2, err2 := mgr.RunContainer(imageName, runtimeName, volName)
+	id2, err2 := mgr.RunContainer(imageName, runtimeName, volName, "test_two_concurrent_2")
 	if err2 != nil {
 		t.Fatalf("Failed to start second container: %v", err2)
 	}
@@ -259,6 +266,41 @@ func TestVolumeLimit(t *testing.T) {
 	// If your implementation doesn't enforce a limit, this test will fail
 }
 
+// TestGetContainerLogs verifies that container logs can be fetched.
+func TestGetContainerLogs(t *testing.T) {
+	mgr := setupMgr(t)
+	imageName, runtimeName := cpuImageAndRuntime(t, mgr)
+	volName := "test_volume_logs"
+	_, err := mgr.CreateVolume(volName)
+	if err != nil {
+		t.Fatalf("Failed to create volume %s: %v", volName, err)
+	}
+	defer mgr.RemoveVolume(volName, true)
+
+	containerName := "test_get_logs"
+	containerID, err := mgr.RunContainer(imageName, runtimeName, volName, containerName)
+	if err != nil {
+		t.Fatalf("Failed to start container: %v", err)
+	}
+	defer func() {
+		_ = mgr.StopContainer(containerID)
+		_ = mgr.RemoveContainer(containerID)
+	}()
+
+	// Give container time to start and produce output
+	time.Sleep(500 * time.Millisecond)
+
+	ctx := context.Background()
+	logs, err := mgr.GetContainerLogs(ctx, containerName, LogOptions{})
+	if err != nil {
+		t.Fatalf("GetContainerLogs failed: %v", err)
+	}
+	if !strings.Contains(string(logs), "hello-from-container") {
+		t.Errorf("expected logs to contain 'hello-from-container', got: %q", string(logs))
+	}
+	t.Logf("container logs:\n%s", string(logs))
+}
+
 // Set a limit of 10 containers (should fail on 11th if you enforce a limit)
 func TestContainerLimit(t *testing.T) {
 	mgr := setupMgr(t)
@@ -271,13 +313,14 @@ func TestContainerLimit(t *testing.T) {
 	ids := []string{}
 	limit := 10
 	for i := 0; i < limit; i++ {
-		id, err := mgr.RunContainer(imageName, runtimeName, volName)
+		name := "test_limit_" + fmt.Sprint(i)
+		id, err := mgr.RunContainer(imageName, runtimeName, volName, name)
 		if err != nil {
 			t.Fatalf("Failed to start container %d: %v", i, err)
 		}
 		ids = append(ids, id)
 	}
-	_, err = mgr.RunContainer(imageName, runtimeName, volName)
+	_, err = mgr.RunContainer(imageName, runtimeName, volName, "test_limit_overflow")
 	if err == nil {
 		t.Errorf("Container limit not enforced")
 	} else {

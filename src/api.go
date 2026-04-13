@@ -26,6 +26,7 @@ type App struct {
 	wg             sync.WaitGroup
 	log            *slog.Logger
 	statusRegistry *StatusRegistry
+	authToken      string // if set, Bearer token required for protected endpoints
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
@@ -36,6 +37,8 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
 	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log)
 
+	authToken := os.Getenv("AUTH_TOKEN")
+
 	mux := http.NewServeMux()
 	a := &App{
 		redisClient:    client,
@@ -44,12 +47,14 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 		httpServer:     &http.Server{Addr: ":3000", Handler: mux},
 		log:            log,
 		statusRegistry: statusRegistry,
+		authToken:      authToken,
 	}
 
 	mux.HandleFunc("/auth/login", a.login)
 	mux.HandleFunc("/auth/refresh", a.refresh)
 	mux.HandleFunc("/jobs", a.handleJobs)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
+	mux.HandleFunc("/jobs/logs/", a.requireAuth(a.getJobLogs))
 	mux.HandleFunc("/supervisors/status", a.getSupervisorStatus)
 	mux.HandleFunc("/supervisors/status/", a.getSupervisorStatusByID)
 	mux.HandleFunc("/supervisors", a.getAllSupervisors)
@@ -294,6 +299,62 @@ func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
 		a.log.Error("failed to encode supervisor status response", "error", err)
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
+	}
+}
+
+// requireAuth wraps a handler and enforces Bearer token authentication.
+// If AUTH_TOKEN is not set, returns 503 (logs feature not configured).
+// If Authorization header is missing or invalid, returns 401.
+func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.authToken == "" {
+			a.log.Warn("job logs requested but AUTH_TOKEN not configured")
+			http.Error(w, "Logs require authentication to be configured", http.StatusServiceUnavailable)
+			return
+		}
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+		const prefix = "Bearer "
+		if !strings.HasPrefix(auth, prefix) || strings.TrimSpace(strings.TrimPrefix(auth, prefix)) != a.authToken {
+			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (a *App) getJobLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/jobs/logs/")
+	jobID := strings.Trim(path, "/")
+	if jobID == "" {
+		jobID = r.URL.Query().Get("id")
+	}
+	if jobID == "" {
+		http.Error(w, "Job ID is required", http.StatusBadRequest)
+		return
+	}
+
+	a.log.Info("getJobLogs handler accessed", "job_id", jobID, "remote_address", r.RemoteAddr)
+
+	logs, err := a.supervisor.GetContainerLogsForJob(jobID)
+	if err != nil {
+		a.log.Error("failed to get job logs", "job_id", jobID, "error", err)
+		http.Error(w, fmt.Sprintf("Logs not available for job: %s (container must be running)", jobID), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(logs); err != nil {
+		a.log.Error("failed to write job logs response", "job_id", jobID, "error", err)
 	}
 }
 
