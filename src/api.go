@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	log2 "mist/multilogger"
@@ -15,7 +14,12 @@ import (
 	"syscall"
 	"time"
 
+	"crypto/rand"
+	"encoding/hex"
+	"html/template"
+
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type App struct {
@@ -26,15 +30,43 @@ type App struct {
 	wg             sync.WaitGroup
 	log            *slog.Logger
 	statusRegistry *StatusRegistry
+	oauthServer    *OAuthServer
+	userStore      UserStore
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	scheduler := NewScheduler(redisAddr, log)
 	statusRegistry := NewStatusRegistry(client, log)
+	userStore := NewRedisUserStore(client)
+
+	ctx := context.Background()
+	_, err := userStore.GetByUsername(ctx, "admin")
+	if err != nil {
+		// Create admin user if not exists
+		// TODO: REMOVE THIS
+		hash, _ := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
+		admin := &User{
+			ID:           "admin",
+			Username:     "admin",
+			PasswordHash: string(hash),
+			Role:         "admin",
+		}
+		if err := userStore.Create(ctx, admin); err != nil {
+			log.Error("failed to seed admin user", "err", err)
+		} else {
+			log.Info("seeded admin user")
+		}
+	}
 
 	consumerID := fmt.Sprintf("worker_%d", os.Getpid())
 	supervisor := NewSupervisor(redisAddr, consumerID, gpuType, log)
+
+	oauthServer, err := NewOAuthServer(redisAddr, client, log, userStore)
+	if err != nil {
+		log.Error("failed to initialize oauth server", "err", err)
+		// For now, we don't exit, but we should probably handle this better
+	}
 
 	mux := http.NewServeMux()
 	a := &App{
@@ -44,20 +76,94 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 		httpServer:     &http.Server{Addr: ":3000", Handler: mux},
 		log:            log,
 		statusRegistry: statusRegistry,
+		oauthServer:    oauthServer,
+		userStore:      userStore,
 	}
 
-	mux.HandleFunc("/auth/login", a.login)
+	mux.HandleFunc("/auth/login", a.handleLogin)
 	mux.HandleFunc("/auth/refresh", a.refresh)
-	mux.HandleFunc("/jobs", a.handleJobs)
-	mux.HandleFunc("/jobs/status", a.getJobStatus)
-	mux.HandleFunc("/supervisors/status", a.getSupervisorStatus)
-	mux.HandleFunc("/supervisors/status/", a.getSupervisorStatusByID)
-	mux.HandleFunc("/supervisors", a.getAllSupervisors)
+	mux.HandleFunc("/jobs", a.requireAuth(a.handleJobs))
+	mux.HandleFunc("/jobs/status", a.requireAuth(a.getJobStatus))
+	mux.HandleFunc("/jobs/logs/", a.requireAuth(a.getJobLogs))
+	mux.HandleFunc("/supervisors/status", a.requireAuth(a.getSupervisorStatus))
+	mux.HandleFunc("/supervisors/status/", a.requireAuth(a.getSupervisorStatusByID))
+	mux.HandleFunc("/supervisors", a.requireAuth(a.getAllSupervisors))
+
+	// OAuth
+	mux.HandleFunc("/oauth/authorize", a.handleAuthorize)
+	mux.HandleFunc("/oauth/token", a.handleToken)
+	mux.HandleFunc("/oauth/callback", a.handleOAuthCallback)
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
 
 	return a
+}
+
+func (a *App) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "Code not found", http.StatusBadRequest)
+		return
+	}
+
+	tmpl := `
+	<!DOCTYPE html>
+	<html>
+	<body>
+		Copy this code into the cli: {{ .Code }}
+	</body>
+	</html>
+	`
+	t, _ := template.New("callback").Parse(tmpl)
+	t.Execute(w, map[string]string{"Code": code})
+}
+
+func (a *App) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("session_id")
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		_, err = a.redisClient.Get(r.Context(), "session:"+cookie.Value).Result()
+		if err != nil {
+			http.Error(w, "Unauthorized session", http.StatusUnauthorized)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+func (a *App) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("session_id")
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		username, err := a.redisClient.Get(r.Context(), "session:"+cookie.Value).Result()
+		if err != nil {
+			http.Error(w, "Unauthorized session", http.StatusUnauthorized)
+			return
+		}
+
+		user, err := a.userStore.GetByUsername(r.Context(), username)
+		if err != nil {
+			http.Error(w, "User not found", http.StatusUnauthorized)
+			return
+		}
+
+		if user.Role != "admin" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		next(w, r)
+	}
 }
 
 func (a *App) Start() error {
@@ -124,7 +230,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
 	}
-	app := NewApp("localhost:6379", "AMD", log)
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	gpuType := os.Getenv("GPU_TYPE")
+	if gpuType == "" {
+		gpuType = "CPU" // default CPU so local dev/smoke test can run container jobs
+	}
+	app := NewApp(redisAddr, gpuType, log)
 
 	if err := app.Start(); err != nil {
 		log.Error("failed to start app", "err", err)
@@ -145,26 +259,83 @@ func main() {
 	log.Info("all services stopped cleanly")
 }
 
-func (a *App) login(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	a.log.Info("login handler accessed", "remote_address", r.RemoteAddr)
-	val, err := a.redisClient.Get(ctx, "some:key").Result()
-	if errors.Is(err, redis.Nil) {
-		a.log.Info("redis key not found")
-		http.Error(w, "redis key not found", http.StatusNotFound)
+func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		// Render login form
+		tmpl := `
+		<!DOCTYPE html>
+		<html>
+		<head><title>Login</title></head>
+		<body>
+			<h2>Login</h2>
+			<form method="POST" action="/auth/login">
+				<input type="hidden" name="return_url" value="{{ .ReturnURL }}">
+				<label>Username: <input type="text" name="username"></label><br>
+				<label>Password: <input type="password" name="password"></label><br>
+				<button type="submit">Login</button>
+			</form>
+		</body>
+		</html>
+		`
+		t, _ := template.New("login").Parse(tmpl)
+		returnURL := r.URL.Query().Get("return_url")
+		t.Execute(w, map[string]string{"ReturnURL": returnURL})
 		return
 	}
-	if err != nil {
-		a.log.Error("redis error on login", "err", err)
-		http.Error(w, "redis error", http.StatusInternalServerError)
+
+	if r.Method == http.MethodPost {
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		returnURL := r.FormValue("return_url")
+
+		user, err := a.userStore.GetByUsername(r.Context(), username)
+		if err != nil || !a.userStore.VerifyPassword(user, password) {
+			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			return
+		}
+
+		// Generate session
+		b := make([]byte, 32)
+		rand.Read(b)
+		sessionID := hex.EncodeToString(b)
+
+		// Store session
+		a.redisClient.Set(r.Context(), "session:"+sessionID, user.ID, 24*time.Hour)
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session_id",
+			Value:    sessionID,
+			Path:     "/",
+			HttpOnly: true,
+			Expires:  time.Now().Add(24 * time.Hour),
+		})
+
+		if returnURL == "" {
+			returnURL = "/"
+		}
+		http.Redirect(w, r, returnURL, http.StatusFound)
 		return
 	}
-	a.log.Info("login success", "remote_address", r.RemoteAddr)
-	fmt.Fprintf(w, "login page; redis says: %q\n", val)
 }
 
 func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello, world!\n")
+}
+
+func (a *App) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+	err := a.oauthServer.Server.HandleAuthorizeRequest(w, r)
+	if err != nil {
+		a.log.Error("authorization request failed", "error", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+func (a *App) handleToken(w http.ResponseWriter, r *http.Request) {
+	err := a.oauthServer.Server.HandleTokenRequest(w, r)
+	if err != nil {
+		a.log.Error("token request failed", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 type CreateJobRequest struct {
@@ -294,6 +465,38 @@ func (a *App) getSupervisorStatusByID(w http.ResponseWriter, r *http.Request) {
 		a.log.Error("failed to encode supervisor status response", "error", err)
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
+	}
+}
+
+func (a *App) getJobLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/jobs/logs/")
+	jobID := strings.Trim(path, "/")
+	if jobID == "" {
+		jobID = r.URL.Query().Get("id")
+	}
+	if jobID == "" {
+		http.Error(w, "Job ID is required", http.StatusBadRequest)
+		return
+	}
+
+	a.log.Info("getJobLogs handler accessed", "job_id", jobID, "remote_address", r.RemoteAddr)
+
+	logs, err := a.supervisor.GetContainerLogsForJob(jobID)
+	if err != nil {
+		a.log.Error("failed to get job logs", "job_id", jobID, "error", err)
+		http.Error(w, fmt.Sprintf("Logs not available for job: %s (container must be running)", jobID), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(logs); err != nil {
+		a.log.Error("failed to write job logs response", "job_id", jobID, "error", err)
 	}
 }
 

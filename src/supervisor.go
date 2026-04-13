@@ -18,7 +18,7 @@ import (
 
 // CPUImage and CPURuntime are used when running CPU-only jobs (no GPU).
 const (
-	CPUImage  = "pytorch-cpu"
+	CPUImage   = "pytorch-cpu"
 	CPURuntime = "runc"
 )
 
@@ -152,9 +152,9 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 	}
 
 	if len(metadata) == 0 {
-    s.log.Error("job metadata not found", "job_id", jobID)
-    s.ackMessage(message.ID)
-    return
+		s.log.Error("job metadata not found", "job_id", jobID)
+		s.ackMessage(message.ID)
+		return
 	}
 
 	jobType := metadata["type"]
@@ -163,7 +163,7 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 
 	createdTime, _ := time.Parse(time.RFC3339, metadata["created"])
 	retries, _ := strconv.Atoi(metadata["retries"])
-	
+
 	job := Job{
 		ID:          jobID,
 		Type:        jobType,
@@ -231,18 +231,28 @@ func (s *Supervisor) processJob(job Job) bool {
 		return false
 	}
 
-	containerID, err := s.dockerMgr.RunContainer(CPUImage, CPURuntime, volumeName)
+	containerID, err := s.dockerMgr.RunContainer(CPUImage, CPURuntime, volumeName, job.ID)
 	if err != nil {
 		s.log.Error("failed to run container for job", "job_id", job.ID, "error", err)
 		_ = s.dockerMgr.RemoveVolume(volumeName, true)
 		return false
 	}
+	// Store container ID for logs API (lookup by ID is more reliable than by name)
+	jobKey := fmt.Sprintf("job:%s", job.ID)
+	s.redisClient.HSet(s.ctx, jobKey, "container_id", containerID)
 
-	// Run for a short time to simulate work, then clean up
-	time.Sleep(2 * time.Second)
+	// Run for a short time to simulate work, then clean up.
+	// 5s gives a window for the logs API to fetch output while container is running.
+	time.Sleep(5 * time.Second)
 
 	if err := s.dockerMgr.StopContainer(containerID); err != nil {
 		s.log.Error("failed to stop container", "job_id", job.ID, "container_id", containerID, "error", err)
+	}
+	// Fetch and cache logs before removal so logs API can serve them
+	if logs, err := s.dockerMgr.GetContainerLogs(s.ctx, containerID, docker.LogOptions{}); err == nil {
+		jobKey := fmt.Sprintf("job:%s", job.ID)
+		s.redisClient.HSet(s.ctx, jobKey, "logs", string(logs))
+		s.redisClient.Expire(s.ctx, jobKey, 24*time.Hour) // keep metadata + logs for 24h
 	}
 	if err := s.dockerMgr.RemoveContainer(containerID); err != nil {
 		s.log.Error("failed to remove container", "job_id", job.ID, "container_id", containerID, "error", err)
@@ -265,11 +275,10 @@ func (s *Supervisor) isCPUJob(job Job) bool {
 	}
 }
 
-
 func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 	event := map[string]interface{}{
-		"job_id":  jobID,
-		"state":  string(state),
+		"job_id":     jobID,
+		"state":      string(state),
 		"timestamp":  time.Now().Format(time.RFC3339),
 		"supervisor": s.consumerID,
 		"gpu_type":   s.gpuType,
@@ -285,12 +294,29 @@ func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 	}
 }
 
-
 func (s *Supervisor) updateJobState(jobID string, state JobState) {
 	jobKey := fmt.Sprintf("job:%s", jobID)
 	if err := s.redisClient.HSet(s.ctx, jobKey, "job_state", string(state)).Err(); err != nil {
 		s.log.Error("failed to update job state", "job_id", jobID, "error", err)
 	}
+}
+
+// GetContainerLogsForJob fetches logs for a job.
+// Serves from Redis cache if available (populated when container completes).
+// Otherwise fetches from Docker for running/stopped containers.
+func (s *Supervisor) GetContainerLogsForJob(jobID string) ([]byte, error) {
+	jobKey := fmt.Sprintf("job:%s", jobID)
+	if cached, err := s.redisClient.HGet(s.ctx, jobKey, "logs").Result(); err == nil {
+		return []byte(cached), nil
+	}
+	if s.dockerMgr == nil {
+		return nil, fmt.Errorf("Docker not available")
+	}
+	containerID, err := s.redisClient.HGet(s.ctx, jobKey, "container_id").Result()
+	if err == nil && containerID != "" {
+		return s.dockerMgr.GetContainerLogs(s.ctx, containerID, docker.LogOptions{})
+	}
+	return s.dockerMgr.GetContainerLogs(s.ctx, jobID, docker.LogOptions{})
 }
 
 func (s *Supervisor) ackMessage(messageID string) {

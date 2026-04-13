@@ -13,6 +13,10 @@ type JobStatusCmd struct {
 
 func (j *JobStatusCmd) Run(ctx *AppContext) error {
 	// Mock data - pull from API in real implementation
+	if err := ctx.CheckValidToken(); err != nil {
+		return err
+	}
+
 	jobs := []Job{{
 		ID:        "ID:1",
 		Name:      "docker_container_name_1",
