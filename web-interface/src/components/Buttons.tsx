@@ -33,7 +33,7 @@ export function Button({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1 ${fontSizeStyles[fontSize]} rounded ${variantStyles[variant]} hover:cursor-pointer`}
+      className={`flex items-center gap-1.5 px-3 py-1 ${fontSizeStyles[fontSize]} rounded ${variantStyles[variant]} ${variant === 'disabled' ? "cursor-not-allowed" : "cursor-pointer" }`}
       disabled={variant === 'disabled'}
     >
       {children}
