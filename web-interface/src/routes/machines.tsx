@@ -21,8 +21,7 @@ function loadMachines(): Machine[] {
       cpu: 'TT-Ascalon',
       jobs: [
         {
-          id: 'job-1',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -35,8 +34,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-2',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -49,8 +47,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-3',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -63,8 +60,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-4',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -77,8 +73,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-5',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -91,8 +86,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-6',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -105,8 +99,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-7',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -119,36 +112,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-8',
-          name: 'f3xkcd',
-          created: new Date('2026-03-01T22:32:00'),
-          accessed: new Date('2026-03-05T11:01:00'),
-          dockerImage: 'utmist/mpt-3.5-turbo',
-          usageHistory: [
-            generateSampleUsageData(),
-            generateSampleUsageData(),
-            generateSampleUsageData(),
-            generateSampleUsageData(),
-            generateSampleUsageData(),
-          ],
-        },
-        {
-          id: 'job-9',
-          name: 'f3xkcd',
-          created: new Date('2026-03-01T22:32:00'),
-          accessed: new Date('2026-03-05T11:01:00'),
-          dockerImage: 'utmist/mpt-3.5-turbo',
-          usageHistory: [
-            generateSampleUsageData(),
-            generateSampleUsageData(),
-            generateSampleUsageData(),
-            generateSampleUsageData(),
-            generateSampleUsageData(),
-          ],
-        },
-        {
-          id: 'job-10',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -204,8 +168,7 @@ function loadMachines(): Machine[] {
       cpu: 'TT-Ascalon',
       jobs: [
         {
-          id: 'job-1',
-          name: 'f3xkcd',
+          id: 'm4n5p6',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -218,8 +181,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-2',
-          name: 'f3xkcd',
+          id: 'x9y8z7',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -254,8 +216,7 @@ function loadMachines(): Machine[] {
       cpu: 'TT-Ascalon',
       jobs: [
         {
-          id: 'job-1',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -268,8 +229,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-2',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -304,8 +264,7 @@ function loadMachines(): Machine[] {
       cpu: 'TT-Ascalon',
       jobs: [
         {
-          id: 'job-1',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -318,8 +277,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-2',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -354,8 +312,7 @@ function loadMachines(): Machine[] {
       cpu: 'TT-Ascalon',
       jobs: [
         {
-          id: 'job-1',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -368,8 +325,7 @@ function loadMachines(): Machine[] {
           ],
         },
         {
-          id: 'job-2',
-          name: 'f3xkcd',
+          id: 'f3xkcd',
           created: new Date('2026-03-01T22:32:00'),
           accessed: new Date('2026-03-05T11:01:00'),
           dockerImage: 'utmist/mpt-3.5-turbo',
@@ -411,7 +367,7 @@ function MachineCard({
   onProvision: (machinedId: string) => void
 }) {
   return (
-    <Card>
+    <Card id={machine.id}>
       <CardHeader header={machine.id}>
         <Button
           onClick={() => onProvision(machine.id)}
@@ -457,7 +413,7 @@ function MachineCard({
                   {machine.jobs.map((job) => (
                     <tr className="border-b-gray-400 border-b">
                       <td className="text-sm py-1">
-                        <Link to="/jobs" className="text-accent underline">
+                        <Link to="/jobs" hash={job.id} className="text-accent underline">
                           {job.id}
                         </Link>
                       </td>

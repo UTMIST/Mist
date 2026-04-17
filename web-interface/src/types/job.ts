@@ -2,7 +2,6 @@ import type { BaseMachine } from '#/types/machine.ts'
 
 export type BaseJob = {
   id: string
-  name: string
   created: Date
   accessed: Date
   dockerImage: string

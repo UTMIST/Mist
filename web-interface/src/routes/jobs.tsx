@@ -13,8 +13,7 @@ export const Route = createFileRoute('/jobs')({
 function loadJobs(): Job[] {
   const jobs: Job[] = [
     {
-      id: 'job-1',
-      name: 'f3xkcd',
+      id: 'f3xkcd',
       created: new Date('2026-03-01T22:32:00'),
       accessed: new Date('2026-03-05T11:01:00'),
       machine: {
@@ -47,8 +46,7 @@ function loadJobs(): Job[] {
       ],
     },
     {
-      id: 'job-2',
-      name: 'f3xkcd',
+      id: 'a1b2c3',
       created: new Date('2026-03-01T22:32:00'),
       accessed: new Date('2026-03-05T11:01:00'),
       machine: {
@@ -81,12 +79,11 @@ function loadJobs(): Job[] {
       ],
     },
     {
-      id: 'job-3',
-      name: 'f3xkcd',
+      id: 'x9y8z7',
       created: new Date('2026-03-01T22:32:00'),
       accessed: new Date('2026-03-05T11:01:00'),
       machine: {
-        id: 'tenstorrent_1',
+        id: 'tenstorrent_3',
         gpu: 'TT-Blackhole',
         cpu: 'TT-Ascalon',
         diskUsage: '70GB/128GB (55%)',
@@ -115,12 +112,11 @@ function loadJobs(): Job[] {
       ],
     },
     {
-      id: 'job-4',
-      name: 'f3xkcd',
+      id: 'm4n5p6',
       created: new Date('2026-03-01T22:32:00'),
       accessed: new Date('2026-03-05T11:01:00'),
       machine: {
-        id: 'tenstorrent_1',
+        id: 'tenstorrent_3',
         gpu: 'TT-Blackhole',
         cpu: 'TT-Ascalon',
         diskUsage: '70GB/128GB (55%)',
@@ -184,8 +180,8 @@ function JobCard({
   onDelete,
 }: JobCardProps) {
   return (
-    <Card>
-      <CardHeader header={job.name}>
+    <Card id={job.id}>
+      <CardHeader header={job.id}>
         <Button onClick={() => onStart(job.id)} variant="success" fontSize="xs">
           Start
         </Button>
@@ -214,7 +210,7 @@ function JobCard({
           label="Created"
           value={format(job.created, 'yyyy-MM-dd hh:mm a')}
         />
-        <CardInfoField label="Machine" value={job.machine.id} link="#" />
+        <CardInfoField label="Machine" value={job.machine.id} link="/machines" hash={job.machine.id} />
         <CardInfoField label="Disk Usage" value={job.machine.diskUsage} />
         <CardInfoField
           label="Accessed"

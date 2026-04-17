@@ -5,16 +5,18 @@ export function CardInfoField({
   label,
   value,
   link,
+  hash
 }: {
   label: string
   value: string
   link?: string
+  hash?: string
 }) {
   return (
     <div>
       <div className="text-xs text-gray-500 font-medium">{label}</div>
       {link ? (
-        <Link to={link} className="text-sm text-accent underline">
+        <Link to={link} hash={hash} className="text-sm text-accent underline">
           {value}
         </Link>
       ) : (
@@ -42,6 +44,6 @@ export function CardHeader({
   )
 }
 
-export default function Card({ children }: { children: ReactNode }) {
-  return <div className="border border-gray-200 rounded-xl p-5">{children}</div>
+export default function Card({ children, id }: { children: ReactNode, id?: string }) {
+  return <div id={id} className="border border-gray-200 rounded-xl p-5">{children}</div>
 }
