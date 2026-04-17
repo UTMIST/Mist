@@ -1,12 +1,12 @@
-import type {BaseMachine} from "#/types/machine.ts";
+import type { BaseMachine } from '#/types/machine.ts'
 
 export type BaseJob = {
   id: string
   name: string
-  created: string
-  accessed: string
+  created: Date
+  accessed: Date
   dockerImage: string
-  usageHistory: UsageData[]
+  usageHistory: UsageData[] // the usage of the resources of the machine allocated to this specific job
 }
 
 export type UsageData = {

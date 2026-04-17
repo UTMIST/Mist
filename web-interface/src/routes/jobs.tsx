@@ -1,13 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import Card, { CardHeader, CardInfoField } from '#/components/Card.tsx'
-import { useState } from 'react'
 import { Button } from '#/components/Buttons.tsx'
 import Chart from '#/components/Chart.tsx'
-import type {Job, UsageData} from "#/types/job.ts";
+import type { Job, UsageData } from '#/types/job.ts'
+import { format } from 'date-fns'
 
 export const Route = createFileRoute('/jobs')({
   component: JobsPage,
-  loader: loadJobs
+  loader: loadJobs,
 })
 
 function loadJobs(): Job[] {
@@ -15,21 +15,27 @@ function loadJobs(): Job[] {
     {
       id: 'job-1',
       name: 'f3xkcd',
-      created: '2026-03-01 10:32 PM',
-      accessed: '2026-03-05 11:01 AM',
+      created: new Date('2026-03-01T22:32:00'),
+      accessed: new Date('2026-03-05T11:01:00'),
       machine: {
-        id: "tenstorrent_1",
-        gpu: "TT-Blackhole",
-        cpu: "TT-Ascalon",
-        jobs: [],
-        diskUsage: "70GB/128GB (55%)",
-        cpuUsage: "95%",
-        ramUsage: "16.7GB/32GB (52%)",
+        id: 'tenstorrent_1',
+        gpu: 'TT-Blackhole',
+        cpu: 'TT-Ascalon',
+        diskUsage: '70GB/128GB (55%)',
+        cpuUsage: '95%',
+        ramUsage: '16.7GB/32GB (52%)',
         network: {
-          down: "1.2 GB/s",
-          up: "340 MB/s"
+          down: '1.2 GB/s',
+          up: '340 MB/s',
         },
-        ip: "11.22.33.44"
+        ip: '11.22.33.44',
+        usageHistory: [
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+        ],
       },
       dockerImage: 'utmist/mpt-3.5-turbo',
       usageHistory: [
@@ -43,21 +49,27 @@ function loadJobs(): Job[] {
     {
       id: 'job-2',
       name: 'f3xkcd',
-      created: '2026-03-01 10:32 PM',
-      accessed: '2026-03-05 11:01 AM',
+      created: new Date('2026-03-01T22:32:00'),
+      accessed: new Date('2026-03-05T11:01:00'),
       machine: {
-        id: "tenstorrent_1",
-        gpu: "TT-Blackhole",
-        cpu: "TT-Ascalon",
-        jobs: [],
-        diskUsage: "70GB/128GB (55%)",
-        cpuUsage: "95%",
-        ramUsage: "16.7GB/32GB (52%)",
+        id: 'tenstorrent_1',
+        gpu: 'TT-Blackhole',
+        cpu: 'TT-Ascalon',
+        diskUsage: '70GB/128GB (55%)',
+        cpuUsage: '95%',
+        ramUsage: '16.7GB/32GB (52%)',
         network: {
-          down: "1.2 GB/s",
-          up: "340 MB/s"
+          down: '1.2 GB/s',
+          up: '340 MB/s',
         },
-        ip: "11.22.33.44"
+        ip: '11.22.33.44',
+        usageHistory: [
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+        ],
       },
       dockerImage: 'utmist/mpt-3.5-turbo',
       usageHistory: [
@@ -71,21 +83,27 @@ function loadJobs(): Job[] {
     {
       id: 'job-3',
       name: 'f3xkcd',
-      created: '2026-03-01 10:32 PM',
-      accessed: '2026-03-05 11:01 AM',
+      created: new Date('2026-03-01T22:32:00'),
+      accessed: new Date('2026-03-05T11:01:00'),
       machine: {
-        id: "tenstorrent_1",
-        gpu: "TT-Blackhole",
-        cpu: "TT-Ascalon",
-        jobs: [],
-        diskUsage: "70GB/128GB (55%)",
-        cpuUsage: "95%",
-        ramUsage: "16.7GB/32GB (52%)",
+        id: 'tenstorrent_1',
+        gpu: 'TT-Blackhole',
+        cpu: 'TT-Ascalon',
+        diskUsage: '70GB/128GB (55%)',
+        cpuUsage: '95%',
+        ramUsage: '16.7GB/32GB (52%)',
         network: {
-          down: "1.2 GB/s",
-          up: "340 MB/s"
+          down: '1.2 GB/s',
+          up: '340 MB/s',
         },
-        ip: "11.22.33.44"
+        ip: '11.22.33.44',
+        usageHistory: [
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+        ],
       },
       dockerImage: 'utmist/mpt-3.5-turbo',
       usageHistory: [
@@ -99,21 +117,27 @@ function loadJobs(): Job[] {
     {
       id: 'job-4',
       name: 'f3xkcd',
-      created: '2026-03-01 10:32 PM',
-      accessed: '2026-03-05 11:01 AM',
+      created: new Date('2026-03-01T22:32:00'),
+      accessed: new Date('2026-03-05T11:01:00'),
       machine: {
-        id: "tenstorrent_1",
-        gpu: "TT-Blackhole",
-        cpu: "TT-Ascalon",
-        jobs: [],
-        diskUsage: "70GB/128GB (55%)",
-        cpuUsage: "95%",
-        ramUsage: "16.7GB/32GB (52%)",
+        id: 'tenstorrent_1',
+        gpu: 'TT-Blackhole',
+        cpu: 'TT-Ascalon',
+        diskUsage: '70GB/128GB (55%)',
+        cpuUsage: '95%',
+        ramUsage: '16.7GB/32GB (52%)',
         network: {
-          down: "1.2 GB/s",
-          up: "340 MB/s"
+          down: '1.2 GB/s',
+          up: '340 MB/s',
         },
-        ip: "11.22.33.44"
+        ip: '11.22.33.44',
+        usageHistory: [
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+          generateSampleUsageData(),
+        ],
       },
       dockerImage: 'utmist/mpt-3.5-turbo',
       usageHistory: [
@@ -129,7 +153,7 @@ function loadJobs(): Job[] {
   return jobs
 }
 
-function generateSampleUsageData(): UsageData {
+export function generateSampleUsageData(): UsageData {
   const components = ['GPU', 'CPU', 'RAM']
 
   return {
@@ -159,14 +183,6 @@ function JobCard({
   onRestart,
   onDelete,
 }: JobCardProps) {
-  const [componentIndex, setComponentIndex] = useState(0)
-  const totalComponents = job.usageHistory.length
-
-  const prevComponent = () =>
-    setComponentIndex((i) => (i - 1 + totalComponents) % totalComponents)
-  const nextComponent = () =>
-    setComponentIndex((i) => (i + 1) % totalComponents)
-
   return (
     <Card>
       <CardHeader header={job.name}>
@@ -194,10 +210,16 @@ function JobCard({
 
       {/* Info grid */}
       <div className="grid grid-cols-3 gap-x-6 gap-y-3">
-        <CardInfoField label="Created" value={job.created} />
+        <CardInfoField
+          label="Created"
+          value={format(job.created, 'yyyy-MM-dd hh:mm a')}
+        />
         <CardInfoField label="Machine" value={job.machine.id} link="#" />
         <CardInfoField label="Disk Usage" value={job.machine.diskUsage} />
-        <CardInfoField label="Accessed" value={job.accessed} />
+        <CardInfoField
+          label="Accessed"
+          value={format(job.accessed, 'yyyy-MM-dd hh:mm a')}
+        />
         <CardInfoField label="GPU" value={job.machine.gpu} />
         <CardInfoField label="CPU Utilization" value={job.machine.cpuUsage} />
         <CardInfoField label="Docker Image" value={job.dockerImage} link="#" />
@@ -211,13 +233,7 @@ function JobCard({
       </div>
 
       {/* Component Usage Chart */}
-      <Chart
-        data={job.usageHistory[componentIndex]}
-        index={componentIndex}
-        numComponents={totalComponents}
-        onPrev={prevComponent}
-        onNext={nextComponent}
-      />
+      <Chart data={job.usageHistory} />
     </Card>
   )
 }
@@ -243,7 +259,7 @@ function handleDelete(id: string) {
 }
 
 function JobsPage() {
-  const jobs = Route.useLoaderData();
+  const jobs = Route.useLoaderData()
 
   return (
     <div className="px-16 py-8">
