@@ -364,7 +364,7 @@ function MachineCard({
   onProvision,
 }: {
   machine: Machine
-  onProvision: (machinedId: string) => void
+  onProvision: (machineId: string) => void
 }) {
   return (
     <Card id={machine.id}>
