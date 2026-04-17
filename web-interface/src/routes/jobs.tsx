@@ -210,7 +210,12 @@ function JobCard({
           label="Created"
           value={format(job.created, 'yyyy-MM-dd hh:mm a')}
         />
-        <CardInfoField label="Machine" value={job.machine.id} link="/machines" hash={job.machine.id} />
+        <CardInfoField
+          label="Machine"
+          value={job.machine.id}
+          link="/machines"
+          hash={job.machine.id}
+        />
         <CardInfoField label="Disk Usage" value={job.machine.diskUsage} />
         <CardInfoField
           label="Accessed"

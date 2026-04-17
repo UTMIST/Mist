@@ -413,7 +413,11 @@ function MachineCard({
                   {machine.jobs.map((job) => (
                     <tr key={job.id} className="border-b-gray-400 border-b">
                       <td className="text-sm py-1">
-                        <Link to="/jobs" hash={job.id} className="text-accent underline">
+                        <Link
+                          to="/jobs"
+                          hash={job.id}
+                          className="text-accent underline"
+                        >
                           {job.id}
                         </Link>
                       </td>
@@ -447,7 +451,11 @@ function RouteComponent() {
     <div className="px-16 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         {machines.map((machine) => (
-          <MachineCard key={machine.id} machine={machine} onProvision={handleProvision} />
+          <MachineCard
+            key={machine.id}
+            machine={machine}
+            onProvision={handleProvision}
+          />
         ))}
       </div>
     </div>
