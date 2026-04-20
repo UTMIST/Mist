@@ -18,6 +18,8 @@ function loadJobs(): Job[] {
       accessed: new Date('2026-03-05T11:01:00'),
       machine: {
         id: 'tenstorrent_1',
+        purpose: 'Inference',
+        isAvailable: true,
         gpu: 'TT-Blackhole',
         cpu: 'TT-Ascalon',
         diskUsage: '70GB/128GB (55%)',
@@ -51,6 +53,8 @@ function loadJobs(): Job[] {
       accessed: new Date('2026-03-05T11:01:00'),
       machine: {
         id: 'tenstorrent_1',
+        purpose: 'Inference',
+        isAvailable: true,
         gpu: 'TT-Blackhole',
         cpu: 'TT-Ascalon',
         diskUsage: '70GB/128GB (55%)',
@@ -84,6 +88,8 @@ function loadJobs(): Job[] {
       accessed: new Date('2026-03-05T11:01:00'),
       machine: {
         id: 'tenstorrent_3',
+        purpose: 'Inference',
+        isAvailable: true,
         gpu: 'TT-Blackhole',
         cpu: 'TT-Ascalon',
         diskUsage: '70GB/128GB (55%)',
@@ -117,6 +123,8 @@ function loadJobs(): Job[] {
       accessed: new Date('2026-03-05T11:01:00'),
       machine: {
         id: 'tenstorrent_3',
+        purpose: 'Inference',
+        isAvailable: true,
         gpu: 'TT-Blackhole',
         cpu: 'TT-Ascalon',
         diskUsage: '70GB/128GB (55%)',
@@ -181,7 +189,7 @@ function JobCard({
 }: JobCardProps) {
   return (
     <Card id={job.id}>
-      <CardHeader header={job.id}>
+      <CardHeader header={job.id} headerStyle="default">
         <Button onClick={() => onStart(job.id)} variant="success" fontSize="xs">
           Start
         </Button>

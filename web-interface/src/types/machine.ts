@@ -2,6 +2,8 @@ import type { BaseJob, UsageData } from '#/types/job.ts'
 
 export type BaseMachine = {
   id: string
+  isAvailable: boolean
+  purpose: string
   gpu: string
   cpu: string
   diskUsage: string
