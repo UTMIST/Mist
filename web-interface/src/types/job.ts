@@ -6,7 +6,7 @@ export type BaseJob = {
   created: Date
   accessed: Date
   dockerImage: string
-  usageHistory: UsageData[] // the usage of the resources of the machine allocated to this specific job
+  usageHistory: UsageData // the usage of the resources of the machine allocated to this specific job
 }
 
 export type Job = BaseJob & { machine: BaseMachine }

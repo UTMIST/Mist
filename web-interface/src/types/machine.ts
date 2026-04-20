@@ -10,7 +10,7 @@ export type BaseMachine = {
   cpuUsage: string
   network: { down: string; up: string }
   ip: string
-  usageHistory: UsageData[] // the usage of the total machine resources
+  usageHistory: UsageData // the usage of the total machine resources
 }
 
 export type Machine = BaseMachine & { jobs: BaseJob[] }

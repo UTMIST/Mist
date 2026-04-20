@@ -1,10 +1,11 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import type { UsageData } from '#/types/job.ts'
+import type {UsageData} from "#/types/usageData.ts";
 
-export default function Chart({ data }: { data: UsageData[] }) {
+export default function Chart({ data }: { data: UsageData }) {
+  const componentOrder = ["gpu", "cpu", "ram"] as const;
   const [index, setIndex] = useState(0)
-  const numComponents = data.length
+  const numComponents = componentOrder.length
 
   const handlePrev = () =>
     setIndex((i) => (i - 1 + numComponents) % numComponents)
@@ -20,8 +21,8 @@ export default function Chart({ data }: { data: UsageData[] }) {
   const chartW = width - padLeft - padRight
   const chartH = height - padTop - padBottom
 
-  const points = data[index].observations.map((val, i) => {
-    const x = padLeft + (i / (data[index].observations.length - 1)) * chartW
+  const points = data[componentOrder[index]].map((val, i) => {
+    const x = padLeft + (i / (data[componentOrder[index]].length - 1)) * chartW
     const y = padTop + chartH - (val / max) * chartH
     return `${x},${y}`
   })
@@ -54,7 +55,7 @@ export default function Chart({ data }: { data: UsageData[] }) {
   return (
     <div className="mt-4">
       <h3 className="text-center font-semibold text-sm mb-1">
-        {data[index].component}
+        {componentOrder[index].toUpperCase()}
       </h3>
       <div className="flex items-center gap-2">
         <button

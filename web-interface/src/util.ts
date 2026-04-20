@@ -1,7 +1,6 @@
 import type {Alert} from "#/types/alert.ts";
 import type {Job} from "#/types/job.ts";
 import type {Machine} from "#/types/machine.ts";
-import type {UsageData} from "#/types/usageData.ts";
 
 export type User = {
   username: string
@@ -24,19 +23,14 @@ export function logout() {
   console.log('logout called')
 }
 
-function generateSampleUsageData(): UsageData {
-  const components = ['GPU', 'CPU', 'RAM']
-
-  return {
-    component: components[Math.floor(Math.random() * components.length)], // of course these should be ordered, but this is sample data. When we use the real Grafana data we will throw this out anyway.
-    observations: Array.from({ length: 25 }, (_, i) => {
+function generateSampleUsageData(): number[] {
+  return Array.from({ length: 25 }, (_, i) => {
       if (i < 6) return 5 + Math.random() * 10
       if (i < 10) return 10 + Math.random() * 20
       if (i < 14) return 50 + Math.random() * 45
       if (i < 18) return 70 + Math.random() * 25
       return 30 + Math.random() * 30
-    }),
-  }
+    })
 }
 
 type SampleData = {
@@ -61,13 +55,11 @@ export function generateSampleData(): SampleData {
         up: '340 MB/s',
       },
       ip: '11.22.33.44',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
     {
       id: 'tenstorrent_2',
@@ -82,13 +74,11 @@ export function generateSampleData(): SampleData {
         up: '32 MB/s',
       },
       ip: '11.22.33.45',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
     {
       id: 'tenstorrent_3',
@@ -103,13 +93,11 @@ export function generateSampleData(): SampleData {
         up: '340 MB/s',
       },
       ip: '11.22.33.44',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
     {
       id: 'tenstorrent_4',
@@ -124,13 +112,11 @@ export function generateSampleData(): SampleData {
         up: '340 MB/s',
       },
       ip: '11.22.33.44',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
     {
       id: 'tenstorrent_5',
@@ -145,13 +131,11 @@ export function generateSampleData(): SampleData {
         up: '340 MB/s',
       },
       ip: '11.22.33.44',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
     {
       id: 'tenstorrent_6',
@@ -166,13 +150,11 @@ export function generateSampleData(): SampleData {
         up: '340 MB/s',
       },
       ip: '11.22.33.44',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
   ]
 
@@ -183,13 +165,11 @@ export function generateSampleData(): SampleData {
       accessed: new Date('2026-03-05T11:01:00'),
       machine: machines[0],
       dockerImage: 'utmist/mpt-3.5-turbo',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
     {
       id: 'a1b2c3',
@@ -197,13 +177,11 @@ export function generateSampleData(): SampleData {
       accessed: new Date('2026-03-05T11:01:00'),
       machine: machines[0],
       dockerImage: 'utmist/mpt-3.5-turbo',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
     {
       id: 'x9y8z7',
@@ -211,13 +189,11 @@ export function generateSampleData(): SampleData {
       accessed: new Date('2026-03-05T11:01:00'),
       machine: machines[2],
       dockerImage: 'utmist/mpt-3.5-turbo',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
     {
       id: 'm4n5p6',
@@ -225,13 +201,11 @@ export function generateSampleData(): SampleData {
       accessed: new Date('2026-03-05T11:01:00'),
       machine: machines[2],
       dockerImage: 'utmist/mpt-3.5-turbo',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
+      usageHistory: {
+        gpu: generateSampleUsageData(),
+        cpu: generateSampleUsageData(),
+        ram: generateSampleUsageData()
+      },
     },
   ]
 
@@ -247,15 +221,15 @@ export function generateSampleData(): SampleData {
 
   const alerts: Alert[] = [
     {
-      message: "A4000_3 current down for maintenance. Expect maintenance until 2026-05-06 11:00pm",
+      message: "A4000_3 is currently down for maintenance. Expect maintenance until 2026-05-06 11:00pm",
       severity: "high"
     },
     {
-      message: "A4000_3 current down for maintenance. Expect maintenance until 2026-05-06 11:00pm",
+      message: "A4000_4 scheduled for downtime from 2026-03-15 11:00pm to 2026-03-16 6:00am",
       severity: "medium"
     },
     {
-      message: "A4000_3 current down for maintenance. Expect maintenance until 2026-05-06 11:00pm",
+      message: "Tenstorrent_1's maintenance has been completed",
       severity: "low"
     },
   ]
