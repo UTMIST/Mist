@@ -14,8 +14,7 @@ const fontSizeStyles = {
   base: 'text-base',
   lg: 'text-lg',
   xl: 'text-xl',
-};
-
+}
 
 type ButtonVariant = keyof typeof variantStyles
 type ButtonFontSize = keyof typeof fontSizeStyles
@@ -34,7 +33,7 @@ export function Button({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1 ${fontSizeStyles[fontSize]} rounded ${variantStyles[variant]}`}
+      className={`flex items-center gap-1.5 px-3 py-1 ${fontSizeStyles[fontSize]} rounded ${variantStyles[variant]} ${variant === 'disabled' ? 'cursor-not-allowed' : 'cursor-pointer'}`}
       disabled={variant === 'disabled'}
     >
       {children}

@@ -1,19 +1,15 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import type { UsageData } from '#/routes/jobs.tsx'
+import { useState } from 'react'
+import type { UsageData } from '#/types/job.ts'
 
-export default function Chart({
-  data,
-  index,
-  numComponents,
-  onPrev,
-  onNext,
-}: {
-  data: UsageData
-  index: number
-  numComponents: number
-  onPrev: () => void
-  onNext: () => void
-}) {
+export default function Chart({ data }: { data: UsageData[] }) {
+  const [index, setIndex] = useState(0)
+  const numComponents = data.length
+
+  const handlePrev = () =>
+    setIndex((i) => (i - 1 + numComponents) % numComponents)
+  const handleNext = () => setIndex((i) => (i + 1) % numComponents)
+
   const max = 100
   const width = 600
   const height = 180
@@ -24,8 +20,8 @@ export default function Chart({
   const chartW = width - padLeft - padRight
   const chartH = height - padTop - padBottom
 
-  const points = data.observations.map((val, i) => {
-    const x = padLeft + (i / (data.observations.length - 1)) * chartW
+  const points = data[index].observations.map((val, i) => {
+    const x = padLeft + (i / (data[index].observations.length - 1)) * chartW
     const y = padTop + chartH - (val / max) * chartH
     return `${x},${y}`
   })
@@ -58,11 +54,11 @@ export default function Chart({
   return (
     <div className="mt-4">
       <h3 className="text-center font-semibold text-sm mb-1">
-        {data.component}
+        {data[index].component}
       </h3>
       <div className="flex items-center gap-2">
         <button
-          onClick={onPrev}
+          onClick={handlePrev}
           className="text-gray-400 hover:text-main p-1"
           aria-label="Previous Component"
         >
@@ -121,7 +117,7 @@ export default function Chart({
           />
         </svg>
         <button
-          onClick={onNext}
+          onClick={handleNext}
           className="text-gray-400 hover:text-main p-1"
           aria-label="Next Component"
         >
