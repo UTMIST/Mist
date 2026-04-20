@@ -2,8 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import Card, { CardHeader, CardInfoField } from '#/components/Card.tsx'
 import { Button } from '#/components/Buttons.tsx'
 import Chart from '#/components/Chart.tsx'
-import type { Job, UsageData } from '#/types/job.ts'
+import type { Job } from '#/types/job.ts'
 import { format } from 'date-fns'
+import {generateSampleData} from "#/util.ts";
 
 export const Route = createFileRoute('/jobs')({
   component: JobsPage,
@@ -11,157 +12,9 @@ export const Route = createFileRoute('/jobs')({
 })
 
 function loadJobs(): Job[] {
-  const jobs: Job[] = [
-    {
-      id: 'f3xkcd',
-      created: new Date('2026-03-01T22:32:00'),
-      accessed: new Date('2026-03-05T11:01:00'),
-      machine: {
-        id: 'tenstorrent_1',
-        gpu: 'TT-Blackhole',
-        cpu: 'TT-Ascalon',
-        diskUsage: '70GB/128GB (55%)',
-        cpuUsage: '95%',
-        ramUsage: '16.7GB/32GB (52%)',
-        network: {
-          down: '1.2 GB/s',
-          up: '340 MB/s',
-        },
-        ip: '11.22.33.44',
-        usageHistory: [
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-        ],
-      },
-      dockerImage: 'utmist/mpt-3.5-turbo',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
-    },
-    {
-      id: 'a1b2c3',
-      created: new Date('2026-03-01T22:32:00'),
-      accessed: new Date('2026-03-05T11:01:00'),
-      machine: {
-        id: 'tenstorrent_1',
-        gpu: 'TT-Blackhole',
-        cpu: 'TT-Ascalon',
-        diskUsage: '70GB/128GB (55%)',
-        cpuUsage: '95%',
-        ramUsage: '16.7GB/32GB (52%)',
-        network: {
-          down: '1.2 GB/s',
-          up: '340 MB/s',
-        },
-        ip: '11.22.33.44',
-        usageHistory: [
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-        ],
-      },
-      dockerImage: 'utmist/mpt-3.5-turbo',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
-    },
-    {
-      id: 'x9y8z7',
-      created: new Date('2026-03-01T22:32:00'),
-      accessed: new Date('2026-03-05T11:01:00'),
-      machine: {
-        id: 'tenstorrent_3',
-        gpu: 'TT-Blackhole',
-        cpu: 'TT-Ascalon',
-        diskUsage: '70GB/128GB (55%)',
-        cpuUsage: '95%',
-        ramUsage: '16.7GB/32GB (52%)',
-        network: {
-          down: '1.2 GB/s',
-          up: '340 MB/s',
-        },
-        ip: '11.22.33.44',
-        usageHistory: [
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-        ],
-      },
-      dockerImage: 'utmist/mpt-3.5-turbo',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
-    },
-    {
-      id: 'm4n5p6',
-      created: new Date('2026-03-01T22:32:00'),
-      accessed: new Date('2026-03-05T11:01:00'),
-      machine: {
-        id: 'tenstorrent_3',
-        gpu: 'TT-Blackhole',
-        cpu: 'TT-Ascalon',
-        diskUsage: '70GB/128GB (55%)',
-        cpuUsage: '95%',
-        ramUsage: '16.7GB/32GB (52%)',
-        network: {
-          down: '1.2 GB/s',
-          up: '340 MB/s',
-        },
-        ip: '11.22.33.44',
-        usageHistory: [
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-          generateSampleUsageData(),
-        ],
-      },
-      dockerImage: 'utmist/mpt-3.5-turbo',
-      usageHistory: [
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-        generateSampleUsageData(),
-      ],
-    },
-  ]
+  const data = generateSampleData()
 
-  return jobs
-}
-
-export function generateSampleUsageData(): UsageData {
-  const components = ['GPU', 'CPU', 'RAM']
-
-  return {
-    component: components[Math.floor(Math.random() * components.length)], // of course these should be ordered, but this is sample data. When we use the real Grafana data we will throw this out anyway.
-    observations: Array.from({ length: 25 }, (_, i) => {
-      if (i < 6) return 5 + Math.random() * 10
-      if (i < 10) return 10 + Math.random() * 20
-      if (i < 14) return 50 + Math.random() * 45
-      if (i < 18) return 70 + Math.random() * 25
-      return 30 + Math.random() * 30
-    }),
-  }
+  return data.jobs
 }
 
 type JobCardProps = {
