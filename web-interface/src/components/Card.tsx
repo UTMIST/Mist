@@ -26,16 +26,25 @@ export function CardInfoField({
   )
 }
 
+const headerStyles = {
+  default: '',
+  error: 'text-red-500',
+}
+
 export function CardHeader({
   header,
+  headerStyle,
   children,
 }: {
   header: string
   children?: ReactNode
+  headerStyle: keyof typeof headerStyles
 }) {
   return (
     <div className="flex items-center justify-between mb-4">
-      <h2 className="text-lg font-bold">{header}</h2>
+      <h2 className={`text-lg font-bold ${headerStyles[headerStyle]}`}>
+        {header}
+      </h2>
       <div className="flex gap-2">
         {/* Actions */}
         {children}
@@ -47,12 +56,14 @@ export function CardHeader({
 export default function Card({
   children,
   id,
+  className = "",
 }: {
   children: ReactNode
   id?: string
+  className?: string
 }) {
   return (
-    <div id={id} className="border border-gray-200 rounded-xl p-5">
+    <div id={id} className={`border border-gray-200 rounded-xl p-5 ${className}`}>
       {children}
     </div>
   )

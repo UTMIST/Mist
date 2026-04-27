@@ -34,7 +34,7 @@ function JobCard({
 }: JobCardProps) {
   return (
     <Card id={job.id}>
-      <CardHeader header={job.id}>
+      <CardHeader header={job.id} headerStyle="default">
         <Button onClick={() => onStart(job.id)} variant="success" fontSize="xs">
           Start
         </Button>

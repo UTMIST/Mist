@@ -27,7 +27,10 @@ function MachineCard({
 }) {
   return (
     <Card id={machine.id}>
-      <CardHeader header={machine.id}>
+      <CardHeader
+        header={machine.id}
+        headerStyle={machine.isAvailable ? 'default' : 'error'}
+      >
         <Button
           onClick={() => onProvision(machine.id)}
           variant="normal"
@@ -40,17 +43,18 @@ function MachineCard({
       {/* Info grid */}
       <div className="grid grid-cols-3">
         <div className="grid grid-rows-4 gap-y-3">
+          <CardInfoField label="Purpose" value={machine.purpose} />
           <CardInfoField label="GPU" value={machine.gpu} />
           <CardInfoField label="CPU" value={machine.cpu} />
           <CardInfoField
             label="Number of Jobs"
             value={machine.jobs.length.toString()}
           />
-          <CardInfoField label="Disk Usage" value={machine.diskUsage} />
         </div>
         <div className="grid grid-rows-4 gap-y-3">
           <CardInfoField label="CPU Utilization" value={machine.cpuUsage} />
           <CardInfoField label="RAM" value={machine.ramUsage} />
+          <CardInfoField label="Disk Usage" value={machine.diskUsage} />
           <CardInfoField
             label="Network I/O"
             value={`↓ ${machine.network.down}  ↑ ${machine.network.up}`}

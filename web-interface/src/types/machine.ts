@@ -3,6 +3,8 @@ import type { UsageData } from '#/types/usageData.ts'
 
 export type BaseMachine = {
   id: string
+  isAvailable: boolean
+  purpose: string
   gpu: string
   cpu: string
   diskUsage: string

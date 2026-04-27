@@ -44,6 +44,8 @@ export function generateSampleData(): SampleData {
   const machines: Machine[] = [
     {
       id: 'tenstorrent_1',
+      isAvailable: true,
+      purpose: 'Inference',
       gpu: 'TT-Blackhole',
       cpu: 'TT-Ascalon',
       jobs: [],
@@ -63,6 +65,8 @@ export function generateSampleData(): SampleData {
     },
     {
       id: 'tenstorrent_2',
+      isAvailable: true,
+      purpose: 'Inference',
       gpu: 'TT-Blackhole',
       cpu: 'TT-Ascalon',
       jobs: [],
@@ -82,6 +86,8 @@ export function generateSampleData(): SampleData {
     },
     {
       id: 'tenstorrent_3',
+      isAvailable: false,
+      purpose: 'Inference',
       gpu: 'TT-Blackhole',
       cpu: 'TT-Ascalon',
       jobs: [],
@@ -101,6 +107,8 @@ export function generateSampleData(): SampleData {
     },
     {
       id: 'tenstorrent_4',
+      isAvailable: false,
+      purpose: 'Training',
       gpu: 'TT-Blackhole',
       cpu: 'TT-Ascalon',
       jobs: [],
@@ -120,6 +128,8 @@ export function generateSampleData(): SampleData {
     },
     {
       id: 'tenstorrent_5',
+      isAvailable: true,
+      purpose: 'Training',
       gpu: 'TT-Blackhole',
       cpu: 'TT-Ascalon',
       jobs: [],
@@ -139,6 +149,8 @@ export function generateSampleData(): SampleData {
     },
     {
       id: 'tenstorrent_6',
+      isAvailable: false,
+      purpose: 'Inference',
       gpu: 'TT-Blackhole',
       cpu: 'TT-Ascalon',
       jobs: [],
