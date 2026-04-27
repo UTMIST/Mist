@@ -1,5 +1,5 @@
 import type { BaseMachine } from '#/types/machine.ts'
-import type {UsageData} from "#/types/usageData.ts";
+import type { UsageData } from '#/types/usageData.ts'
 
 export type BaseJob = {
   id: string

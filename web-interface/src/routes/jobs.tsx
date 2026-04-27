@@ -4,7 +4,7 @@ import { Button } from '#/components/Buttons.tsx'
 import Chart from '#/components/Chart.tsx'
 import type { Job } from '#/types/job.ts'
 import { format } from 'date-fns'
-import {generateSampleData} from "#/util.ts";
+import { generateSampleData } from '#/util.ts'
 
 export const Route = createFileRoute('/jobs')({
   component: JobsPage,

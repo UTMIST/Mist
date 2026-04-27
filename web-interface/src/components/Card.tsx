@@ -31,7 +31,7 @@ export function CardHeader({
   children,
 }: {
   header: string
-  children: ReactNode
+  children?: ReactNode
 }) {
   return (
     <div className="flex items-center justify-between mb-4">

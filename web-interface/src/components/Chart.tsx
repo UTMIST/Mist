@@ -1,9 +1,9 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import type {UsageData} from "#/types/usageData.ts";
+import type { UsageData } from '#/types/usageData.ts'
 
 export default function Chart({ data }: { data: UsageData }) {
-  const componentOrder = ["gpu", "cpu", "ram"] as const;
+  const componentOrder = ['gpu', 'cpu', 'ram'] as const
   const [index, setIndex] = useState(0)
   const numComponents = componentOrder.length
 

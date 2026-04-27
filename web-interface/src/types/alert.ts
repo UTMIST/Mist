@@ -1,4 +1,4 @@
 export type Alert = {
-  message: string,
-  severity: "low" | "medium" | "high"
+  message: string
+  severity: 'low' | 'medium' | 'high'
 }

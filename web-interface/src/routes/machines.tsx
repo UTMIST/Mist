@@ -4,7 +4,7 @@ import Card, { CardHeader, CardInfoField } from '#/components/Card.tsx'
 import { Button } from '#/components/Buttons.tsx'
 import Chart from '#/components/Chart.tsx'
 import { format } from 'date-fns'
-import {generateSampleData} from "#/util.ts";
+import { generateSampleData } from '#/util.ts'
 
 export const Route = createFileRoute('/machines')({
   component: RouteComponent,

@@ -1,6 +1,6 @@
-import type {Alert} from "#/types/alert.ts";
-import type {Job} from "#/types/job.ts";
-import type {Machine} from "#/types/machine.ts";
+import type { Alert } from '#/types/alert.ts'
+import type { Job } from '#/types/job.ts'
+import type { Machine } from '#/types/machine.ts'
 
 export type User = {
   username: string
@@ -25,23 +25,23 @@ export function logout() {
 
 function generateSampleUsageData(): number[] {
   return Array.from({ length: 25 }, (_, i) => {
-      if (i < 6) return 5 + Math.random() * 10
-      if (i < 10) return 10 + Math.random() * 20
-      if (i < 14) return 50 + Math.random() * 45
-      if (i < 18) return 70 + Math.random() * 25
-      return 30 + Math.random() * 30
-    })
+    if (i < 6) return 5 + Math.random() * 10
+    if (i < 10) return 10 + Math.random() * 20
+    if (i < 14) return 50 + Math.random() * 45
+    if (i < 18) return 70 + Math.random() * 25
+    return 30 + Math.random() * 30
+  })
 }
 
 type SampleData = {
-  jobs: Job[],
-  machines: Machine[],
-  alerts: Alert[],
+  jobs: Job[]
+  machines: Machine[]
+  alerts: Alert[]
   user: User
 }
 
 export function generateSampleData(): SampleData {
-  let machines: Machine[] = [
+  const machines: Machine[] = [
     {
       id: 'tenstorrent_1',
       gpu: 'TT-Blackhole',
@@ -58,7 +58,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
     {
@@ -77,7 +77,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
     {
@@ -96,7 +96,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
     {
@@ -115,7 +115,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
     {
@@ -134,7 +134,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
     {
@@ -153,7 +153,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
   ]
@@ -168,7 +168,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
     {
@@ -180,7 +180,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
     {
@@ -192,7 +192,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
     {
@@ -204,7 +204,7 @@ export function generateSampleData(): SampleData {
       usageHistory: {
         gpu: generateSampleUsageData(),
         cpu: generateSampleUsageData(),
-        ram: generateSampleUsageData()
+        ram: generateSampleUsageData(),
       },
     },
   ]
@@ -221,16 +221,18 @@ export function generateSampleData(): SampleData {
 
   const alerts: Alert[] = [
     {
-      message: "A4000_3 is currently down for maintenance. Expect maintenance until 2026-05-06 11:00pm",
-      severity: "high"
+      message:
+        'A4000_3 is currently down for maintenance. Expect maintenance until 2026-05-06 11:00pm',
+      severity: 'high',
     },
     {
-      message: "A4000_4 scheduled for downtime from 2026-03-15 11:00pm to 2026-03-16 6:00am",
-      severity: "medium"
+      message:
+        'A4000_4 scheduled for downtime from 2026-03-15 11:00pm to 2026-03-16 6:00am',
+      severity: 'medium',
     },
     {
       message: "Tenstorrent_1's maintenance has been completed",
-      severity: "low"
+      severity: 'low',
     },
   ]
 
@@ -238,6 +240,6 @@ export function generateSampleData(): SampleData {
     jobs: jobs,
     machines: machines,
     user: user,
-    alerts: alerts
+    alerts: alerts,
   }
 }
