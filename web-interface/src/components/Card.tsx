@@ -56,14 +56,17 @@ export function CardHeader({
 export default function Card({
   children,
   id,
-  className = "",
+  className = '',
 }: {
   children: ReactNode
   id?: string
   className?: string
 }) {
   return (
-    <div id={id} className={`border border-gray-200 rounded-xl p-5 ${className}`}>
+    <div
+      id={id}
+      className={`border border-gray-200 rounded-xl p-5 ${className}`}
+    >
       {children}
     </div>
   )
