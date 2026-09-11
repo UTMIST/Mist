@@ -26,6 +26,9 @@ type App struct {
 	wg             sync.WaitGroup
 	log            *slog.Logger
 	statusRegistry *StatusRegistry
+	gpuMu          sync.Mutex
+	gpuChecked     time.Time
+	gpuInfo        map[string]interface{}
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
@@ -53,6 +56,15 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 	mux.HandleFunc("/supervisors/status", a.getSupervisorStatus)
 	mux.HandleFunc("/supervisors/status/", a.getSupervisorStatusByID)
 	mux.HandleFunc("/supervisors", a.getAllSupervisors)
+	mux.HandleFunc("/hardware", a.getHardware)
+	root := http.NewServeMux()
+	root.Handle("/api/", http.StripPrefix("/api", mux))
+	if webDir := os.Getenv("MIST_WEB_DIR"); webDir != "" {
+		root.Handle("/", spaHandler(webDir))
+	} else {
+		root.Handle("/", mux)
+	}
+	a.httpServer.Handler = root
 
 	a.log.Info("new app initialized", "redis_address", redisAddr,
 		"gpu_type", gpuType, "http_address", a.httpServer.Addr)
@@ -124,7 +136,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to create logger: %v\n", err)
 		os.Exit(1)
 	}
-	app := NewApp("localhost:6379", "AMD", log)
+	app := NewApp(envOr("MIST_REDIS_ADDR", "localhost:6379"), envOr("MIST_GPU_TYPE", "CPU"), log)
 
 	if err := app.Start(); err != nil {
 		log.Error("failed to start app", "err", err)
@@ -178,6 +190,10 @@ type CreateJobResponse struct {
 }
 
 func (a *App) handleJobs(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		a.listJobs(w, r)
+		return
+	}
 	if r.Method == http.MethodPost {
 		a.createJob(w, r)
 		return
@@ -190,14 +206,27 @@ func (a *App) createJob(w http.ResponseWriter, r *http.Request) {
 	a.log.Info("createJob handler accessed", "remote_address", r.RemoteAddr)
 
 	var req CreateJobRequest
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		a.log.Error("failed to decode request body", "err", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if req.Type == "" {
-		http.Error(w, "Job type is required", http.StatusBadRequest)
+	if req.Type != "cuda_benchmark" || req.RequiredGPU != "NVIDIA" {
+		http.Error(w, "This local runner accepts cuda_benchmark jobs for NVIDIA", http.StatusBadRequest)
+		return
+	}
+	if a.supervisor.gpuType != "NVIDIA" {
+		http.Error(w, "No NVIDIA worker is configured", http.StatusServiceUnavailable)
+		return
+	}
+	if _, err := benchmarkSize(req.Payload); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	jobID, err := a.scheduler.Enqueue(req.Type, req.RequiredGPU, req.Payload)

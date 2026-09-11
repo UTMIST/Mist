@@ -91,6 +91,14 @@ func (sr *StatusRegistry) UpdateStatus(consumerID string, status SupervisorStatu
 
 func (sr *StatusRegistry) GetJobStatus(jobID string) (*Job, error) {
 	ctx := context.Background()
+	metadata, err := sr.redisClient.HGetAll(ctx, "job:"+jobID).Result()
+	if err != nil {
+		return nil, err
+	}
+	if len(metadata) > 0 {
+		return jobFromMetadata(jobID, metadata)
+	}
+	// Retain compatibility with status records created through UpdateJobStatus.
 	result := sr.redisClient.HGet(ctx, JobStatusKey, jobID)
 	if result.Err() != nil {
 		if errors.Is(result.Err(), redis.Nil) {

@@ -18,19 +18,19 @@ import (
 
 // CPUImage and CPURuntime are used when running CPU-only jobs (no GPU).
 const (
-	CPUImage  = "pytorch-cpu"
+	CPUImage   = "pytorch-cpu"
 	CPURuntime = "runc"
 )
 
 type Supervisor struct {
-	redisClient   *redis.Client
-	ctx           context.Context
-	cancel        context.CancelFunc
-	consumerID    string
-	gpuType       string
-	dockerMgr     *docker.DockerMgr
-	wg            sync.WaitGroup
-	log           *slog.Logger
+	redisClient *redis.Client
+	ctx         context.Context
+	cancel      context.CancelFunc
+	consumerID  string
+	gpuType     string
+	dockerMgr   *docker.DockerMgr
+	wg          sync.WaitGroup
+	log         *slog.Logger
 }
 
 func NewSupervisor(redisAddr, consumerID, gpuType string, log *slog.Logger) *Supervisor {
@@ -41,22 +41,26 @@ func NewSupervisor(redisAddr, consumerID, gpuType string, log *slog.Logger) *Sup
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var dockerMgr *docker.DockerMgr
-	dockerCli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		log.Warn("Docker client unavailable, containers will not be started", "error", err)
+	if envOr("MIST_EXECUTOR", "docker") == "local" {
+		log.Info("local GPU workload executor initialized")
 	} else {
-		dockerMgr = docker.NewDockerMgr(dockerCli, 10, 100)
-		log.Info("Docker client initialized for container execution")
+		dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		if err != nil {
+			log.Warn("Docker client unavailable, containers will not be started", "error", err)
+		} else {
+			dockerMgr = docker.NewDockerMgr(dockerCli, 10, 100)
+			log.Info("Docker client initialized for container execution")
+		}
 	}
 
 	return &Supervisor{
-		redisClient:  redisClient,
-		ctx:          ctx,
-		cancel:       cancel,
-		consumerID:   consumerID,
-		gpuType:      gpuType,
-		dockerMgr: dockerMgr,
-		log:          log,
+		redisClient: redisClient,
+		ctx:         ctx,
+		cancel:      cancel,
+		consumerID:  consumerID,
+		gpuType:     gpuType,
+		dockerMgr:   dockerMgr,
+		log:         log,
 	}
 }
 
@@ -75,7 +79,7 @@ func (s *Supervisor) Start() error {
 }
 
 func (s *Supervisor) createConsumerGroup() error {
-	result := s.redisClient.XGroupCreateMkStream(s.ctx, StreamName, ConsumerGroup, "$")
+	result := s.redisClient.XGroupCreateMkStream(s.ctx, StreamName, ConsumerGroup, "0")
 	if result.Err() != nil {
 		if result.Err().Error() != "BUSYGROUP Consumer Group name already exists" {
 			// in this case the group already exists
@@ -152,9 +156,9 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 	}
 
 	if len(metadata) == 0 {
-    s.log.Error("job metadata not found", "job_id", jobID)
-    s.ackMessage(message.ID)
-    return
+		s.log.Error("job metadata not found", "job_id", jobID)
+		s.ackMessage(message.ID)
+		return
 	}
 
 	jobType := metadata["type"]
@@ -163,7 +167,7 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 
 	createdTime, _ := time.Parse(time.RFC3339, metadata["created"])
 	retries, _ := strconv.Atoi(metadata["retries"])
-	
+
 	job := Job{
 		ID:          jobID,
 		Type:        jobType,
@@ -182,6 +186,8 @@ func (s *Supervisor) handleMessage(message redis.XMessage) {
 		return
 	}
 
+	s.redisClient.HSet(s.ctx, jobKey, "started", time.Now().Format(time.RFC3339Nano), "consumer_id", s.consumerID)
+	s.updateJobState(job.ID, JobStateInProgress)
 	s.emitJobEvent(job.ID, JobStateInProgress)
 
 	success := s.processJob(job)
@@ -213,15 +219,18 @@ func (s *Supervisor) canHandleJob(job Job) bool {
 // processJob executes the job by starting a container. For CPU jobs only (no GPU).
 // Returns true if the job completed successfully.
 func (s *Supervisor) processJob(job Job) bool {
-	// Only run CPU containers on this machine (no GPU support)
+	if job.Type == "cuda_benchmark" {
+		return s.processBenchmark(job)
+	}
+	// Unsupported GPU jobs must not be reported as completed work.
 	if !s.isCPUJob(job) {
-		s.log.Info("skipping container start for GPU job on CPU-only machine", "job_id", job.ID)
-		return true // Ack without running - let GPU supervisor handle
+		s.log.Error("unsupported GPU job", "job_id", job.ID)
+		return false
 	}
 
 	if s.dockerMgr == nil {
-		s.log.Warn("no container manager, simulating job success", "job_id", job.ID)
-		return true
+		s.log.Error("no container manager", "job_id", job.ID)
+		return false
 	}
 
 	volumeName := fmt.Sprintf("job_%s_data", job.ID)
@@ -265,11 +274,10 @@ func (s *Supervisor) isCPUJob(job Job) bool {
 	}
 }
 
-
 func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 	event := map[string]interface{}{
-		"job_id":  jobID,
-		"state":  string(state),
+		"job_id":     jobID,
+		"state":      string(state),
 		"timestamp":  time.Now().Format(time.RFC3339),
 		"supervisor": s.consumerID,
 		"gpu_type":   s.gpuType,
@@ -285,10 +293,11 @@ func (s *Supervisor) emitJobEvent(jobID string, state JobState) {
 	}
 }
 
-
 func (s *Supervisor) updateJobState(jobID string, state JobState) {
 	jobKey := fmt.Sprintf("job:%s", jobID)
-	if err := s.redisClient.HSet(s.ctx, jobKey, "job_state", string(state)).Err(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.redisClient.HSet(ctx, jobKey, "job_state", string(state)).Err(); err != nil {
 		s.log.Error("failed to update job state", "job_id", jobID, "error", err)
 	}
 }

@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import type { UsageData } from '#/routes/jobs.tsx'
+
+type UsageData = { component: string; observations: number[] }
 
 export default function Chart({
   data,
