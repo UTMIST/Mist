@@ -2,6 +2,9 @@
 
 Mist: UTMIST's Compute Platform
 
+For the proposed Kubernetes execution pilot and migration steps, see
+[docs/kubernetes-pilot.md](docs/kubernetes-pilot.md).
+
 ## Runtime requirements
 
 - Go 1.25.1 (also satisfies the backend's Go 1.24.6 requirement)
