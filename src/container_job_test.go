@@ -136,7 +136,7 @@ func TestRunContainerCPUIntegration(t *testing.T) {
 	}
 	defer mgr.RemoveVolume(volName, true)
 
-	containerID, err := mgr.RunContainer("pytorch-cpu", "runc", volName)
+	containerID, err := mgr.RunContainer("pytorch-cpu", "runc", volName, "test_run_cpu_integration")
 	if err != nil {
 		t.Fatalf("run container: %v", err)
 	}

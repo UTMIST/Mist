@@ -15,7 +15,9 @@ type JobSubmitCmd struct {
 func (j *JobSubmitCmd) Run(ctx *AppContext) error {
 	// mist job submit <script> <compute_type>
 
-	// TODO: ADD AUTH CHECK
+	if err := ctx.CheckValidToken(); err != nil {
+		return err
+	}
 
 	// TODO: MAKE THIS GLOBAL OR LOADED FROM ENV?
 	// Validate compute type
