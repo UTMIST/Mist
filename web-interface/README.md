@@ -1,3 +1,34 @@
+# Mist Jobs page
+
+The `/jobs` route submits real CPU/NVIDIA/Tenstorrent jobs and polls the
+Kubernetes-backed Mist API for status and logs. It supports cancellation,
+Python scripts, requested accelerator counts, and a small training check.
+Other pages retain their existing prototype behavior.
+
+Requires Node.js 22.16.0 or newer. Start the Mist API or its port-forward on
+`127.0.0.1:3000`, then:
+
+```bash
+npm install --package-lock=false
+npm run dev -- --host 127.0.0.1 --port 3001 --strictPort
+```
+
+Open http://127.0.0.1:3001/jobs. Vite proxies `/api` to port 3000;
+`MIST_API_PROXY` changes that target. For a production build, configure a
+same-origin `/api` reverse proxy or set `VITE_API_URL` at build time. Vite's
+development proxy does not ship in the static build.
+
+```bash
+npm test -- --run
+npm run build
+npx tsc --noEmit
+```
+
+The local pilot has one configured owner and no per-request authentication.
+See [deployment and live tests](../deploy/k3s/README.md#mist-api-cli-and-jobs-page).
+
+---
+
 Welcome to your new TanStack Start app!
 
 # Getting Started

@@ -1,0 +1,106 @@
+# One n300 board (two chips), reserved through Tenstorrent DRA/CDI.
+# Host driver, TT-Metal checkout, and Python environment remain host-managed.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-tenstorrent-checkpoints
+  namespace: mist
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: training-tenstorrent-board
+  namespace: mist
+spec:
+  spec:
+    devices:
+      requests:
+        - name: board
+          exactly:
+            deviceClassName: tenstorrent.com
+            count: 1
+            selectors:
+              - cel:
+                  expression: 'device.attributes["tenstorrent.com"].boardName == "n300" && device.attributes["tenstorrent.com"].chipCount == 2'
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: training-tenstorrent-dra
+  namespace: mist
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: utmist-tt
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      resourceClaims:
+        - name: board
+          resourceClaimTemplateName: training-tenstorrent-board
+      containers:
+        - name: train
+          image: ghcr.io/tenstorrent/tt-metal/tt-metalium/ubuntu-22.04-dev-amd64:6b765c0bc2b40ea02566d169d7b0ee902377ba04
+          imagePullPolicy: IfNotPresent
+          workingDir: /tmp
+          command: [/home/utmist-tt/TT/tt-metal/python_env/bin/python, -u, /scripts/training_smoke.py, tenstorrent, --expected-devices, "2", --output, /checkpoints/dra-single]
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: TT_METAL_HOME
+              value: /home/utmist-tt/TT/tt-metal
+            - name: PYTHONPATH
+              value: /home/utmist-tt/TT/tt-metal
+            - name: LD_LIBRARY_PATH
+              value: /home/utmist-tt/TT/tt-metal/build/lib
+            - name: TT_METAL_CACHE
+              value: /tmp/tt-metal-cache
+          resources:
+            claims:
+              - name: board
+            requests:
+              cpu: "2"
+              memory: 4Gi
+              hugepages-1Gi: 2Gi
+            limits:
+              cpu: "8"
+              memory: 8Gi
+              hugepages-1Gi: 2Gi
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+            - name: checkpoints
+              mountPath: /checkpoints
+            - name: metal
+              mountPath: /home/utmist-tt/TT/tt-metal
+              readOnly: true
+            - name: python
+              mountPath: /home/utmist-tt/.local/share/uv/python
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: training-smoke-script
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: training-tenstorrent-checkpoints
+        - name: metal
+          hostPath:
+            path: /home/utmist-tt/TT/tt-metal
+            type: Directory
+        - name: python
+          hostPath:
+            path: /home/utmist-tt/.local/share/uv/python
+            type: Directory

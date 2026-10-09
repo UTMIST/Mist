@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-03",
+  "test": "32x32 linear regression, 100 full-batch gradient steps",
+  "dataset": {
+    "seed": 42,
+    "training_samples": 128,
+    "validation_samples": 64
+  },
+  "acceptance": {
+    "maximum_final_to_initial_mse_ratio": 0.02,
+    "maximum_validation_mse": 0.0005,
+    "minimum_max_weight_change": 0.05,
+    "checkpoint_reload_mse_tolerance": 1e-07
+  },
+  "scope": "Independent device tests; no distributed training or performance benchmark. TT uses direct host devices, explicit TT-NN gradients, and a host-mounted Python/TT-Metal build; DRA scheduling and TT autograd are not tested.",
+  "tenstorrent_host_metal_commit": "80ec10ab611570a6818fdebc1398c8c9141fb9df",
+  "backends": {
+    "nvidia": {
+      "status": "passed",
+      "devices_tested": 2,
+      "node": "utmist-z1opa08",
+      "image_id": "docker.io/pytorch/pytorch@sha256:c8268a92a69bd500f8be0e665b2630ee006dadaf7bfbc24249141b15ff622755",
+      "container_started_at": "2026-10-03T18:26:07Z",
+      "container_finished_at": "2026-10-03T18:26:12Z",
+      "training_mse_initial": 0.3193739950656891,
+      "training_mse_final_range": [
+        2.018663423086764e-07,
+        2.018663423086764e-07
+      ],
+      "validation_mse_range": [
+        9.320668823420419e-07,
+        9.320668823420419e-07
+      ],
+      "checkpoint_files": 2,
+      "pvc": "training-nvidia-checkpoints",
+      "logs": "/home/utmist/k3s-training-results-2026-10-03/nvidia.log",
+      "checkpoint_archive": "/home/utmist/k3s-training-results-2026-10-03/nvidia-checkpoints.tar.gz"
+    },
+    "tenstorrent": {
+      "status": "passed",
+      "devices_tested": 8,
+      "node": "utmist-tt",
+      "image_id": "ghcr.io/tenstorrent/tt-metal/tt-metalium/ubuntu-22.04-dev-amd64@sha256:14621babd1f9d1c97cc3ee9528e180a31f30cec2d6114ca281daf1a9477c7a74",
+      "container_started_at": "2026-10-03T18:23:05Z",
+      "container_finished_at": "2026-10-03T18:23:24Z",
+      "training_mse_initial": 0.3193739652633667,
+      "training_mse_final_range": [
+        6.238709465833381e-05,
+        6.238709465833381e-05
+      ],
+      "validation_mse_range": [
+        0.00017507212760392576,
+        0.00017507212760392576
+      ],
+      "checkpoint_files": 8,
+      "pvc": "training-tenstorrent-checkpoints",
+      "logs": "/home/utmist/k3s-training-results-2026-10-03/tenstorrent.log",
+      "checkpoint_archive": "/home/utmist/k3s-training-results-2026-10-03/tenstorrent-checkpoints.tar.gz"
+    }
+  }
+}

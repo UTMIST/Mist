@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-nvidia-checkpoints
+  namespace: mist
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: training-nvidia
+  namespace: mist
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: utmist-z1opa08
+      restartPolicy: Never
+      containers:
+        - name: train
+          image: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+          command: [python, -u, /scripts/training_smoke.py, nvidia]
+          resources:
+            requests:
+              cpu: "2"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+              nvidia.com/gpu: "2"
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+            - name: checkpoints
+              mountPath: /checkpoints
+      volumes:
+        - name: script
+          configMap:
+            name: training-smoke-script
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: training-nvidia-checkpoints

@@ -4,7 +4,7 @@ This runbook records the configuration observed on **2026-09-28**, a repeatable
 setup and validation procedure, and the failure encountered during setup. Run
 commands from the Mist repository root unless noted. The
 [Kubernetes execution pilot](../../docs/kubernetes-pilot.md) describes the
-separate work needed to connect Mist's API to Kubernetes Jobs.
+implemented Kubernetes executor and remaining product work.
 
 ## What the pieces do
 
@@ -200,4 +200,79 @@ ss -ltn '( sport = :6443 or sport = :6444 )'
 The smoke test proves **one requested GPU worked through k3s on the test
 date**. It does not prove independent operation of both cards, GPU sharing,
 performance, reboot durability, multi-node behavior, or Mist API integration.
-See [the pilot plan](../../docs/kubernetes-pilot.md) for application work.
+The subsequent 2026-10-03 allocation/training and Mist API checks are recorded
+in [the current deployment guide](README.md#mist-api-cli-and-jobs-page).
+
+## QuietBox worker joined on 2026-10-03
+
+`utmist-tt` joined the existing `utmist-z1opa08` cluster as an agent. Both
+machines are on the `10.0.0.0/24` LAN as well as the same Tailscale network;
+the cluster uses their LAN addresses and the default Flannel VXLAN backend.
+The server was not changed to advertise its Tailscale address.
+
+| Node | Role | Kubernetes InternalIP | k3s version |
+| --- | --- | --- | --- |
+| `utmist-z1opa08` | server and NVIDIA worker | `10.0.0.175` | `v1.36.4+k3s1` |
+| `utmist-tt` | Tenstorrent host and k3s agent | `10.0.0.112` | `v1.36.4+k3s1` |
+
+QuietBox previously ran an independent `v1.36.5+k3s1` server with only a test
+Nginx workload, standard system pods, and no PVCs or user Jobs. Its server
+state was backed up to the root-only
+`/root/k3s-server-prejoin-2026-10-03.tar.gz` on QuietBox before uninstalling
+that server. The agent is enabled at boot; no `k3s.service` remains there.
+
+The agent's `/etc/rancher/k3s/config.yaml` points to
+`https://10.0.0.175:6443`, sets `node-ip: 10.0.0.112`, uses `enp201s0` for
+Flannel, and reads its persistent, root-only bootstrap token from
+`/etc/rancher/k3s/agent-token`. Do not commit or print that token. The
+installation token expires after one hour; the persistent token was installed
+and verified by restarting `k3s-agent`.
+
+QuietBox has UFW active with default deny for incoming and routed traffic.
+The join added inbound UDP `8472` and TCP `10250` from `10.0.0.175` on
+`enp201s0`, plus routed traffic between `10.42.1.0/24` on `cni0` and
+`10.42.0.0/24` on `flannel.1` in both directions. The NVIDIA server's UFW is
+inactive. A temporary BusyBox pod placed on QuietBox resolved
+`kubernetes.default.svc.cluster.local` and fetched the Nginx Service whose
+pod ran on the NVIDIA node; its log ended with `CROSS_NODE_OK`. The test pod
+was then removed.
+
+QuietBox exposes four `/dev/tenstorrent` devices and has the `tenstorrent`
+kernel module loaded. TT-Operator 0.3.0 now runs Fabric Manager 0.2.30 and
+DRA driver 0.0.59 with host driver management disabled. It advertises four
+n300 board reservations, each covering two chips, through the
+`tenstorrent.com` DeviceClass and ResourceSlices. Host KMD and firmware are
+retained. See [installation, allocation, and live tests](README.md#tenstorrent-allocation).
+
+Four nonprivileged training jobs passed concurrently, with device cgroups
+denying access to the other jobs' boards. A fifth job queued and then
+trained after automatic board release. The `mist` admission policy blocks
+the former privileged whole-machine setup from bypassing reservations.
+Distributed training and untrusted-tenant security remain separate work.
+
+To verify the current cluster from the server:
+
+```bash
+sudo k3s kubectl get nodes -o wide
+sudo k3s kubectl get pods -A -o wide
+sudo k3s kubectl describe node utmist-tt
+```
+
+The administrative kubeconfig copy at `/home/utmist/.kube/config` is owned by
+`utmist` and mode `0600` as of this join.
+
+
+## Mist application integration on 2026-10-03
+
+The deployed API now creates real CPU, NVIDIA and Tenstorrent Jobs. CLI and
+browser checks exercised submission, actual status/logs, cancellation, and
+TT board-count selection. Live acceptance checks covered distinct concurrent
+reservations, queuing and reuse, whole-device requests, exit-17 failure,
+deadline failure, persisted checkpoints, and cancellation freeing all boards.
+The API uses a dedicated namespaced service account, not the administrative
+kubeconfig used by local operators. See [API installation and live evidence](README.md#mist-api-cli-and-jobs-page).
+
+The user's `mist-api-forward` and `mist-web` systemd units expose only
+`127.0.0.1:3000` and `127.0.0.1:3001`. These user services require a user
+systemd session. Current authentication, credits, team quotas, shared storage
+and large/distributed model support remain outside the validated pilot.

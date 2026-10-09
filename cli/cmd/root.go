@@ -11,16 +11,19 @@ import (
 
 type Config struct {
 	AccessToken string `json:"access_token"`
+	APIBaseURL  string `json:"api_base_url,omitempty"`
 	// maybe APIBaseURL, etc.
 }
 
 type AppContext struct {
 	Config     *Config
 	HTTPClient *http.Client
+	APIBaseURL string
 }
 
 type Globals struct {
 	ConfigPath string `name:"config" help:"Path to config file" default:"${config_path}"`
+	APIURL     string `name:"api-url" env:"MIST_API_URL" help:"Mist API URL (default http://127.0.0.1:3000)"`
 }
 
 type CLI struct {
@@ -71,6 +74,7 @@ func Main() {
 		kctx.FatalIfErrorf(err)
 	}
 
+	appCtx.APIBaseURL = cli.APIURL
 	err := kctx.Run()
 	kctx.FatalIfErrorf(err)
 }

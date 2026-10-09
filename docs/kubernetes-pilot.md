@@ -1,71 +1,120 @@
 # Kubernetes execution pilot
 
-## Decision
+## Implemented on 2026-10-03
 
-Pilot **k3s on one disposable CPU node or VM** and use Kubernetes `batch/v1` Jobs as Mist's execution primitive. Keep the existing Docker/Redis development path working while the pilot is built. Do not install k3s on the shared Tenstorrent box until a CPU job has completed through Mist and the device integration has been validated on that box.
+Mist uses Kubernetes `batch/v1` Jobs by default. The API submits actual
+commands or uploaded scripts, reports real exit codes and scheduler messages,
+retrieves pod logs, and cancels workloads. The CLI and Jobs page use these
+endpoints. The optional `MIST_EXECUTOR=docker` path retains the older,
+incomplete Docker/Redis supervisor for compatibility.
 
-A separate single-node NVIDIA GPU hardware pilot now exists. Its
-[setup runbook](../deploy/k3s/setup-runbook.md) records GPU scheduling and CUDA
-validation; it does not complete the first CPU job path through Mist described
-below.
-
-Kubernetes should own pod placement, resource accounting, restarts, and Job lifecycle. Mist should own authentication, job admission, user/team policy, priority, credits, and the user-facing API. A second Mist scheduler competing with Kubernetes for node placement would make both systems harder to reason about.
+Kubernetes owns placement, device accounting, and Job lifecycle. Mist validates
+submission parameters and configured owner labels. Authentication, team
+policy, credits, quotas, priority, and audit accounting are still application
+work; the current API is a local single-owner pilot.
 
 ```mermaid
 flowchart LR
-    User[Web UI / CLI] --> API[Mist API]
-    API --> Policy[Auth, team policy, credits]
-    Policy --> Jobs[Kubernetes Jobs API]
-    Jobs --> CPU[CPU nodes]
-    Jobs --> TT[Tenstorrent nodes]
+    User[Jobs page / CLI] --> API[Mist API]
+    API --> Validate[Image, resources, script and deadline validation]
+    Validate --> Jobs[Kubernetes Jobs]
+    Jobs --> NVIDIA[CPU / NVIDIA server]
+    Jobs --> Claims[Tenstorrent DRA claims]
+    Claims --> TT[QuietBox boards via CDI]
     Jobs --> State[Job and Pod status / logs]
     State --> API
-    Jobs --> Artifacts[Shared artifact storage]
+    NVIDIA --> Artifacts[Node-local checkpoint PVCs]
+    TT --> Artifacts
 ```
 
-## Why this is a pilot, not a deployment recipe
+See [installation, commands and acceptance tests](../deploy/k3s/README.md#mist-api-cli-and-jobs-page)
+and [job lifecycle and API endpoints](../src/jobs.md).
 
-The current `/jobs` endpoint enqueues a Redis message. The supervisor launches a CPU Docker container with `sleep 1000`, waits two seconds, then reports success; it does not run the submitted payload. For a GPU job it can report success without starting a container. All supervisors share one Redis consumer group, so a supervisor that reads an incompatible GPU job leaves it pending instead of offering it to the right worker. The web Jobs page and CLI still use sample data, and `/auth/login` is a placeholder. Installing k3s alone fixes none of these application paths.
+## Hardware and scheduling
 
-The first end-to-end slice should replace those behaviors for **CPU jobs**:
+| Node | Workload resources | Allocation |
+| --- | --- | --- |
+| `utmist-z1opa08` | CPU and two NVIDIA RTX A4000 GPUs | `nvidia.com/gpu`, one or two whole GPUs |
+| `utmist-tt` | Four n300 Wormhole boards, eight chips | DRA/CDI, one to four whole two-chip boards |
 
-1. Define a validated submission contract: image, command/arguments, CPU and memory limits, optional artifact location, owner, and maximum run time. Use an approved image list or registry policy before accepting arbitrary images from users.
-2. Add a Kubernetes executor behind the Mist API. Create a namespaced `batch/v1` Job with `restartPolicy: Never`, explicit resource requests/limits, `backoffLimit`, `activeDeadlineSeconds`, and Mist job/owner labels. Give the API only namespaced permissions for the resources it uses.
-3. Make submission, status, cancellation, and logs read the Kubernetes Job/Pod state. Persist the Mist job ID to Kubernetes Job name mapping and owner data independently of the Job TTL. Return a real failure when the workload fails.
-4. Connect the CLI and Web UI to those endpoints. A user should be able to run a small CPU command and see its actual output and exit status.
-5. Add namespace quotas, per-job limits, network restrictions, and durable audit/usage records before inviting pilot users. Treat priority and credits as Mist admission rules; map admitted priority to Kubernetes `PriorityClass` only after defining preemption policy.
+CPU and NVIDIA jobs select the server because their pilot storage is local
+to it. Tenstorrent jobs select QuietBox and reference one of four precreated
+ResourceClaimTemplates. Each pod receives its own claim, not a shared claim
+between jobs. Resources are released after completion or cancellation;
+completed Jobs and checkpoints are retained. Requests wait when their
+required CPU, RAM, hugepages, or devices are occupied. Scheduling does not
+split a model or combine NVIDIA and Tenstorrent automatically.
 
-## Tenstorrent milestone
+TT-Operator 0.3.0 runs Fabric Manager 0.2.30 and DRA driver 0.0.59 while
+preserving host KMD 2.5.0 and firmware 19.4.2. Read-only host TT-Metal and
+Python mounts make the runtime specific to this QuietBox. The vendor
+ResourceSlice's memory capacity is incorrect; claims select board name,
+chip count and board count, without using that capacity.
 
-Tenstorrent's `tt-operator` supports Wormhole and Blackhole devices. Its core stack needs Kubernetes 1.27+, and its Dynamic Resource Allocation (DRA) path needs **1.33+**. The operator also documents host kernel-header and registry requirements; its bundled PMIx webhook needs cert-manager unless disabled. Check the actual QuietBox generation, driver/firmware ownership, topology, kernel, and operator support before choosing chart values. Do not model a Tenstorrent device as a generic GPU string or assume that exposing `/dev/tenstorrent` is sufficient scheduling isolation.
+The TT test trains each allocated chip independently using TT-NN forward
+passes, analytic gradients and weight updates. For multiple boards, separate
+runtimes select each board by PCI address through `TT_VISIBLE_DEVICES`.
+Arbitrary board subsets need not form a usable connected mesh. Autograd,
+distributed training of one model, and large production models are untested.
 
-For a first TT workload: install and validate the vendor stack on a test node, verify that Kubernetes advertises the expected allocatable devices/claims, run one vendor example Job, then teach Mist to request that resource. Keep the existing host driver in place until the operator's driver management has been planned and tested. Multi-node jobs and topology-aware placement come later.
+## Verified behavior
 
-## Storage and operations
+Live API acceptance checks passed for 17 jobs:
 
-K3s includes a local-path storage provisioner, but its volumes are tied to a node. Use it only for disposable pilot data. Select shared storage or an object store for input datasets, logs, checkpoints, and output artifacts before adding more nodes. Keep retained job metadata and logs after Kubernetes Job cleanup.
+- CPU success with actual output, exit-17 failure, deadline failure, and
+  cancellation with retained logs.
+- Two simultaneous one-GPU NVIDIA jobs with distinct device nodes; a third
+  queued and automatically reused a GPU. A two-GPU job also trained.
+- Four simultaneous one-board TT jobs with distinct claims and devices;
+  a fifth queued and trained after release.
+- Two-board and four-board TT jobs trained on four and eight chips.
+- Cancelling a four-board reservation released capacity for a waiting job.
+- All successful accelerator runs met loss thresholds and reloaded their
+  checkpoints. Archives confirmed five NVIDIA and 24 TT checkpoint files
+  from those API checks after the pods completed.
 
-Start the API without public ingress and use `kubectl port-forward` for the pilot. Do not put the current placeholder authentication endpoint or a cluster administrator credential behind an internet-facing service. Deploy a dedicated Mist namespace and service account with the least permissions needed for Jobs, Pods, and logs. Back up the k3s datastore before any production use.
+Separate infrastructure checks also verified that each TT job could open
+its allocated board while device cgroups denied the other three, and that
+allocation recovered after restarting the DRA driver. CLI and actual browser
+checks exercise submission, status, logs and cancellation; backend/CLI/web
+tests and a frontend production build cover the application changes.
+See [recorded results](../deploy/k3s/mist-api-results.json) for evidence paths.
 
-## Pilot acceptance checks
+## Access and retention
 
-- One submitted CPU command runs to completion and returns its real exit code.
-- A failing command is shown as failed, with retrievable logs.
-- A canceled Job stops its pod and remains canceled in Mist's history.
-- An incompatible hardware request stays pending or is rejected clearly; it is never reported as successful without execution.
-- CPU/memory limits and namespace quota prevent a user from monopolizing the node.
-- The Web UI and CLI show the same job state as the API.
+The API runs in `mist-system` with a dedicated service account and a Role
+restricted to workloads in `mist`. Live RBAC checks denied secrets, nodes,
+pod exec, and creating jobs in the GPU Operator namespace. Workload pods
+receive no Kubernetes API token. The `mist` admission policy disallows
+privileged execution and broad host device mounts.
 
-Only then move the pilot to a Tenstorrent node and add the vendor operator.
+The service account can create workload Jobs, so RBAC alone does not make
+it a complete security boundary. Admission policy, shared host hugepages,
+shared checkpoint PVCs, and arbitrary script execution require further
+hardening before accepting untrusted tenants. The local API has no
+per-request authentication; `MIST_PILOT_OWNER` is configuration.
 
-The NVIDIA test node's [setup and incident runbook](../deploy/k3s/setup-runbook.md)
-and [repeatable CUDA smoke Job](../deploy/k3s/README.md) record the current
-hardware pilot. NVIDIA validation is separate from Tenstorrent device support.
+API and web access bind to loopback, with no public ingress. A port-forward
+exposes the deployed API. Retained Jobs carry submission/owner metadata and
+cancelled logs across API restarts. There is no Job TTL. Normal logs depend
+on retained pods and kubelet retention, and checkpoint PVCs are node-local.
+Deleting those resources can remove history or artifacts.
+
+## Next milestones
+
+1. Implement authentication and per-user/team authorization before remote
+   access; define quotas, concurrency limits, credits and priority policy.
+2. Package the TT runtime into a reproducible training image and validate
+   real pilot-team models, topology and distributed training requirements.
+3. Provide dataset upload and artifact access, shared/object storage, durable
+   metadata/log archival, cleanup policy, and datastore/PVC backups.
+4. Add network restrictions, workload admission hardening, and operational
+   monitoring before opening the cluster to untrusted users.
 
 ## References
 
-- [K3s installation requirements](https://docs.k3s.io/installation/requirements)
-- [K3s packaged components and storage](https://docs.k3s.io/)
-- [Kubernetes Job API](https://kubernetes.io/docs/reference/kubernetes-api/batch/job-v1/)
+- [Kubernetes Job API](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
+- [Dynamic Resource Allocation](https://kubernetes.io/docs/concepts/resource-management/dynamic-resource-allocation/)
+- [K3s storage](https://docs.k3s.io/storage)
 - [Tenstorrent operator platform support](https://docs.tenstorrent.com/tt-operator/latest/platform-support.html)
-- [Tenstorrent operator prerequisites](https://docs.tenstorrent.com/tt-operator/latest/prerequisites.html)
+- [Tenstorrent DRA driver](https://github.com/tenstorrent/tt-dra-driver)

@@ -1,61 +1,60 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 type JobSubmitCmd struct {
-	Script  string `arg:"" help:"Path to the job script file to submit"`
-	Compute string `help:"Type of compute required for the job: AMD|TT|CPU" default:"AMD"`
+	Script  string `arg:"" help:"Path to a Python or shell script"`
+	Compute string `help:"CPU, NVIDIA, or TT" default:"CPU"`
+	Devices int    `help:"NVIDIA GPU count or Tenstorrent board count" default:"1"`
+	Image   string `help:"Approved container image (optional; defaults by compute type)"`
+	CPU     string `help:"Requested CPU quantity, e.g. 2 or 500m"`
+	Memory  string `help:"Requested memory, e.g. 4Gi"`
+	Timeout int64  `help:"Maximum execution time in seconds" default:"600"`
+	Name    string `help:"Display name for the job"`
 }
 
 func (j *JobSubmitCmd) Run(ctx *AppContext) error {
-	// mist job submit <script> <compute_type>
-
-	// TODO: ADD AUTH CHECK
-
-	// TODO: MAKE THIS GLOBAL OR LOADED FROM ENV?
-	// Validate compute type
-	validComputeTypes := map[string]bool{
-		"AMD": true,
-		"TT":  true,
-		"CPU": true,
+	compute := strings.ToUpper(j.Compute)
+	if compute == "" {
+		compute = "CPU"
 	}
-
-	// Validate script file exists
-	// if _, err := os.Stat(j.Script); os.IsNotExist(err) {
-	// 	fmt.Println("Error: Script file does not exist at path:", j.Script)
-	// 	return nil
-	// }
-
-	if !validComputeTypes[strings.ToUpper(j.Compute)] {
-		fmt.Println("Error: Invalid compute type. Valid options are: AMD, TT, CPU")
-		return nil
+	accelerator := "cpu"
+	devices := j.Devices
+	if devices == 0 {
+		devices = 1
 	}
-
-	// Maybe turn this into some type of wrapper function later?
-	fmt.Print("Are you sure? (y/n): ")
-
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(strings.ToLower(input))
-
-	if input == "y" || input == "yes" {
-		fmt.Println("Confirmed, proceeding...")
-
-		// CONFIRMED LOGIC
-		fmt.Println("Submitting job with script:", j.Script)
-		fmt.Println("Requested GPU type:", j.Compute)
-		println("Job submitted successfully with ID: job_12345")
-
-		return nil
-
-	} else {
-		fmt.Println("Cancelled.")
-		return nil
+	switch compute {
+	case "CPU":
+		devices = 0
+	case "NVIDIA", "CUDA":
+		accelerator = "nvidia"
+	case "TT", "TENSTORRENT":
+		accelerator = "tenstorrent"
+	default:
+		return fmt.Errorf("compute must be CPU, NVIDIA, or TT")
 	}
-
+	data, err := os.ReadFile(j.Script)
+	if err != nil {
+		return err
+	}
+	name := j.Name
+	if name == "" {
+		name = filepath.Base(j.Script)
+	}
+	request := map[string]interface{}{"type": "command", "name": name, "accelerator": accelerator,
+		"device_count": devices, "script": string(data), "script_name": filepath.Base(j.Script),
+		"image": j.Image, "cpu": j.CPU, "memory": j.Memory, "timeout_seconds": j.Timeout}
+	var response struct {
+		JobID string `json:"job_id"`
+	}
+	if err := ctx.api("POST", "/jobs", request, &response); err != nil {
+		return err
+	}
+	fmt.Println("Job submitted:", response.JobID)
+	return nil
 }

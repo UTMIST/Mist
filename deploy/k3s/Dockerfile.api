@@ -1,0 +1,7 @@
+# Build the static binary from the repository root:
+# CGO_ENABLED=0 go -C src build -o ../bin/mist-api .
+# docker build -f deploy/k3s/Dockerfile.api -t mist-api:k3s-pilot-20261003 .
+FROM alpine:3.16.3
+COPY bin/mist-api /usr/local/bin/mist-api
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/mist-api"]

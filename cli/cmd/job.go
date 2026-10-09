@@ -6,7 +6,8 @@ type JobCmd struct {
 	// Delete JobDeleteCmd `cmd: "" help: "Delete an existing job"`
 	Status JobStatusCmd `cmd:"" help:"Check the status of a job"`
 	// Cancel   CancelCmd   `cmd:"" help:"Cancel a running job"`
-	List ListCmd `cmd:"" help:"List all jobs" default:1`
+	Logs JobLogsCmd `cmd:"" help:"Read workload logs"`
+	List ListCmd    `cmd:"" help:"List all jobs" default:1`
 }
 
 func (j *JobCmd) Run() error {

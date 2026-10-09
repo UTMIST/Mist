@@ -1,0 +1,11 @@
+[Unit]
+Description=Mist Kubernetes API on localhost
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/k3s kubectl --kubeconfig /home/utmist/.kube/config --namespace mist-system port-forward service/mist-api 3000:3000 --address 127.0.0.1
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

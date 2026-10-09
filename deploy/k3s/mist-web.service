@@ -1,0 +1,13 @@
+[Unit]
+Description=Mist web interface on localhost
+After=mist-api-forward.service
+
+[Service]
+WorkingDirectory=/home/utmist/Mist/web-interface
+ExecStart=/home/utmist/.local/share/mist-runtimes/node-22.16.0/bin/node /home/utmist/Mist/web-interface/node_modules/vite/bin/vite.js --host 127.0.0.1 --port 3001 --strictPort
+Environment=MIST_API_PROXY=http://127.0.0.1:3000
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
