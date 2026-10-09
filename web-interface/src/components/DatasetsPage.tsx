@@ -16,6 +16,34 @@ import { useTeam } from '#/teams.tsx'
 import { useAccount } from '#/auth.tsx'
 import { TeamStorageBrowser } from '#/components/TeamStorageBrowser.tsx'
 
+function StorageMeter({
+  label,
+  capacity,
+  available,
+}: {
+  label: string
+  capacity: number
+  available: number
+}) {
+  return (
+    <div className="mist-storage-meter">
+      <div>
+        <Database size={17} aria-hidden="true" />
+        <span>{label}</span>
+        <strong>
+          {formatBytes(capacity - available)} / {formatBytes(capacity)}
+        </strong>
+      </div>
+      <progress
+        aria-label={`${label} usage`}
+        value={capacity - available}
+        max={capacity}
+      />
+      <small>{formatBytes(available)} available</small>
+    </div>
+  )
+}
+
 export function DatasetsPage() {
   const { selected, team } = useTeam()
   const { user } = useAccount()
@@ -127,23 +155,20 @@ export function DatasetsPage() {
         </p>
       )}
       {storage.data?.enabled && (
-        <div className="mist-storage-meter">
-          <div>
-            <Database size={17} aria-hidden="true" />
-            <span>Team storage</span>
-            <strong>
-              {formatBytes(
-                storage.data.capacity_bytes - storage.data.available_bytes,
-              )}{' '}
-              / {formatBytes(storage.data.capacity_bytes)}
-            </strong>
-          </div>
-          <progress
-            aria-label="Storage usage"
-            value={storage.data.capacity_bytes - storage.data.available_bytes}
-            max={storage.data.capacity_bytes}
+        <div className="mist-storage-pools">
+          <StorageMeter
+            label={selected ? 'Datasets' : 'Legacy storage'}
+            capacity={storage.data.capacity_bytes}
+            available={storage.data.available_bytes}
           />
-          <small>{formatBytes(storage.data.available_bytes)} available</small>
+          {storage.data.model_capacity_bytes !== undefined &&
+            storage.data.model_available_bytes !== undefined && (
+              <StorageMeter
+                label="Models & results"
+                capacity={storage.data.model_capacity_bytes}
+                available={storage.data.model_available_bytes}
+              />
+            )}
         </div>
       )}
       {uploading && (

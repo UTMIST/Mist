@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -67,7 +69,7 @@ func departmentTestApp(t *testing.T) (*App, *fake.Clientset, []Team) {
 	e := &KubernetesExecutor{client: c, namespace: "mist", owner: "legacy", storage: store, cpuNode: "main", ttNode: "tt", allowedImages: map[string]bool{cpuImage: true, ttImage: true, nvidiaImage: true}}
 	app := NewKubernetesApp(e, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	for _, team := range teams {
-		if err = atomicJSON(filepath.Join(root, "metadata/provision-status", team.ID+".json"), map[string]any{"state": "Ready", "storage_gib": team.Policy.StorageGiB}); err != nil {
+		if err = atomicJSON(filepath.Join(root, "metadata/provision-status", team.ID+".json"), map[string]any{"state": "Ready", "storage_gib": team.Policy.StorageGiB, "model_storage_gib": team.Policy.ModelStorageGiB}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = app.teams.store(&team); err != nil {
@@ -175,11 +177,11 @@ func TestDepartmentPolicyAndStorageBudget(t *testing.T) {
 	if _, err := e.normalize(CreateJobRequest{Command: []string{"true"}, TimeoutSeconds: 30}); err != nil {
 		t.Fatalf("valid request rejected: %v", err)
 	}
-	if err := a.teams.mutate(context.Background(), func(list *[]Team) error { (*list)[0].Policy.StorageGiB = 80; return nil }); err == nil {
+	if err := a.teams.mutate(context.Background(), func(list *[]Team) error { (*list)[0].Policy.StorageGiB = 1500; return nil }); err == nil {
 		t.Fatal("overcommitted storage budget")
 	}
 	_, actual, _ := a.teams.registry(context.Background())
-	if actual[0].Policy.StorageGiB != 10 {
+	if actual[0].Policy.StorageGiB != 200 {
 		t.Fatal("failed transaction changed persisted allocation")
 	}
 }
@@ -375,5 +377,123 @@ func TestDepartmentPendingPodClaimDoesNotDoubleReserveBoards(t *testing.T) {
 	}
 	if queued.Annotations["mist.io/admitted-at"] == "" {
 		t.Fatal("free board withheld by double-counting pending Pod claim")
+	}
+}
+
+func TestDepartmentSplitDatasetAndModelPaths(t *testing.T) {
+	a, c, teams := departmentTestApp(t)
+	team := teams[0]
+	uploaded := departmentRequest(a, "POST", "/datasets?filename=train.csv", "alice", team.ID, "1,2\n")
+	if uploaded.Code != 201 {
+		t.Fatal(uploaded.Body.String())
+	}
+	var ds Dataset
+	json.Unmarshal(uploaded.Body.Bytes(), &ds)
+	submitted := departmentRequest(a, "POST", "/jobs", "alice", team.ID, fmt.Sprintf(`{"accelerator":"cpu","type":"command","command":["true"],"dataset_id":%q}`, ds.ID))
+	if submitted.Code != 201 {
+		t.Fatal(submitted.Body.String())
+	}
+	var result struct {
+		ID string `json:"job_id"`
+	}
+	json.Unmarshal(submitted.Body.Bytes(), &result)
+	job, err := c.BatchV1().Jobs(team.namespace()).Get(context.Background(), result.ID, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := map[string]string{}
+	for _, volume := range job.Spec.Template.Spec.Volumes {
+		if volume.PersistentVolumeClaim != nil {
+			claims[volume.Name] = volume.PersistentVolumeClaim.ClaimName
+		}
+	}
+	if claims["input"] != "team-storage" || claims["checkpoints"] != "team-models" {
+		t.Fatalf("storage pools not separated: %+v", claims)
+	}
+	store, err := a.teams.store(&team)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := store.outputPath(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(output, store.modelRoot+string(os.PathSeparator)) {
+		t.Fatal("result path falls into datasets")
+	}
+	if err = os.WriteFile(filepath.Join(output, "weights.bin"), []byte("WEIGHTS"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	listed := departmentRequest(a, "GET", "/storage/files?scope=alice", "alice", team.ID, "")
+	if listed.Code != 200 || !strings.Contains(listed.Body.String(), "weights.bin") || !strings.Contains(listed.Body.String(), "train.csv") {
+		t.Fatalf("virtual scope lost one pool: %s", listed.Body.String())
+	}
+	path := "/storage/files?scope=alice&download=true&path=jobs/" + job.Name + "/outputs/weights.bin"
+	downloaded := departmentRequest(a, "GET", path, "alice", team.ID, "")
+	if downloaded.Code != 200 || downloaded.Body.String() != "WEIGHTS" {
+		t.Fatal("model download failed")
+	}
+	escaped := departmentRequest(a, "GET", path+"/../../../../outside", "alice", team.ID, "")
+	if escaped.Code == 200 {
+		t.Fatal("virtual model folder escaped its scope")
+	}
+}
+
+func TestDepartmentMissingModelMountCannotBorrowDatasetCapacity(t *testing.T) {
+	a, _, teams := departmentTestApp(t)
+	team := teams[0]
+	var fs syscall.Statfs_t
+	if err := syscall.Statfs(a.executor.storage.root, &fs); err != nil {
+		t.Fatal(err)
+	}
+	gib := (int64(fs.Blocks)*fs.Bsize + 1024*1024*1024 - 1) / (1024 * 1024 * 1024)
+	team.Policy.StorageGiB, team.Policy.ModelStorageGiB = gib, gib
+	if err := atomicJSON(filepath.Join(a.executor.storage.root, "metadata/provision-status", team.ID+".json"), map[string]any{"state": "Ready", "storage_gib": gib, "model_storage_gib": gib}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MIST_REQUIRE_TEAM_FILESYSTEM", "true")
+	if _, err := a.teams.store(&team); err == nil || !strings.Contains(err.Error(), "separate model filesystem") {
+		t.Fatalf("missing model mount accepted: %v", err)
+	}
+}
+
+func TestDepartmentDefaultPoolsAndLegacyPolicy(t *testing.T) {
+	a, _, _ := departmentTestApp(t)
+	// Leave room for a default team without allocating any real disk images.
+	if err := a.teams.mutate(context.Background(), func(teams *[]Team) error {
+		for i := range *teams {
+			(*teams)[i].Policy.StorageGiB = 1
+			(*teams)[i].Policy.ModelStorageGiB = 1
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	created := departmentRequest(a, "POST", "/teams", "admin", "", `{"name":"Default pools"}`)
+	if created.Code != 201 {
+		t.Fatalf("%d %s", created.Code, created.Body.String())
+	}
+	var team Team
+	if err := json.Unmarshal(created.Body.Bytes(), &team); err != nil {
+		t.Fatal(err)
+	}
+	if team.Policy.StorageGiB != 200 || team.Policy.ModelStorageGiB != 500 {
+		t.Fatalf("unexpected defaults: %+v", team.Policy)
+	}
+	for _, body := range []string{`{"name":"Invalid model pool","model_storage_gib":0}`, `{"name":"Invalid model pool","model_storage_gib":-1}`} {
+		rejected := departmentRequest(a, "POST", "/teams", "admin", "", body)
+		if rejected.Code != 400 {
+			t.Fatalf("invalid declared pool accepted: %d %s", rejected.Code, rejected.Body.String())
+		}
+	}
+	legacy := TeamPolicy{StorageGiB: 3}
+	normalizeStoragePolicy(&legacy)
+	if legacy.StorageGiB != 3 || legacy.ModelStorageGiB != 3 {
+		t.Fatal("legacy allocation silently expanded")
+	}
+	p := defaultTeamPolicy()
+	p.ModelStorageGiB = -1
+	if err := validateTeam(&Team{Name: "Invalid", Policy: p}); err == nil {
+		t.Fatal("negative model pool accepted")
 	}
 }

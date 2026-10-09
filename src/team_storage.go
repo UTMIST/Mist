@@ -133,7 +133,7 @@ func (a *App) storageFolderFiles(w http.ResponseWriter, r *http.Request) {
 		executorError(w, err)
 		return
 	}
-	serveStoredFiles(w, r, filepath.Join(store.root, scopePath(scope)), r.URL.Query().Get("download") == "true")
+	serveTeamFolder(w, r, store, scope)
 }
 func (s *TeamService) resolveDataset(ctx context.Context, target *Team, id string) (*SharedStorage, *Team, *Dataset, error) {
 	if !datasetIDPattern.MatchString(id) {
@@ -249,8 +249,8 @@ func (a *App) teamDatasets(w http.ResponseWriter, r *http.Request, e *Kubernetes
 		writeJSON(w, 200, map[string]any{"datasets": list, "upload_limit_bytes": e.storage.availableUploadLimit(true)})
 	case http.MethodPost:
 		controller := http.NewResponseController(w)
-		_ = controller.SetReadDeadline(time.Now().Add(4 * time.Hour))
-		_ = controller.SetWriteDeadline(time.Now().Add(4 * time.Hour))
+		_ = controller.SetReadDeadline(time.Now().Add(24 * time.Hour))
+		_ = controller.SetWriteDeadline(time.Now().Add(24 * time.Hour))
 		scope := r.URL.Query().Get("scope")
 		if scope == "" {
 			scope = access.Member.ID
@@ -374,4 +374,49 @@ func (a *App) datasetFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serveStoredFiles(w, r, path, len(parts) == 3)
+}
+
+// Keep the public common/member tree stable while files live in two quota pools.
+func serveTeamFolder(w http.ResponseWriter, r *http.Request, store *SharedStorage, scope string) {
+	data := filepath.Join(store.root, scopePath(scope))
+	models := filepath.Join(store.resultsRoot(), scopePath(scope))
+	if r.URL.Query().Get("download") == "true" {
+		path := r.URL.Query().Get("path")
+		if strings.HasPrefix(path, "jobs/") {
+			serveStoredFiles(w, r, models, true)
+		} else if strings.HasPrefix(path, "datasets/") {
+			serveStoredFiles(w, r, data, true)
+		} else {
+			writeJSON(w, 400, map[string]string{"error": "Invalid folder file path"})
+		}
+		return
+	}
+	files := []ResultFile{}
+	for _, path := range []string{filepath.Join(data, "datasets"), filepath.Join(models, "jobs")} {
+		root, err := os.OpenRoot(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			executorError(w, err)
+			return
+		}
+		listed, err := listResultFiles(root)
+		root.Close()
+		if err != nil {
+			executorError(w, err)
+			return
+		}
+		prefix := filepath.Base(path) + "/"
+		for _, f := range listed {
+			f.Path = prefix + f.Path
+			files = append(files, f)
+		}
+		if len(files) > 10000 {
+			writeJSON(w, 400, map[string]string{"error": "folder has too many files"})
+			return
+		}
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	writeJSON(w, 200, map[string]any{"files": files})
 }

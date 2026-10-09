@@ -110,60 +110,80 @@ instance on the main machine's local volume.
 
 ## Storage and enforced capacity
 
-QuietBox's existing 100 GiB ext4 image remains the base store. Up to **80 GiB**
-can be allocated to teams; the remaining space is for legacy files and metadata.
-Each team gets a separate ext4 image, mounted and exported over NFS. Allocation
-includes filesystem overhead, so 1 GiB provides about 0.95 GiB usable capacity.
-No physical disk was formatted, and existing data is never covered by a new mount.
+QuietBox's known ext4 backing image now has **1,600 GiB logical capacity**.
+It is sparse: unused capacity does not reserve that amount of physical disk space.
+The initial bulk reservation was released with filesystem discard (`fstrim`),
+without shrinking the filesystem or deleting existing data. At the October 9
+check, QuietBox had about **1.9 TiB free** on its host disk; the backing file used
+about 6 GiB after reclaiming the deleted test dataset’s blocks. Actual shared
+data was about 1.4 GiB; filesystem metadata also uses space.
+
+The combined allocation budget is **1,500 GiB**, additionally bounded by the
+base filesystem capacity less 20 GiB. New teams default to **200 GiB datasets +
+500 GiB models/results**. API field `storage_gib` means datasets; the new
+`model_storage_gib` means models/results. Legacy create requests specifying only
+`storage_gib` apply that size to both pools for compatibility. Two teams at these defaults fit; more teams need smaller
+admin allocations or additional capacity. Disabled teams retain files and their
+allocations. Existing pilot teams retain their previous sizes in each pool;
+they are not silently expanded to the new defaults.
+
+Each team has two independently bounded ext4 filesystems. Common and member
+folders share the applicable team pool; member folders do not have separate hard
+quotas. Filesystem overhead reduces usable capacity below the nominal allocation.
+No physical disk was formatted.
 
 ```text
 /srv/mist-storage/
-  metadata/provision-requests/     API-owned capacity requests, outside job mounts
-  metadata/provision-status/       host service readiness records
-  .team-volumes/team-<id>.img       root-owned bounded filesystem images
-  teams/team-<id>/                 one mounted filesystem per team
-    metadata/datasets/            published dataset metadata, API only
-    .uploads/                     upload staging, API only
-    common/
-      datasets/<id>/content/
-      jobs/<id>/outputs/
-    members/<hash-of-user-id>/
-      datasets/<id>/content/
-      jobs/<id>/outputs/
-  datasets/, jobs/, legacy/        preserved account-owned foundation files
+  metadata/provision-requests/       API-owned requests, outside job mounts
+  metadata/provision-status/         readiness records for both pools
+  .team-volumes/team-<id>.img         dataset filesystem image
+  .team-volumes/team-<id>-models.img  model filesystem image
+  teams/team-<id>/                   dataset filesystem
+    metadata/datasets/               API-owned published metadata
+    .uploads/                        API-owned upload staging
+    common/datasets/<id>/content/
+    members/<hash>/datasets/<id>/content/
+    .models/                         separate model filesystem
+      common/jobs/<id>/outputs/
+      members/<hash>/jobs/<id>/outputs/
+  datasets/, jobs/, legacy/           preserved foundation files
 ```
 
-`mist-team-storage.service` on QuietBox validates bounded API-owned manifests,
-creates new filesystem images, mounts them, writes fstab entries and exports them.
-It has no listener or cluster credentials. Existing unknown filesystems are never
-formatted; online growth is supported, shrinking/deletion is refused. The API
-checks the actual filesystem capacity and fails closed if a child mount is absent.
+`mist-team-storage.service` validates trusted requests, creates images, mounts them,
+records fstab entries and exports each filesystem separately over NFS. Existing
+unknown filesystems are never formatted. Online growth is supported; shrinking
+and deletion are refused. The API verifies both capacities and distinct mount
+device identities, including when NFS reports a zero filesystem ID. A missing
+model mount cannot borrow the dataset allocation.
 
-Capacity is shared by a team's common/member folders, datasets, metadata and
-results. It is enforced on job writes, not just uploads or nominal PVC sizes.
-Per-member folders do not currently have separate hard quotas. Kubernetes PV/PVC
-capacity is an allocation declaration; the ext4 filesystem is the authoritative
-limit, including after online growth.
+Existing team job outputs are copied into the model pool, preserving hashes,
+permissions, ownership and symlinks without following them. Originals are removed
+only after the complete published copy is verified. Conflicts fail closed;
+interrupted copies can be retried. Perform migration with submissions paused and
+no active team jobs. Dataset paths, job IDs and virtual folder URLs stay stable.
+Inputs use read-only `team-storage`; outputs use `team-models` and only the
+specific job directory. Actual ext4 capacity enforces writes; PV/PVC numbers are
+allocation declarations. Existing bound static NFS claims are preserved during
+growth rather than attempting unsupported PVC resizing.
 
-The server ceiling is **64 GiB per uploaded file and per expanded dataset**,
-configurable downward with `MIST_MAX_DATASET_GIB=1..64`. The portal shows the
-lower of that ceiling and the team's **actual remaining space**, including a
-64 MiB metadata reserve. For a bigger upload, an administrator can expand the
-team allocation under **Manage → Limits**; the combined budget still applies.
-ZIP extraction needs room for both the archive and its expanded files, allows
-at most 10,000 entries, and rejects traversal, symlinks and special files.
+Upload admission uses actual remaining **dataset** capacity, with a 64 MiB
+metadata reserve. There is no fixed 64 GiB upload cap. Administrators can set an
+optional smaller `MIST_MAX_DATASET_GIB` ceiling (1–1,048,576); that ceiling does not
+create disk space. The portal shows used/free space separately for datasets and
+models/results. ZIP extraction needs space for the archive and expanded files;
+it rejects traversal, symlinks and special files, with at most 10,000 entries.
 
-Uploads stream to disk through Nginx/API rather than buffering the dataset in
-application memory. The browser shows progress and supports cancellation;
-closing the upload dialog is disabled during transfer. The request window is
-four hours. Interrupted transfers must restart; resumable/chunked uploads are
-not implemented. A real **2 GiB + 4 MiB** transfer passed its SHA256 check in
-65 seconds on this LAN and was read successfully by a k3s Job. This verifies
-larger-than-2-GiB transfers, not every size up to the ceiling.
+Nginx streams uploads without body buffering; the authenticated API enforces
+storage bounds. Browser/API transfer windows are 24 hours. Uploads support
+progress and cancellation; interrupted transfers restart. Resumable upload is
+not implemented. Earlier baseline verification transferred and removed a
+2 GiB + 4 MiB probe. Follow-up verification uses small files, as requested;
+no 200/500 GiB upload or exhaustion test is performed.
 
- Team upload admission keeps 64 MiB available for metadata, but jobs can
-fill their team filesystem; job code must handle `ENOSPC`/`EDQUOT`. Other teams'
-filesystems remain separate. The quota verification removes only its own probe.
+Jobs can exhaust their model filesystem and must handle `ENOSPC`/`EDQUOT`.
+Dataset capacity remains separate, as do other teams' filesystems. The host still
+needs free space for both sparse image growth and software outside Mist. Logical
+quotas are not physical space reservations or a backup.
 
 NFS permits only the two node LAN addresses and uses root squash. The machines'
 existing router/Wi-Fi/Ethernet connections remain intact. QuietBox must be online
@@ -177,7 +197,8 @@ for shared storage; NFS is not a backup.
 | NVIDIA GPUs | 2 | 0–2 whole GPUs |
 | TT boards | 4 | 0–4 boards, two chips each |
 | Simultaneous / queued jobs | 2 / 50 | 1–16 / 1–200 |
-| Storage | 10 GiB | 1–80 GiB; all teams combined at most 80 GiB |
+| Dataset storage | 200 GiB | At least 1 GiB; combined dataset/model allocations at most 1,500 GiB |
+| Model/result storage | 500 GiB | At least 1 GiB; independently bounded from datasets |
 | Maximum runtime | 24 hours | 10 seconds–24 hours |
 
 Each job remains limited to 8 cores and 32 GiB. The default execution deadline
@@ -284,7 +305,7 @@ Missing team selection can read historical account data but cannot submit/upload
 | Method and path (after `/api`) | Operation |
 |---|---|
 | `GET /session`, `/teams` | Current account and permitted team list |
-| `POST /teams` | Admin creates `{name, storage_gib}`; enroll separately |
+| `POST /teams` | Admin creates `{name, storage_gib, model_storage_gib}`; enroll separately |
 | `PATCH /teams/{id}` | Admin updates name, disabled flag or a complete policy |
 | `POST /teams/{id}/members` | Admin enrolls/updates `{user_id, common_writer}` |
 | `DELETE /teams/{id}/members/{user_id}` | Admin removes membership |

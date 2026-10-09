@@ -178,6 +178,10 @@ export const storageAPI = {
       enabled: boolean
       capacity_bytes: number
       available_bytes: number
+      model_capacity_bytes?: number
+      model_available_bytes?: number
+      dataset_allocation_gib?: number
+      model_allocation_gib?: number
       upload_limit_bytes: number
     }>('/storage', { signal }),
   remove: (id: string) =>
@@ -226,7 +230,7 @@ export const storageAPI = {
         'POST',
         `${base}/datasets?${new URLSearchParams({ filename: file.name, name, ...(scope ? { scope } : {}), ...(zip ? { format: 'zip' } : {}) })}`,
       )
-      xhr.timeout = 4 * 60 * 60 * 1000
+      xhr.timeout = 24 * 60 * 60 * 1000
       if (activeTeam) xhr.setRequestHeader('X-Mist-Team', activeTeam)
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) progress(Math.round((100 * e.loaded) / e.total))
@@ -256,6 +260,7 @@ export type TeamPolicy = {
   concurrent: number
   queued: number
   storage_gib: number
+  model_storage_gib: number
   runtime_seconds: number
   registries: string[]
 }
@@ -287,10 +292,10 @@ export const teamsAPI = {
     request<{ teams: Team[]; storage_budget_gib: number }>('/teams', {
       signal,
     }),
-  create: (name: string, storage_gib = 10) =>
+  create: (name: string, storage_gib = 200, model_storage_gib = 500) =>
     request<Team>('/teams', {
       method: 'POST',
-      body: JSON.stringify({ name, storage_gib }),
+      body: JSON.stringify({ name, storage_gib, model_storage_gib }),
     }),
   update: (
     id: string,

@@ -9,7 +9,7 @@ deployed flow on both machines. No permission prompts or cloud deployment.
 - Keep Better Auth as the identity/password authority. Team membership and
   policies are persisted in Kubernetes ConfigMaps with optimistic concurrency.
   Administrators use the same account for admin and ordinary team work.
-- Each team has a namespace, bounded NFS filesystem and PVC. Inputs mount
+- Each team has a namespace and separate bounded dataset/model NFS filesystems and PVCs. Inputs mount
   read-only; outputs mount only a job's own directory. Team storage is organized
   as common and member datasets/results. Teammates can read all team folders.
 - Members manage their own uploads/results. Common-folder writers are explicitly
@@ -20,8 +20,8 @@ deployed flow on both machines. No permission prompts or cloud deployment.
   writes. A small QuietBox host service handles trusted provisioning requests,
   mounts, online expansion and NFS exports. It never formats physical disks or
   deletes team data. Provisioning requests live outside workload mounts.
-- Initial total team allocation budget is 80GiB within the existing 100GiB pilot
-  store, leaving room for preserved legacy data and metadata. Reject allocation
+- Combined team allocation budget is 1,500 GiB within the 1,600 GiB sparse
+  store. New team defaults are 200 GiB datasets + 500 GiB models/results. Reject allocation
   above the budget. Storage expansion is supported; shrinking is rejected.
 - Default team workload policy denies inbound connections and private-network
   outbound access, including direct NFS/API access. Permit DNS and public HTTPS.
@@ -119,12 +119,21 @@ The branch remains `feat/local-job-foundation`; no remote push/merge was perform
 
 Confirmed defaults: **200 GiB datasets + 500 GiB models/results per team**,
 admin configurable. This changes the earlier 64 GiB ceiling and shared quota.
-Implementation and verification are in progress; the recorded baseline above
-passed before this follow-up.
+The recorded baseline above passed before this follow-up. Follow-up checks use
+small files; large transfers/exhaustion are excluded at the user’s request.
 
-- [ ] Expand/reserve the known QuietBox image within measured physical free space.
-- [ ] Separate bounded dataset and model filesystems; preserve existing outputs.
-- [ ] Extend policy/admin controls and expose actual free space for both pools.
-- [ ] Enforce upload capacity against datasets and job writes against models.
-- [ ] Verify migration, separate exhaustion, bounds/denials and accelerator jobs.
-- [ ] Update current documentation and commit the completed follow-up.
+- [x] Expand the known image sparsely; release unused bulk physical preallocation.
+- [x] Separate bounded dataset/model filesystems and migrate existing outputs.
+- [x] Extend policy/admin controls and expose actual free space for both pools.
+- [x] Enforce upload capacity against datasets and job writes against models.
+- [x] Verify migration, bounds/denials, small uploads and accelerator jobs.
+      Large upload/exhaustion tests are excluded at the user’s request.
+- [x] Update current documentation and commit the completed follow-up.
+
+Follow-up evidence: seven small-file live checks, six migration tests, eleven
+browser checks, nine React tests, focused Go suites, CLI tests, TypeScript, ESLint
+and syntax checks. Verified NFS mount identity, separate exports, member-parent
+permissions and preserved checkpoints. QuietBox’s unused bulk reservation and
+blocks belonging to the deleted large probe were reclaimed; existing research
+files outside Mist remain untouched. See current [rollout](department-rollout.md)
+for sparse storage capacity and the two-pool API compatibility rules.

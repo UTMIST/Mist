@@ -115,7 +115,7 @@ func atomicJSON(path string, v any) error {
 	return os.Rename(f.Name(), path)
 }
 func (s *TeamService) provisionRequest(t *Team) error {
-	return atomicJSON(filepath.Join(s.app.executor.storage.root, "metadata/provision-requests", t.ID+".json"), map[string]any{"id": t.ID, "storage_gib": t.Policy.StorageGiB})
+	return atomicJSON(filepath.Join(s.app.executor.storage.root, "metadata/provision-requests", t.ID+".json"), map[string]any{"id": t.ID, "storage_gib": t.Policy.StorageGiB, "model_storage_gib": t.Policy.ModelStorageGiB})
 }
 func (s *TeamService) provisionNamespace(ctx context.Context, t *Team) error {
 	signature, _ := json.Marshal(t.Policy)
@@ -183,6 +183,9 @@ func (s *TeamService) provisionNamespace(ctx context.Context, t *Team) error {
 	if err = s.ensureVolume(ctx, t.ID, ns, "team-storage", fmt.Sprintf("teams/%s", t.ID), t.Policy.StorageGiB, false); err != nil {
 		return err
 	}
+	if err = s.ensureVolume(ctx, t.ID, ns, "team-models", fmt.Sprintf("teams/%s/.models", t.ID), t.Policy.ModelStorageGiB, false); err != nil {
+		return err
+	}
 	s.provisioned[t.ID] = teamProvisioned{signature: string(signature), checked: time.Now()}
 	return nil
 }
@@ -208,12 +211,17 @@ func (s *TeamService) ensureVolume(ctx context.Context, sourceTeam, namespace, c
 	c := s.app.executor.client
 	name := namespace + "-" + claim
 	pv := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"mist.io/team": sourceTeam}}, Spec: corev1.PersistentVolumeSpec{Capacity: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", gib))}, AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}, PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain, StorageClassName: "", ClaimRef: &corev1.ObjectReference{Name: claim, Namespace: namespace}, MountOptions: []string{"nfsvers=4.2", "hard", "timeo=100", "retrans=2"}, PersistentVolumeSource: corev1.PersistentVolumeSource{NFS: &corev1.NFSVolumeSource{Server: envOr("MIST_NFS_SERVER", "10.0.0.112"), Path: "/srv/mist-storage/" + path, ReadOnly: readonly}}}}
-	if _, err := c.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
+	if existing, err := c.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		if _, err = c.CoreV1().PersistentVolumes().Create(ctx, pv, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
+	} else if existing.Spec.Capacity.Storage().Cmp(pv.Spec.Capacity[corev1.ResourceStorage]) < 0 {
+		existing.Spec.Capacity = pv.Spec.Capacity
+		if _, err = c.CoreV1().PersistentVolumes().Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
 	}
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: claim, Namespace: namespace}, Spec: corev1.PersistentVolumeClaimSpec{AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}, StorageClassName: ptr(""), VolumeName: name, Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", gib))}}}}
 	if _, err := c.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, claim, metav1.GetOptions{}); apierrors.IsNotFound(err) {

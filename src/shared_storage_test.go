@@ -72,7 +72,7 @@ func TestSharedDatasetConfiguredCeilingAndMissingStorage(t *testing.T) {
 	if s.availableUploadLimit(true) != 0 {
 		t.Fatal("missing storage advertised upload capacity")
 	}
-	for _, value := range []string{"0", "65", "invalid"} {
+	for _, value := range []string{"0", "1048577", "invalid"} {
 		t.Setenv("MIST_MAX_DATASET_GIB", value)
 		if _, err = NewSharedStorage(t.TempDir()); err == nil {
 			t.Fatalf("accepted invalid upload ceiling %q", value)

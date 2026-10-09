@@ -16,9 +16,17 @@ const TeamContext = createContext<{
   selected: string
   team: Team | null
   teams: Team[]
+  storageBudget: number
   choose: (id: string) => void
   refresh: () => void
-}>({ selected: '', team: null, teams: [], choose: () => {}, refresh: () => {} })
+}>({
+  selected: '',
+  team: null,
+  teams: [],
+  storageBudget: 0,
+  choose: () => {},
+  refresh: () => {},
+})
 export const useTeam = () => useContext(TeamContext)
 
 export function TeamGate({ children }: { children: ReactNode }) {
@@ -53,7 +61,14 @@ export function TeamGate({ children }: { children: ReactNode }) {
   const team = teams.find((t) => t.id === selected) ?? null
   return (
     <TeamContext
-      value={{ selected, team, teams, choose, refresh: list.refresh }}
+      value={{
+        selected,
+        team,
+        teams,
+        storageBudget: list.data?.storage_budget_gib ?? 0,
+        choose,
+        refresh: list.refresh,
+      }}
     >
       {list.error && (
         <p role="alert" className="px-6 py-2 text-red-700">

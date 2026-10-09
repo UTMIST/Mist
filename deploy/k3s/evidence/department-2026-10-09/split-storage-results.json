@@ -1,0 +1,37 @@
+{
+  "checks": {
+    "both_pools_ready_with_independent_capacities": true,
+    "both_shrinks_and_combined_overcommit_rejected_without_mutation": true,
+    "old_accelerator_checkpoints_preserved_byte_for_byte": true,
+    "small_dataset_uploaded_with_verified_checksum": true,
+    "nvidia_uploaded_input_readonly_and_models_saved_in_separate_pvc": true,
+    "tenstorrent_uploaded_input_readonly_and_models_saved_in_separate_pvc": true,
+    "own_small_probe_removed_after_terminal_jobs": true
+  },
+  "jobs": [
+    {
+      "id": "mist-976551958cfdf6a5ad42427c",
+      "backend": "nvidia",
+      "node": "utmist-z1opa08"
+    },
+    {
+      "id": "mist-68ba775f5254308450de267c",
+      "backend": "tenstorrent",
+      "node": "utmist-tt"
+    }
+  ],
+  "bulk_testing": false,
+  "storage": {
+    "available_bytes": 2049966080,
+    "capacity_bytes": 2077229056,
+    "dataset_allocation_gib": 2,
+    "enabled": true,
+    "max_dataset_bytes": 1125899906842624,
+    "model_allocation_gib": 2,
+    "model_available_bytes": 2002780160,
+    "model_capacity_bytes": 2040528896,
+    "upload_limit_bytes": 1982857216
+  },
+  "preserved_checkpoint_files": 8,
+  "dataset_bytes": 260729
+}

@@ -1,3 +1,6 @@
+> Current department storage and portal settings: [department rollout](department-rollout.md).
+> This document records the earlier foundation; its 100 GiB pilot was later expanded sparsely.
+
 # Mist foundation: historical operating snapshot
 
 > **Historical account-only snapshot.** The [department rollout](department-rollout.md)

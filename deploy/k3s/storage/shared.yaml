@@ -4,7 +4,7 @@ metadata:
   name: mist-shared-api
 spec:
   capacity:
-    storage: 100Gi
+    storage: 1600Gi
   accessModes: [ReadWriteMany]
   persistentVolumeReclaimPolicy: Retain
   storageClassName: ""
@@ -27,6 +27,7 @@ spec:
   accessModes: [ReadWriteMany]
   resources:
     requests:
+      # Existing static NFS claim size stays unchanged; actual capacity is in PV/statfs.
       storage: 100Gi
 ---
 apiVersion: v1

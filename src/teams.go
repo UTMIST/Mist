@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -32,15 +33,16 @@ const teamRegistry = "mist-teams"
 var teamIDPattern = regexp.MustCompile(`^team-[a-f0-9]{16}$`)
 
 type TeamPolicy struct {
-	CPU            string   `json:"cpu"`
-	Memory         string   `json:"memory"`
-	NVIDIA         int      `json:"nvidia"`
-	Tenstorrent    int      `json:"tenstorrent"`
-	Concurrent     int      `json:"concurrent"`
-	Queued         int      `json:"queued"`
-	StorageGiB     int64    `json:"storage_gib"`
-	RuntimeSeconds int64    `json:"runtime_seconds"`
-	Registries     []string `json:"registries"`
+	CPU             string   `json:"cpu"`
+	Memory          string   `json:"memory"`
+	NVIDIA          int      `json:"nvidia"`
+	Tenstorrent     int      `json:"tenstorrent"`
+	Concurrent      int      `json:"concurrent"`
+	Queued          int      `json:"queued"`
+	StorageGiB      int64    `json:"storage_gib"` // Dataset pool; retained API field for compatibility.
+	ModelStorageGiB int64    `json:"model_storage_gib"`
+	RuntimeSeconds  int64    `json:"runtime_seconds"`
+	Registries      []string `json:"registries"`
 }
 type TeamMember struct {
 	ID           string `json:"id"`
@@ -102,9 +104,36 @@ func (t *Team) member(id string) *TeamMember {
 }
 func (t *Team) namespace() string { return "mist-" + t.ID }
 func defaultTeamPolicy() TeamPolicy {
-	return TeamPolicy{CPU: "8", Memory: "32Gi", NVIDIA: 2, Tenstorrent: 4, Concurrent: 2, Queued: 50, StorageGiB: 10, RuntimeSeconds: 86400, Registries: []string{"docker.io", "ghcr.io", "nvcr.io"}}
+	return TeamPolicy{CPU: "8", Memory: "32Gi", NVIDIA: 2, Tenstorrent: 4, Concurrent: 2, Queued: 50, StorageGiB: 200, ModelStorageGiB: 500, RuntimeSeconds: 86400, Registries: []string{"docker.io", "ghcr.io", "nvcr.io"}}
+}
+func teamStorageBudgetGiB() int64 {
+	raw := envOr("MIST_TEAM_STORAGE_BUDGET_GIB", "1500")
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 2 || value > maxDatasetBytes/(1024*1024*1024) {
+		panic("invalid MIST_TEAM_STORAGE_BUDGET_GIB")
+	}
+	return value
+}
+func (s *TeamService) storageBudgetGiB() int64 {
+	budget := teamStorageBudgetGiB()
+	if envOr("MIST_REQUIRE_TEAM_FILESYSTEM", "true") == "false" {
+		return budget
+	}
+	var fs syscall.Statfs_t
+	if syscall.Statfs(s.app.executor.storage.root, &fs) != nil {
+		return 0
+	}
+	return max(0, min(budget, int64(fs.Blocks)*fs.Bsize/(1024*1024*1024)-20))
+}
+func normalizeStoragePolicy(p *TeamPolicy) {
+	// Old teams had one shared pool. Preserve their allocation for each bucket;
+	// the host migration moves completed outputs into the new model filesystem.
+	if p.ModelStorageGiB == 0 {
+		p.ModelStorageGiB = p.StorageGiB
+	}
 }
 func validateTeam(team *Team) error {
+	normalizeStoragePolicy(&team.Policy)
 	if strings.TrimSpace(team.Name) == "" || len(team.Name) > 100 {
 		return errors.New("team name must contain 1–100 characters")
 	}
@@ -117,7 +146,7 @@ func validateTeam(team *Team) error {
 	if err != nil || mem.Cmp(resource.MustParse("64Mi")) < 0 || mem.Cmp(resource.MustParse("128Gi")) > 0 {
 		return errors.New("team memory must be between 64Mi and 128Gi")
 	}
-	if p.NVIDIA < 0 || p.NVIDIA > 2 || p.Tenstorrent < 0 || p.Tenstorrent > 4 || p.Concurrent < 1 || p.Concurrent > 16 || p.Queued < 1 || p.Queued > 200 || p.StorageGiB < 1 || p.StorageGiB > 80 || p.RuntimeSeconds < 10 || p.RuntimeSeconds > 86400 {
+	if p.NVIDIA < 0 || p.NVIDIA > 2 || p.Tenstorrent < 0 || p.Tenstorrent > 4 || p.Concurrent < 1 || p.Concurrent > 16 || p.Queued < 1 || p.Queued > 200 || p.StorageGiB < 1 || p.StorageGiB > teamStorageBudgetGiB() || p.ModelStorageGiB < 1 || p.ModelStorageGiB > teamStorageBudgetGiB() || p.RuntimeSeconds < 10 || p.RuntimeSeconds > 86400 {
 		return errors.New("invalid team device, concurrency, queue, storage or runtime limits")
 	}
 	if len(p.Registries) > 20 {
@@ -131,6 +160,7 @@ func validateTeam(team *Team) error {
 	return nil
 }
 func newTeamService(a *App) *TeamService {
+	_ = teamStorageBudgetGiB()
 	return &TeamService{app: a, stores: map[string]*SharedStorage{}, provisioned: map[string]teamProvisioned{}, stop: make(chan struct{}), done: make(chan struct{})}
 }
 func (s *TeamService) registry(ctx context.Context) (*corev1.ConfigMap, []Team, error) {
@@ -145,6 +175,9 @@ func (s *TeamService) registry(ctx context.Context) (*corev1.ConfigMap, []Team, 
 	if err = json.Unmarshal([]byte(cm.Data["teams"]), &teams); err != nil {
 		return nil, nil, fmt.Errorf("invalid persisted team registry: %w", err)
 	}
+	for i := range teams {
+		normalizeStoragePolicy(&teams[i].Policy)
+	}
 	return cm, teams, nil
 }
 func (s *TeamService) mutate(ctx context.Context, change func(*[]Team) error) error {
@@ -158,10 +191,10 @@ func (s *TeamService) mutate(ctx context.Context, change func(*[]Team) error) er
 		}
 		var budget int64
 		for _, t := range teams {
-			budget += t.Policy.StorageGiB
+			budget += t.Policy.StorageGiB + t.Policy.ModelStorageGiB
 		}
-		if budget > 80 {
-			return &submissionError{errors.New("total allocated team storage cannot exceed the 80GiB rollout budget")}
+		if budget > s.storageBudgetGiB() {
+			return &submissionError{fmt.Errorf("total dataset and model allocations cannot exceed the %dGiB storage budget", s.storageBudgetGiB())}
 		}
 		data, err := json.Marshal(teams)
 		if err != nil {
@@ -209,22 +242,43 @@ func (s *TeamService) store(t *Team) (*SharedStorage, error) {
 		return nil, errors.New("team storage is being provisioned")
 	}
 	var ready struct {
-		State      string `json:"state"`
-		StorageGiB int64  `json:"storage_gib"`
+		State           string `json:"state"`
+		StorageGiB      int64  `json:"storage_gib"`
+		ModelStorageGiB int64  `json:"model_storage_gib"`
 	}
-	if json.Unmarshal(status, &ready) != nil || ready.State != "Ready" || ready.StorageGiB < t.Policy.StorageGiB {
+	if json.Unmarshal(status, &ready) != nil || ready.State != "Ready" || ready.StorageGiB < t.Policy.StorageGiB || ready.ModelStorageGiB < t.Policy.ModelStorageGiB {
 		return nil, errors.New("team storage is not ready")
 	}
 	if envOr("MIST_REQUIRE_TEAM_FILESYSTEM", "true") != "false" {
-		var fs syscall.Statfs_t
-		if err := syscall.Statfs(filepath.Join(s.app.executor.storage.root, "teams", t.ID), &fs); err != nil {
-			return nil, err
-		}
-		capacity := fs.Blocks * uint64(fs.Bsize)
-		// Fail closed if NFS falls through to the parent filesystem after a missing
-		// child mount. Its 100GiB capacity must never serve a bounded team workspace.
-		if capacity > uint64(t.Policy.StorageGiB)*1024*1024*1024+64*1024*1024 || capacity < 512*1024*1024 {
-			return nil, errors.New("bounded team filesystem is unavailable")
+		var datasetDevice uint64
+		for index, pool := range []struct {
+			path string
+			gib  int64
+		}{{filepath.Join(s.app.executor.storage.root, "teams", t.ID), t.Policy.StorageGiB}, {filepath.Join(s.app.executor.storage.root, "teams", t.ID, ".models"), t.Policy.ModelStorageGiB}} {
+			var fs syscall.Statfs_t
+			if err := syscall.Statfs(pool.path, &fs); err != nil {
+				return nil, err
+			}
+			// NFS reports a zero statfs fsid on these nodes. The device ID
+			// identifies distinct mounted superblocks, including NFS child mounts.
+			entry, err := os.Stat(pool.path)
+			if err != nil {
+				return nil, err
+			}
+			identity, ok := entry.Sys().(*syscall.Stat_t)
+			if !ok {
+				return nil, errors.New("cannot identify team filesystem")
+			}
+			if index == 0 {
+				datasetDevice = uint64(identity.Dev)
+			} else if uint64(identity.Dev) == datasetDevice {
+				return nil, errors.New("separate model filesystem is unavailable")
+			}
+			capacity := fs.Blocks * uint64(fs.Bsize)
+			target := uint64(pool.gib) * 1024 * 1024 * 1024
+			if capacity > target+64*1024*1024 || capacity < target*9/10 {
+				return nil, errors.New("bounded team filesystem is unavailable")
+			}
 		}
 	}
 	if st := s.stores[t.ID]; st != nil {
@@ -233,6 +287,12 @@ func (s *TeamService) store(t *Team) (*SharedStorage, error) {
 	st, err := NewSharedStorage(filepath.Join(s.app.executor.storage.root, "teams", t.ID))
 	if err != nil {
 		return nil, err
+	}
+	st.modelRoot = filepath.Join(st.root, ".models")
+	if envOr("MIST_REQUIRE_TEAM_FILESYSTEM", "true") == "false" {
+		if err := os.MkdirAll(st.modelRoot, 0700); err != nil {
+			return nil, err
+		}
 	}
 	s.stores[t.ID] = st
 	return st, nil
@@ -313,7 +373,7 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 				result = append(result, t)
 			}
 		}
-		writeJSON(w, 200, map[string]any{"teams": result, "storage_budget_gib": 80})
+		writeJSON(w, 200, map[string]any{"teams": result, "storage_budget_gib": s.storageBudgetGiB()})
 		return
 	}
 	if !isAdmin(m) {
@@ -325,9 +385,10 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/teams"), "/")
 	if r.URL.Path == "/teams" && r.Method == http.MethodPost {
 		var body struct {
-			Name       string      `json:"name"`
-			StorageGiB *int64      `json:"storage_gib"`
-			Policy     *TeamPolicy `json:"policy"`
+			Name            string      `json:"name"`
+			StorageGiB      *int64      `json:"storage_gib"`
+			ModelStorageGiB *int64      `json:"model_storage_gib"`
+			Policy          *TeamPolicy `json:"policy"`
 		}
 		if err := decodeTeamJSON(w, r, &body); err != nil {
 			executorError(w, err)
@@ -344,6 +405,16 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 		}
 		if body.StorageGiB != nil {
 			t.Policy.StorageGiB = *body.StorageGiB
+			if body.ModelStorageGiB == nil {
+				t.Policy.ModelStorageGiB = *body.StorageGiB
+			}
+		}
+		if body.ModelStorageGiB != nil {
+			if *body.ModelStorageGiB < 1 {
+				executorError(w, &submissionError{errors.New("model storage must be at least 1 GiB")})
+				return
+			}
+			t.Policy.ModelStorageGiB = *body.ModelStorageGiB
 		}
 		if err = validateTeam(&t); err != nil {
 			executorError(w, &submissionError{err})
@@ -391,7 +462,8 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 				t.Disabled = *body.Disabled
 			}
 			if body.Policy != nil {
-				if body.Policy.StorageGiB < t.Policy.StorageGiB {
+				normalizeStoragePolicy(body.Policy)
+				if body.Policy.StorageGiB < t.Policy.StorageGiB || body.Policy.ModelStorageGiB < t.Policy.ModelStorageGiB {
 					return errors.New("storage cannot be shrunk online; existing files are preserved")
 				}
 				t.Policy = *body.Policy

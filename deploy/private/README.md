@@ -11,7 +11,7 @@ Execution/evidence: [rollout checklist](../../docs/department-rollout-execution.
 | Go API and admission controller | `mist-system`, main, one Recreate replica | Team/queue ConfigMaps; Kubernetes Jobs |
 | Better Auth | `mist-system`, main, one Recreate replica | Local `mist-auth-data` SQLite WAL PVC |
 | k3s server / agent | Main / QuietBox | Existing cluster and device operators |
-| NFSv4 storage | QuietBox | Existing 100 GiB image and nested bounded team filesystems |
+| NFSv4 storage | QuietBox | 1,600 GiB sparse image; separate bounded dataset/model filesystems |
 | Team provisioning agent | QuietBox `mist-team-storage.service` | Validated manifests, fstab mounts and NFS exports |
 | Portal host firewall | Both `mist-portal-firewall.service` | Owned INPUT/FORWARD chains and host config |
 
@@ -74,10 +74,10 @@ systemctl enable --now mist-team-storage
 ```
 
 The agent reads API-owned requests outside workload mounts, enforces the combined
-80 GiB allocation budget, refuses unknown images/nonempty covered directories,
+1,500 GiB dataset + model allocation budget, refuses unknown images/nonempty covered directories,
 and supports online growth. Team disable/removal never deletes files or frees an
-allocation. Shrinking is rejected. Per-member folders share the team's hard
-filesystem capacity. PV/PVC sizes are declarations; ext4 enforces actual writes.
+allocation. Shrinking is rejected. New teams default to 200 GiB datasets and 500 GiB models/results. Per-member
+folders share the applicable team pool's hard filesystem capacity. PV/PVC sizes are declarations; ext4 enforces actual writes.
 
 NFS permits only `10.0.0.175` and `10.0.0.112` over the existing LAN. Keep QuietBox
 online and its router/network connection intact. No separate switch or direct
@@ -85,12 +85,27 @@ cable is required for this pilot.
 
 ## Dataset request limits
 
-Go defaults to a 64 GiB file/expanded-dataset ceiling. Set `MIST_MAX_DATASET_GIB`
-(1–64) in the API deployment to lower it. Actual team free space and the metadata
-reserve further bound uploads; increasing this value does not create storage.
-Nginx permits 64 GiB bodies and streams requests with buffering disabled. Browser
-and Go allow four-hour transfers. ZIP archives need staging and expanded space.
-Uploads can be cancelled, but interrupted transfers restart from the beginning.
+Uploads are bounded by actual dataset free space minus a 64 MiB metadata reserve.
+An optional `MIST_MAX_DATASET_GIB` ceiling can lower this (1–1,048,576 GiB).
+There is no fixed 64 GiB cap. Nginx streams bodies without buffering; authenticated
+API admission enforces capacity. Browser and Go allow 24-hour transfers. ZIP
+archives need both staging and expanded space. Cancellation is supported;
+interrupted transfers restart from the beginning.
+
+## Existing store expansion
+
+`storage/grow-quietbox-store.py --gib 1600` expands only the known, correctly
+labelled image, after checking host headroom. It grows sparsely and never formats
+physical disks or shrinks existing filesystems. The current image was expanded
+online; its initial physical preallocation was released with
+`fstrim -v /srv/mist-storage`. Do not unlink or truncate a mounted backing file.
+The host had about 1.9 TiB free after release. Logical capacity is not a physical
+reservation; account for future image growth alongside existing research files.
+
+Migration must run without active team jobs and with API submissions paused.
+Restart the updated storage agent, wait for both pool capacities to be Ready,
+then deploy the updated API. Old policies with no `model_storage_gib` retain the
+old allocation independently for each pool. Preserve credentials/auth data.
 
 ## Portal network rules
 

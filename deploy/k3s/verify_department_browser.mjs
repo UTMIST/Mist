@@ -126,7 +126,8 @@ try {
     await page.goto("/teams");
     await page.getByRole("button", { name: "New team", exact: true }).click();
     await page.getByLabel("New team name").fill("Browser verification");
-    await page.getByLabel("Storage (GiB)", { exact: true }).fill("1");
+    await page.getByLabel("Dataset storage (GiB)", { exact: true }).fill("1");
+    await page.getByLabel("Model storage (GiB)", { exact: true }).fill("1");
     const response = page.waitForResponse(
       (r) => r.url().endsWith("/api/teams") && r.request().method() === "POST",
     );
@@ -249,7 +250,7 @@ try {
   );
   await member.getByRole("button", { name: "Submit job", exact: true }).click();
   const submitted = await submission;
-  check(submitted.ok(), "Browser job submission failed");
+  check(submitted.ok(), "Browser job submission failed: " + submitted.status() + " " + (submitted.ok() ? "" : await submitted.text()));
   const id = (await submitted.json()).job_id;
   report.job_id = id;
   for (let i = 0; i < 100; i++) {

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,12 +24,14 @@ import (
 	"time"
 )
 
-const maxDatasetBytes int64 = 64 * 1024 * 1024 * 1024
+// Physical per-team dataset capacity is the upload limit; no small fixed ceiling.
+const maxDatasetBytes int64 = 1 << 50
 
 var datasetIDPattern = regexp.MustCompile(`^dataset-[a-f0-9]{24}$`)
 
 type SharedStorage struct {
 	root        string
+	modelRoot   string
 	mu          sync.Mutex
 	uploadMu    sync.Mutex
 	uploadLimit int64
@@ -63,8 +66,8 @@ func NewSharedStorage(root string) (*SharedStorage, error) {
 	limit := maxDatasetBytes
 	if configured := os.Getenv("MIST_MAX_DATASET_GIB"); configured != "" {
 		gib, err := strconv.ParseInt(configured, 10, 64)
-		if err != nil || gib < 1 || gib > 64 {
-			return nil, errors.New("MIST_MAX_DATASET_GIB must be 1–64")
+		if err != nil || gib < 1 || gib > maxDatasetBytes/(1024*1024*1024) {
+			return nil, errors.New("MIST_MAX_DATASET_GIB is outside the supported range")
 		}
 		limit = gib * 1024 * 1024 * 1024
 	}
@@ -99,8 +102,14 @@ func (s *SharedStorage) dataset(id, owner string) (*Dataset, error) {
 	}
 	return &ds, nil
 }
+func (s *SharedStorage) resultsRoot() string {
+	if s.modelRoot != "" {
+		return s.modelRoot
+	}
+	return s.root
+}
 func (s *SharedStorage) prepareJob(id string) error {
-	dir := filepath.Join(s.root, "jobs", id, "outputs")
+	dir := filepath.Join(s.resultsRoot(), "jobs", id, "outputs")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -137,7 +146,7 @@ func (s *SharedStorage) upload(r *http.Request, owner string) (*Dataset, error) 
 	}
 	remaining := int64(stats.Bavail)*stats.Bsize - reserve
 	if remaining <= 0 {
-		return nil, errors.New("storage has insufficient free space for an upload")
+		return nil, fmt.Errorf("dataset storage has insufficient free space: %w", syscall.ENOSPC)
 	}
 	limit := min(s.uploadLimit, remaining)
 	if r.ContentLength > limit {
@@ -309,7 +318,17 @@ func (a *App) storageInfo(w http.ResponseWriter, r *http.Request) {
 		executorError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]interface{}{"enabled": true, "capacity_bytes": stat.Blocks * uint64(stat.Bsize), "available_bytes": stat.Bavail * uint64(stat.Bsize), "upload_limit_bytes": s.availableUploadLimit(e.team != nil), "max_dataset_bytes": s.uploadLimit})
+	info := map[string]interface{}{"enabled": true, "capacity_bytes": stat.Blocks * uint64(stat.Bsize), "available_bytes": stat.Bavail * uint64(stat.Bsize), "upload_limit_bytes": s.availableUploadLimit(e.team != nil), "max_dataset_bytes": s.uploadLimit}
+	if e.team != nil {
+		var models syscall.Statfs_t
+		if err := syscall.Statfs(s.resultsRoot(), &models); err != nil {
+			executorError(w, err)
+			return
+		}
+		info["model_capacity_bytes"], info["model_available_bytes"] = models.Blocks*uint64(models.Bsize), models.Bavail*uint64(models.Bsize)
+		info["dataset_allocation_gib"], info["model_allocation_gib"] = e.team.Team.Policy.StorageGiB, e.team.Team.Policy.ModelStorageGiB
+	}
+	writeJSON(w, 200, info)
 }
 func (a *App) datasets(w http.ResponseWriter, r *http.Request) {
 	e := a.requestExecutor(r)
@@ -341,8 +360,8 @@ func (a *App) datasets(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]interface{}{"datasets": list, "upload_limit_bytes": s.availableUploadLimit(false)})
 	case http.MethodPost:
 		controller := http.NewResponseController(w)
-		_ = controller.SetReadDeadline(time.Now().Add(4 * time.Hour))
-		_ = controller.SetWriteDeadline(time.Now().Add(4 * time.Hour))
+		_ = controller.SetReadDeadline(time.Now().Add(24 * time.Hour))
+		_ = controller.SetWriteDeadline(time.Now().Add(24 * time.Hour))
 		r.Body = http.MaxBytesReader(w, r.Body, s.uploadLimit+1)
 		ds, err := s.upload(r, e.owner)
 		if err != nil {
@@ -422,14 +441,14 @@ func (s *SharedStorage) outputPath(job *batchv1.Job) (string, error) {
 		if !safeRelative(path) {
 			return "", errors.New("invalid job storage path")
 		}
-		return filepath.Join(s.root, path), nil
+		return filepath.Join(s.resultsRoot(), path), nil
 	}
 	if job.Annotations["mist.io/storage"] == "shared-v1" {
-		return filepath.Join(s.root, "jobs", job.Name, "outputs"), nil
+		return filepath.Join(s.resultsRoot(), "jobs", job.Name, "outputs"), nil
 	}
 	for _, vol := range job.Spec.Template.Spec.Volumes {
 		if vol.Name == "checkpoints" && vol.PersistentVolumeClaim != nil && vol.PersistentVolumeClaim.ClaimName == "mist-shared-jobs" {
-			return filepath.Join(s.root, "jobs", job.Name, "outputs"), nil
+			return filepath.Join(s.resultsRoot(), "jobs", job.Name, "outputs"), nil
 		}
 	}
 	var req CreateJobRequest
@@ -439,7 +458,7 @@ func (s *SharedStorage) outputPath(job *batchv1.Job) (string, error) {
 	if req.Accelerator != "cpu" && req.Accelerator != "nvidia" && req.Accelerator != "tenstorrent" {
 		return "", errors.New("unknown legacy output storage")
 	}
-	return filepath.Join(s.root, "legacy", req.Accelerator, job.Name), nil
+	return filepath.Join(s.resultsRoot(), "legacy", req.Accelerator, job.Name), nil
 }
 
 type ResultFile struct {
@@ -564,7 +583,7 @@ func serveStoredFiles(w http.ResponseWriter, r *http.Request, path string, downl
 		writeJSON(w, 404, map[string]string{"error": "file not found"})
 		return
 	}
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(4 * time.Hour))
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(24 * time.Hour))
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(filename)}))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Type", "application/octet-stream")

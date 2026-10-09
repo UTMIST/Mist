@@ -65,7 +65,7 @@ func (s *TeamService) submitTeam(ctx context.Context, e *KubernetesExecutor, req
 		}
 	}
 	e.outputSubPath = scopePath(req.StorageScope) + "/jobs/" + id + "/outputs"
-	output := filepath.Join(e.storage.root, e.outputSubPath)
+	output := filepath.Join(e.storage.resultsRoot(), e.outputSubPath)
 	if err = os.MkdirAll(output, 0755); err != nil {
 		return nil, err
 	}

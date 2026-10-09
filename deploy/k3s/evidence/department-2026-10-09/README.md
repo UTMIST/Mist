@@ -47,3 +47,26 @@ The host firewall test used an isolated synthetic source on the actual installed
 chains, not an external researcher's laptop. Regression training demonstrates
 the tested runtimes/devices; arbitrary models, hostile-code VM isolation, HA,
 per-member hard storage quotas and excluded rollout features are not claimed.
+
+## Separate storage pools follow-up
+
+[Small-file storage report](split-storage-results.json): seven live checks passed,
+using a 260,729-byte dataset. Both NVIDIA GPUs and one TT board/two chips trained
+from the uploaded data and saved/downloaded outputs through the new model PVC.
+Existing accelerator outputs match their pre-migration evidence byte for byte.
+Both pool shrink requests and combined budget overcommit were rejected without
+changing persisted policy. The own small dataset was removed after both jobs.
+Logs: [NVIDIA](split-nvidia.log), [Tenstorrent](split-tenstorrent.log).
+
+Six isolated migration tests passed using only tiny temporary files: content,
+mode/ownership/link preservation, idempotence, retry after publication, conflicts,
+partial stages, safe manifests and API access through member-folder parents.
+Live NFS checks identified zero statfs filesystem IDs; readiness uses distinct
+mount device identities. Dataset/model exports have separate stable files.
+
+The eleven browser checks and nine React tests passed after migration. Large
+uploads and quota exhaustion were not repeated, at the user’s request. These
+checks do not demonstrate uploads at 200/500 GiB or every disk-full scenario.
+The initial unused 1.5 TiB bulk reservation was released using filesystem discard,
+preserving data. After reclaiming deleted test blocks, the sparse backing file
+used about 6 GiB physically and QuietBox had about 1.9 TiB free on its host disk.

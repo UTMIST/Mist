@@ -24,6 +24,7 @@ function PolicyForm({
   team: Team
   save: (policy: TeamPolicy) => Promise<void>
 }) {
+  const { storageBudget } = useTeam()
   const [policy, setPolicyState] = useState(team.policy)
   const [editing, setEditing] = useState(false)
   const signature = JSON.stringify(team.policy)
@@ -41,7 +42,18 @@ function PolicyForm({
     ['tenstorrent', 'Tenstorrent boards (two chips each)', 0, 4],
     ['concurrent', 'Simultaneous jobs', 1, 16],
     ['queued', 'Queued jobs', 1, 200],
-    ['storage_gib', 'Storage allocation (GiB)', team.policy.storage_gib, 80],
+    [
+      'storage_gib',
+      'Dataset storage (GiB)',
+      team.policy.storage_gib,
+      storageBudget,
+    ],
+    [
+      'model_storage_gib',
+      'Model storage (GiB)',
+      team.policy.model_storage_gib,
+      storageBudget,
+    ],
     ['runtime_seconds', 'Maximum job runtime (seconds)', 10, 86400],
   ] as const
   return (
@@ -136,9 +148,9 @@ function PolicyForm({
         />
       </div>
       <p className="text-sm">
-        Limits apply to the team as a whole. Storage can be expanded; existing
-        storage cannot be shrunk online. Jobs wait when the team or machines are
-        busy.
+        Limits apply to the whole team. Dataset and model pools are separate.
+        Storage can be expanded; shrinking existing filesystems requires an
+        offline migration.
       </p>
       <button disabled={busy} className="bg-green-200 rounded p-2">
         Save limits
@@ -182,7 +194,7 @@ function TeamAdministration({
       <div className="flex items-start justify-between gap-4">
         <PanelHeading
           title={team.name}
-          description={`${team.members.length} teammates · ${team.policy.storage_gib} GiB storage${team.disabled ? ' · Disabled' : ''}`}
+          description={`${team.members.length} teammates · ${team.policy.storage_gib} GiB datasets · ${team.policy.model_storage_gib} GiB models${team.disabled ? ' · Disabled' : ''}`}
           icon={<Users size={20} />}
         />
         <button
@@ -391,13 +403,14 @@ function TeamAdministration({
 
 export function TeamsPage() {
   const { user } = useAccount()
-  const { teams, refresh, choose } = useTeam()
+  const { teams, refresh, choose, storageBudget } = useTeam()
   const admin = user?.role.split(',').includes('admin')
   const [name, setName] = useState('')
   const [editing, setEditing] = useState('')
   const [creating, setCreating] = useState(false)
   const editingTeam = teams.find((t) => t.id === editing)
-  const [storageGiB, setStorageGiB] = useState(10)
+  const [storageGiB, setStorageGiB] = useState(200)
+  const [modelGiB, setModelGiB] = useState(500)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   return (
@@ -441,7 +454,7 @@ export function TeamsPage() {
               setBusy(true)
               setMessage('')
               try {
-                const t = await teamsAPI.create(name, storageGiB)
+                const t = await teamsAPI.create(name, storageGiB, modelGiB)
                 if (user) await teamsAPI.enroll(t.id, user.id, true)
                 setName('')
                 setCreating(false)
@@ -469,31 +482,54 @@ export function TeamsPage() {
               />
             </div>
             <div>
-              <label htmlFor="new-team-storage">Storage (GiB)</label>
+              <label htmlFor="new-team-storage">Dataset storage (GiB)</label>
               <input
                 id="new-team-storage"
                 className={field}
                 type="number"
                 min={1}
-                max={80}
+                max={storageBudget || 1}
                 required
                 value={storageGiB}
                 onChange={(e) => setStorageGiB(Number(e.target.value))}
               />
             </div>
             <input
-              aria-label="Initial storage slider"
+              aria-label="Initial dataset storage slider"
               type="range"
               min={1}
-              max={80}
+              max={storageBudget || 1}
               step={1}
               value={storageGiB}
               onChange={(e) => setStorageGiB(Number(e.target.value))}
               className="mist-range w-full"
             />
+            <div>
+              <label htmlFor="new-team-models">Model storage (GiB)</label>
+              <input
+                id="new-team-models"
+                type="number"
+                className={field}
+                required
+                min={1}
+                max={storageBudget || 1}
+                value={modelGiB}
+                onChange={(event) => setModelGiB(Number(event.target.value))}
+              />
+              <input
+                type="range"
+                className="mist-range w-full mt-3"
+                aria-label="Initial model storage slider"
+                min={1}
+                max={storageBudget || 1}
+                value={modelGiB}
+                onChange={(event) => setModelGiB(Number(event.target.value))}
+              />
+            </div>
             <p className="mist-output-note">
-              Storage is shared by common and personal folders. You can expand
-              it later within the 80 GiB allocation budget.
+              Each pool is shared by common and personal folders. Defaults are
+              200 GiB of datasets and 500 GiB of models/results. Expand within
+              the available budget.
             </p>
             <button disabled={busy} className="mist-button mist-button-primary">
               Create team
@@ -504,8 +540,12 @@ export function TeamsPage() {
       )}
       {admin && (
         <p className="mist-output-note">
-          {teams.reduce((sum, t) => sum + t.policy.storage_gib, 0)} / 80 GiB
-          allocated · Manage accounts in Account → Members.
+          {teams.reduce(
+            (sum, t) => sum + t.policy.storage_gib + t.policy.model_storage_gib,
+            0,
+          )}{' '}
+          / {storageBudget} GiB allocated · Manage accounts in Account →
+          Members.
         </p>
       )}
       {message && !creating && <p role="status">{message}</p>}
@@ -527,7 +567,10 @@ export function TeamsPage() {
             <p>{t.members.length} teammates</p>
             <div className="mist-team-card-stats">
               <span>
-                <strong>{t.policy.storage_gib} GiB</strong> storage
+                <strong>{t.policy.storage_gib} GiB</strong> datasets
+              </span>
+              <span>
+                <strong>{t.policy.model_storage_gib} GiB</strong> models/results
               </span>
               <span>
                 <strong>{t.policy.concurrent}</strong> parallel jobs
