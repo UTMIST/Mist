@@ -1,4 +1,10 @@
-# Mist foundation: operating the private cluster
+# Mist foundation: historical operating snapshot
+
+> **Historical account-only snapshot.** The [department rollout](department-rollout.md)
+> supersedes these instructions: team membership, scoped folders, enforced quotas,
+> self-service images and the new portal are implemented. Use that guide and
+> [current deployment operations](../deploy/private/README.md) for current behavior.
+> The remaining sections record the preceding foundation, including its limitations.
 
 Implemented on `feat/local-job-foundation`, October 8–9, 2026. This continues the
 [original foundation](local-job-foundation.md) with shared datasets, output

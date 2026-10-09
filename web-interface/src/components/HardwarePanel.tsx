@@ -1,4 +1,5 @@
-import Card from '#/components/Card.tsx'
+import Card, { PanelHeading } from '#/components/Card.tsx'
+import { Server } from 'lucide-react'
 import type { HardwareSnapshot } from '#/api.ts'
 
 export const computeNames = {
@@ -26,7 +27,12 @@ export function HardwarePanel({
 }) {
   return (
     <Card>
-      <h2 className="text-lg font-semibold mb-3">Hardware availability</h2>
+      <PanelHeading
+        title="Hardware availability"
+        description="Live capacity across your connected machines."
+        icon={<Server size={20} />}
+        action={<span className="mist-badge">Live</span>}
+      />
       {loading && <p>Loading hardware…</p>}
       {error && (
         <p role="alert" className="text-red-700">

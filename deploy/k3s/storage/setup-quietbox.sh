@@ -29,7 +29,7 @@ install -d -o 65532 -g 65532 -m 0700 "$root/metadata" "$root/metadata/datasets" 
 install -d -o 65532 -g 65532 -m 0755 "$root/datasets" "$root/jobs" "$root/legacy"
 mkdir -p /etc/exports.d /etc/nfs.conf.d
 cat > /etc/exports.d/mist.exports <<'EXPORT'
-/srv/mist-storage 10.0.0.175(rw,sync,no_subtree_check,root_squash,anonuid=65532,anongid=65532) 10.0.0.112(rw,sync,no_subtree_check,root_squash,anonuid=65532,anongid=65532)
+/srv/mist-storage 10.0.0.175(rw,sync,crossmnt,no_subtree_check,root_squash,anonuid=65532,anongid=65532) 10.0.0.112(rw,sync,crossmnt,no_subtree_check,root_squash,anonuid=65532,anongid=65532)
 EXPORT
 cat > /etc/nfs.conf.d/mist.conf <<'CONF'
 [nfsd]

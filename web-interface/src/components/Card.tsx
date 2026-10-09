@@ -1,6 +1,31 @@
 import { Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
+export function PanelHeading({
+  title,
+  description,
+  icon,
+  action,
+}: {
+  title: string
+  description?: string
+  icon: ReactNode
+  action?: ReactNode
+}) {
+  return (
+    <div className="mist-panel-heading">
+      <span className="mist-panel-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <h2>{title}</h2>
+        {description && <p>{description}</p>}
+      </div>
+      {action}
+    </div>
+  )
+}
+
 export function CardInfoField({
   label,
   value,
@@ -42,6 +67,18 @@ export function CardHeader({
   )
 }
 
-export default function Card({ children }: { children: ReactNode }) {
-  return <div className="border border-gray-200 rounded-xl p-5">{children}</div>
+export default function Card({
+  children,
+  className = '',
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={`mist-card border border-gray-200 rounded-xl p-5 ${className}`}
+    >
+      {children}
+    </div>
+  )
 }

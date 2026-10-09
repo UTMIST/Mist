@@ -19,8 +19,11 @@ type ComputeProfile struct {
 }
 
 type ImageCatalog struct {
-	Images   []ImageOption    `json:"images"`
-	Profiles []ComputeProfile `json:"profiles"`
+	Images       []ImageOption    `json:"images"`
+	Profiles     []ComputeProfile `json:"profiles"`
+	Registries   []string         `json:"registries,omitempty"`
+	SelfService  bool             `json:"self_service"`
+	TeamsEnabled bool             `json:"teams_enabled"`
 }
 
 // Accelerator lists describe server policy, not a guarantee that an image's
@@ -44,5 +47,12 @@ func (e *KubernetesExecutor) imageCatalog() ImageCatalog {
 }
 
 func (a *App) images(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, a.executor.imageCatalog())
+	e := a.requestExecutor(r)
+	catalog := e.imageCatalog()
+	catalog.TeamsEnabled = a.teams != nil
+	if e.team != nil {
+		catalog.SelfService = true
+		catalog.Registries = e.team.Team.Policy.Registries
+	}
+	writeJSON(w, http.StatusOK, catalog)
 }

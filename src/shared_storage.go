@@ -16,13 +16,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
 
-const maxDatasetBytes int64 = 2 * 1024 * 1024 * 1024
+const maxDatasetBytes int64 = 64 * 1024 * 1024 * 1024
 
 var datasetIDPattern = regexp.MustCompile(`^dataset-[a-f0-9]{24}$`)
 
@@ -33,15 +34,21 @@ type SharedStorage struct {
 	uploadLimit int64
 }
 type Dataset struct {
-	ID       string    `json:"id"`
-	Name     string    `json:"name"`
-	Filename string    `json:"filename"`
-	Owner    string    `json:"owner"`
-	Size     int64     `json:"size"`
-	SHA256   string    `json:"sha256"`
-	Created  time.Time `json:"created"`
-	State    string    `json:"state"`
-	Files    int       `json:"files"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Filename    string    `json:"filename"`
+	Owner       string    `json:"owner"`
+	Size        int64     `json:"size"`
+	SHA256      string    `json:"sha256"`
+	Created     time.Time `json:"created"`
+	State       string    `json:"state"`
+	Files       int       `json:"files"`
+	TeamID      string    `json:"team_id,omitempty"`
+	TeamName    string    `json:"team_name,omitempty"`
+	Scope       string    `json:"scope,omitempty"`
+	MemberName  string    `json:"member_name,omitempty"`
+	ContentPath string    `json:"content_path,omitempty"`
+	Shared      bool      `json:"shared,omitempty"`
 }
 
 func NewSharedStorage(root string) (*SharedStorage, error) {
@@ -53,7 +60,27 @@ func NewSharedStorage(root string) (*SharedStorage, error) {
 			return nil, err
 		}
 	}
-	return &SharedStorage{root: root, uploadLimit: maxDatasetBytes}, nil
+	limit := maxDatasetBytes
+	if configured := os.Getenv("MIST_MAX_DATASET_GIB"); configured != "" {
+		gib, err := strconv.ParseInt(configured, 10, 64)
+		if err != nil || gib < 1 || gib > 64 {
+			return nil, errors.New("MIST_MAX_DATASET_GIB must be 1–64")
+		}
+		limit = gib * 1024 * 1024 * 1024
+	}
+	return &SharedStorage{root: root, uploadLimit: limit}, nil
+}
+
+func (s *SharedStorage) availableUploadLimit(team bool) int64 {
+	var stats syscall.Statfs_t
+	if syscall.Statfs(s.root, &stats) != nil {
+		return 0
+	}
+	reserve := int64(1024 * 1024 * 1024)
+	if team {
+		reserve = 64 * 1024 * 1024
+	}
+	return max(0, min(s.uploadLimit, int64(stats.Bavail)*stats.Bsize-reserve))
 }
 func (s *SharedStorage) dataset(id, owner string) (*Dataset, error) {
 	if !datasetIDPattern.MatchString(id) {
@@ -104,9 +131,13 @@ func (s *SharedStorage) upload(r *http.Request, owner string) (*Dataset, error) 
 	if err := syscall.Statfs(s.root, &stats); err != nil {
 		return nil, err
 	}
-	remaining := int64(stats.Bavail)*stats.Bsize - 1024*1024*1024
+	reserve := int64(1024 * 1024 * 1024)
+	if r.Context().Value(teamContextKey{}) != nil {
+		reserve = 64 * 1024 * 1024
+	}
+	remaining := int64(stats.Bavail)*stats.Bsize - reserve
 	if remaining <= 0 {
-		return nil, errors.New("shared storage has less than 1GiB free")
+		return nil, errors.New("storage has insufficient free space for an upload")
 	}
 	limit := min(s.uploadLimit, remaining)
 	if r.ContentLength > limit {
@@ -168,8 +199,24 @@ func (s *SharedStorage) upload(r *http.Request, owner string) (*Dataset, error) 
 		}
 	}
 	ds := &Dataset{ID: id, Name: name, Filename: filename, Owner: owner, Size: size, SHA256: hex.EncodeToString(checksum.Sum(nil)), Created: time.Now().UTC(), State: "Ready", Files: count}
-	target := filepath.Join(s.root, "datasets", id)
-	if err = os.Mkdir(target, 0755); err != nil {
+	relative := "datasets/" + id
+	access, _ := r.Context().Value(teamContextKey{}).(*TeamAccess)
+	if access != nil {
+		access.Service.mu.Lock()
+		defer access.Service.mu.Unlock()
+		scope := r.URL.Query().Get("scope")
+		if scope == "" {
+			scope = access.Member.ID
+		}
+		if err = access.Service.canWrite(r.Context(), access, scope); err != nil {
+			return nil, err
+		}
+		ds.TeamID, ds.Scope, ds.MemberName = access.Team.ID, scope, access.Member.Name
+		relative = scopePath(scope) + "/datasets/" + id
+		ds.ContentPath = relative + "/content"
+	}
+	target := filepath.Join(s.root, relative)
+	if err = os.MkdirAll(target, 0755); err != nil {
 		return nil, err
 	}
 	published := false
@@ -251,7 +298,8 @@ func extractDatasetZip(path, destination string, limit int64) (int, int64, error
 	return files, total, nil
 }
 func (a *App) storageInfo(w http.ResponseWriter, r *http.Request) {
-	s := a.executor.storage
+	e := a.requestExecutor(r)
+	s := e.storage
 	if s == nil {
 		writeJSON(w, 200, map[string]interface{}{"enabled": false})
 		return
@@ -261,13 +309,17 @@ func (a *App) storageInfo(w http.ResponseWriter, r *http.Request) {
 		executorError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]interface{}{"enabled": true, "capacity_bytes": stat.Blocks * uint64(stat.Bsize), "available_bytes": stat.Bavail * uint64(stat.Bsize), "upload_limit_bytes": s.uploadLimit})
+	writeJSON(w, 200, map[string]interface{}{"enabled": true, "capacity_bytes": stat.Blocks * uint64(stat.Bsize), "available_bytes": stat.Bavail * uint64(stat.Bsize), "upload_limit_bytes": s.availableUploadLimit(e.team != nil), "max_dataset_bytes": s.uploadLimit})
 }
 func (a *App) datasets(w http.ResponseWriter, r *http.Request) {
 	e := a.requestExecutor(r)
 	s := e.storage
 	if s == nil {
 		writeJSON(w, 503, map[string]string{"error": "Shared storage is not configured"})
+		return
+	}
+	if e.team != nil {
+		a.teamDatasets(w, r, e)
 		return
 	}
 	switch r.Method {
@@ -286,11 +338,11 @@ func (a *App) datasets(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		sort.Slice(list, func(i, j int) bool { return list[i].Created.After(list[j].Created) })
-		writeJSON(w, 200, map[string]interface{}{"datasets": list, "upload_limit_bytes": s.uploadLimit})
+		writeJSON(w, 200, map[string]interface{}{"datasets": list, "upload_limit_bytes": s.availableUploadLimit(false)})
 	case http.MethodPost:
 		controller := http.NewResponseController(w)
-		_ = controller.SetReadDeadline(time.Now().Add(30 * time.Minute))
-		_ = controller.SetWriteDeadline(time.Now().Add(30 * time.Minute))
+		_ = controller.SetReadDeadline(time.Now().Add(4 * time.Hour))
+		_ = controller.SetWriteDeadline(time.Now().Add(4 * time.Hour))
 		r.Body = http.MaxBytesReader(w, r.Body, s.uploadLimit+1)
 		ds, err := s.upload(r, e.owner)
 		if err != nil {
@@ -303,6 +355,10 @@ func (a *App) datasets(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (a *App) dataset(w http.ResponseWriter, r *http.Request) {
+	if strings.Contains(r.URL.Path, "/files") {
+		a.datasetFiles(w, r)
+		return
+	}
 	e := a.requestExecutor(r)
 	s := e.storage
 	if s == nil {
@@ -310,6 +366,10 @@ func (a *App) dataset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/datasets/")
+	if e.team != nil {
+		a.teamDataset(w, r, e, id)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ds, err := s.dataset(id, e.owner)
@@ -358,6 +418,12 @@ func (a *App) dataset(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *SharedStorage) outputPath(job *batchv1.Job) (string, error) {
+	if path := job.Annotations["mist.io/output-path"]; path != "" {
+		if !safeRelative(path) {
+			return "", errors.New("invalid job storage path")
+		}
+		return filepath.Join(s.root, path), nil
+	}
 	if job.Annotations["mist.io/storage"] == "shared-v1" {
 		return filepath.Join(s.root, "jobs", job.Name, "outputs"), nil
 	}
@@ -456,9 +522,12 @@ func (a *App) jobFiles(w http.ResponseWriter, r *http.Request) {
 		executorError(w, err)
 		return
 	}
+	serveStoredFiles(w, r, path, len(parts) == 3)
+}
+func serveStoredFiles(w http.ResponseWriter, r *http.Request, path string, download bool) {
 	root, err := os.OpenRoot(path)
 	if os.IsNotExist(err) {
-		if len(parts) == 2 {
+		if !download {
 			writeJSON(w, 200, map[string]interface{}{"files": []ResultFile{}})
 		} else {
 			writeJSON(w, 404, map[string]string{"error": "file not found"})
@@ -470,7 +539,7 @@ func (a *App) jobFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer root.Close()
-	if len(parts) == 2 {
+	if !download {
 		files, err := listResultFiles(root)
 		if err != nil {
 			executorError(w, err)
@@ -495,7 +564,7 @@ func (a *App) jobFiles(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]string{"error": "file not found"})
 		return
 	}
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Minute))
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(4 * time.Hour))
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(filename)}))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Type", "application/octet-stream")

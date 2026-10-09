@@ -1,5 +1,16 @@
+import { Picker } from '#/components/Picker.tsx'
 import { useState } from 'react'
-import Card from '#/components/Card.tsx'
+import Card, { PanelHeading } from '#/components/Card.tsx'
+import {
+  Cpu,
+  CircuitBoard,
+  Layers,
+  Play,
+  Check,
+  ArrowRight,
+  SlidersHorizontal,
+  Code2,
+} from 'lucide-react'
 import type {
   Compute,
   Dataset,
@@ -9,6 +20,8 @@ import type {
 } from '#/api.ts'
 import { computeNames } from '#/components/HardwarePanel.tsx'
 import { errorMessage } from '#/hooks/usePolling.ts'
+import { useTeam } from '#/teams.tsx'
+import { useAccount } from '#/auth.tsx'
 
 const fieldClass = 'w-full rounded border border-gray-300 bg-transparent p-2'
 type Mode = 'script' | 'container' | 'training-smoke'
@@ -42,6 +55,13 @@ export function JobSubmissionForm({
   hardware: HardwareSnapshot | null
   onSubmit: (submission: Submission) => Promise<void>
 }) {
+  const { team } = useTeam()
+  const { user } = useAccount()
+  const [scope, setScope] = useState(user?.id ?? '')
+  const [ttRuntime, setTTRuntime] = useState<'host' | 'container'>('host')
+  const commonWriter =
+    team?.members.find((m) => m.id === user?.id)?.common_writer ||
+    user?.role.split(',').includes('admin')
   const [datasetID, setDatasetID] = useState('')
   const [name, setName] = useState('')
   const [compute, setCompute] = useState<Compute>('cpu')
@@ -54,7 +74,7 @@ export function JobSubmissionForm({
   const [env, setEnv] = useState('')
   const [cpu, setCPU] = useState('')
   const [memory, setMemory] = useState('')
-  const [timeout, setTimeoutSeconds] = useState(600)
+  const [timeoutOverride, setTimeoutSeconds] = useState<number | null>(null)
   const [script, setScript] = useState(
     "from pathlib import Path\nPath('/outputs/hello.txt').write_text('Hello from Mist\\n')\nprint('Hello from Mist', flush=True)\n",
   )
@@ -73,17 +93,38 @@ export function JobSubmissionForm({
   const pool = hardware?.pools.find(
     (candidate) => candidate.accelerator === compute,
   )
-  const approved = images.some((option) => option.reference === image)
+  const first = image.split('/')[0]
+  const registry =
+    image.includes('/') &&
+    (first.includes('.') || first.includes(':') || first === 'localhost')
+      ? first
+      : 'docker.io'
+  const approved =
+    images.some((option) => option.reference === image) ||
+    !!(
+      catalog?.self_service &&
+      catalog.registries?.includes(registry) &&
+      /(:[\w.-]+|@sha256:[a-f0-9]{64})$/.test(image)
+    )
+  const maxDevices = Math.min(
+    profile?.max_devices ?? 0,
+    team
+      ? compute === 'nvidia'
+        ? team.policy.nvidia
+        : team.policy.tenstorrent
+      : Infinity,
+  )
+  const maxTimeout = team?.policy.runtime_seconds ?? 86400
+  const timeout = timeoutOverride ?? Math.min(600, maxTimeout)
   const invalidDevices =
     compute !== 'cpu' &&
-    (!Number.isInteger(devices) ||
-      devices < 1 ||
-      devices > (profile?.max_devices ?? 0))
+    (!Number.isInteger(devices) || devices < 1 || devices > maxDevices)
   const invalidTimeout =
-    !Number.isInteger(timeout) || timeout < 10 || timeout > 86400
+    !Number.isInteger(timeout) || timeout < 10 || timeout > maxTimeout
   const disabled =
     busy ||
     !catalog ||
+    (catalog.teams_enabled && !catalog.self_service) ||
     !approved ||
     invalidDevices ||
     invalidTimeout ||
@@ -96,6 +137,15 @@ export function JobSubmissionForm({
     try {
       const submission: Submission = {
         name,
+        ...(team && scope ? { storage_scope: scope } : {}),
+        ...(team && compute === 'tenstorrent' && mode !== 'training-smoke'
+          ? {
+              tt_runtime:
+                image !== profile?.default_image
+                  ? ('container' as const)
+                  : ttRuntime,
+            }
+          : {}),
         ...(datasetID ? { dataset_id: datasetID } : {}),
         type: mode === 'training-smoke' ? mode : 'command',
         accelerator: compute,
@@ -125,8 +175,18 @@ export function JobSubmissionForm({
   }
 
   return (
-    <Card>
-      <h2 className="text-lg font-semibold mb-4">Submit a job</h2>
+    <Card className="mist-submission-panel">
+      <PanelHeading
+        title="Submit a job"
+        description="Configure an experiment and put your compute to work."
+        icon={<Play size={20} />}
+      />
+      {catalog?.teams_enabled && !catalog.self_service && (
+        <p className="mb-4">
+          Choose a team workspace to submit new jobs. Historical account-owned
+          jobs remain below.
+        </p>
+      )}
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -134,42 +194,79 @@ export function JobSubmissionForm({
         }}
         className="space-y-4"
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="text-sm">
-            <label htmlFor="job-name">Name</label>
-            <input
-              id="job-name"
-              className={fieldClass}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Optional job name"
-            />
-          </div>
-          <div className="text-sm">
-            <label htmlFor="job-compute">Compute</label>
-            <select
-              id="job-compute"
-              className={fieldClass}
-              value={compute}
-              onChange={(event) => {
-                const next = event.target.value as Compute
-                setCompute(next)
-                setDevices(1)
-                setImageOverride('')
-                setError('')
-                if (next === 'cpu' && mode === 'training-smoke')
-                  setMode('script')
-              }}
-            >
-              {(['cpu', 'nvidia', 'tenstorrent'] as const).map((value) => (
-                <option key={value} value={value}>
-                  {computeNames[value]}
-                </option>
-              ))}
-            </select>
+        <fieldset className="mist-form-section">
+          <legend className="mist-section-label">
+            <span>1</span> Choose compute
+          </legend>
+          <div
+            className="mist-compute-options"
+            role="radiogroup"
+            aria-label="Compute"
+          >
+            {(['cpu', 'nvidia', 'tenstorrent'] as const).map((value) => {
+              const optionPool = hardware?.pools.find(
+                (p) => p.accelerator === value,
+              )
+              const Icon =
+                value === 'cpu'
+                  ? Cpu
+                  : value === 'nvidia'
+                    ? Layers
+                    : CircuitBoard
+              const allowance =
+                value === 'nvidia'
+                  ? team?.policy.nvidia
+                  : team?.policy.tenstorrent
+              const unavailable = value !== 'cpu' && allowance === 0
+              return (
+                <label
+                  key={value}
+                  className={`mist-compute-option ${compute === value ? 'is-selected' : ''} ${unavailable ? 'is-unavailable' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="compute"
+                    value={value}
+                    checked={compute === value}
+                    disabled={unavailable}
+                    onChange={() => {
+                      setCompute(value)
+                      setDevices(1)
+                      setImageOverride('')
+                      setError('')
+                      if (value === 'cpu' && mode === 'training-smoke')
+                        setMode('script')
+                    }}
+                  />
+                  <span className="mist-choice-top">
+                    <Icon size={20} />
+                    <span className="mist-choice-check">
+                      <Check size={12} />
+                    </span>
+                  </span>
+                  <strong>{computeNames[value]}</strong>
+                  <span>
+                    {value === 'cpu'
+                      ? 'General purpose'
+                      : value === 'nvidia'
+                        ? 'CUDA GPUs'
+                        : 'TT accelerator boards'}
+                  </span>
+                  <small>
+                    {unavailable
+                      ? 'Outside team allowance'
+                      : value === 'cpu'
+                        ? 'On the main machine'
+                        : optionPool?.available == null
+                          ? 'Checking capacity…'
+                          : `${optionPool.available} / ${optionPool.total} available`}
+                  </small>
+                </label>
+              )
+            })}
           </div>
           {compute !== 'cpu' && (
-            <div className="text-sm">
+            <div className="mist-device-count">
               <label htmlFor="job-devices">
                 {compute === 'tenstorrent' ? 'Boards (two chips each)' : 'GPUs'}
               </label>
@@ -178,135 +275,218 @@ export function JobSubmissionForm({
                 className={fieldClass}
                 type="number"
                 min={1}
-                max={profile?.max_devices}
+                max={maxDevices}
                 value={devices}
                 onChange={(event) => setDevices(Number(event.target.value))}
               />
+              <input
+                aria-label="Device count slider"
+                type="range"
+                min={1}
+                max={Math.max(1, maxDevices)}
+                step={1}
+                value={devices}
+                onChange={(e) => setDevices(Number(e.target.value))}
+                className="mist-range"
+              />
             </div>
           )}
-        </div>
-        {pool && (
-          <p className="text-sm">
-            {pool.available === null
-              ? 'Availability is currently unknown.'
-              : !pool.ready
-                ? 'This machine is unavailable for placement; submitted jobs may wait.'
-                : `${pool.available} of ${pool.total} ${pool.unit}s available now.${devices > pool.available ? ' This request will need to wait for devices.' : ''}`}
-          </p>
+        </fieldset>
+        {pool && !pool.ready && (
+          <p className="mist-help">This machine is offline; jobs will wait.</p>
         )}
-        <div className="text-sm">
-          <label htmlFor="job-workload">Workload</label>
-          <select
-            id="job-workload"
-            className={fieldClass}
-            value={mode}
-            onChange={(event) => setMode(event.target.value as Mode)}
+        <fieldset className="mist-form-section">
+          <legend className="mist-section-label">
+            <span>2</span> Configure your workload
+          </legend>
+          <div
+            className="mist-segmented"
+            role="radiogroup"
+            aria-label="Workload"
           >
-            <option value="script">Python script</option>
-            <option value="container">Container image</option>
-            {compute !== 'cpu' && (
-              <option value="training-smoke">Small training check</option>
-            )}
-          </select>
-        </div>
-        <div className="text-sm">
-          <label htmlFor="job-image">Container image</label>
-          <input
-            id="job-image"
-            className={`${fieldClass} font-mono`}
-            list="approved-images"
-            value={image}
-            onChange={(event) => setImageOverride(event.target.value)}
-            disabled={mode === 'training-smoke'}
-          />
-          <datalist id="approved-images">
-            {images.map((option) => (
-              <option key={option.reference} value={option.reference} />
+            {(
+              [
+                ['script', 'Python'],
+                ['container', 'Container'],
+                ...(compute !== 'cpu'
+                  ? [['training-smoke', 'Training check']]
+                  : []),
+              ] as [Mode, string][]
+            ).map(([value, label]) => (
+              <label
+                key={value}
+                className={mode === value ? 'is-selected' : ''}
+              >
+                <input
+                  type="radio"
+                  name="workload"
+                  checked={mode === value}
+                  onChange={() => setMode(value)}
+                />
+                {label}
+              </label>
             ))}
-          </datalist>
-          <p className="mt-1 text-xs text-gray-600">
-            Choose an approved image or enter its exact registry reference. Code
-            and dependencies must already be included in the image.
-          </p>
-          {catalog && !approved && (
-            <p role="alert" className="text-red-700">
-              This image is not approved for the selected hardware.
-            </p>
-          )}
-        </div>
-        <div className="text-sm">
-          <label htmlFor="job-dataset">Dataset (optional)</label>
-          <select
-            id="job-dataset"
-            className={fieldClass}
-            value={datasetID}
-            onChange={(e) => setDatasetID(e.target.value)}
-          >
-            <option value="">No dataset</option>
-            {datasets.map((ds) => (
-              <option key={ds.id} value={ds.id}>
-                {ds.name}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs">
-            Upload datasets on the Datasets page. Selected files appear
-            read-only at /inputs.
-          </p>
-          {datasetError && (
-            <p role="alert">Dataset list unavailable: {datasetError}</p>
-          )}
-        </div>
-        {profile?.note && <p className="text-sm">{profile.note}</p>}
-        {mode === 'script' && (
+          </div>
           <div className="text-sm">
-            <label htmlFor="job-script">Python script</label>
-            <textarea
-              id="job-script"
-              className={`${fieldClass} font-mono min-h-36`}
-              value={script}
-              onChange={(event) => setScript(event.target.value)}
-              spellCheck={false}
+            <label htmlFor="job-name">Name</label>
+            <input
+              id="job-name"
+              className={fieldClass}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. Baseline model · experiment 01"
             />
           </div>
-        )}
-        {mode === 'container' && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="text-sm">
-              <label htmlFor="job-command">Command executable (optional)</label>
-              <input
-                id="job-command"
-                className={`${fieldClass} font-mono`}
-                value={command}
-                onChange={(event) => setCommand(event.target.value)}
-                placeholder="python"
-              />
-              <p className="mt-1 text-xs text-gray-600">
-                Leave blank to use the image's default entrypoint. Enter the
-                executable here and its arguments separately.
+          <div className="text-sm">
+            <label htmlFor="job-image">Container image</label>
+            <input
+              id="job-image"
+              className={`${fieldClass} font-mono`}
+              list="approved-images"
+              value={image}
+              onChange={(event) => setImageOverride(event.target.value)}
+              disabled={mode === 'training-smoke'}
+            />
+            <datalist id="approved-images">
+              {images.map((option) => (
+                <option key={option.reference} value={option.reference} />
+              ))}
+            </datalist>
+            <details className="mist-inline-help">
+              <summary>Image requirements</summary>
+              <p>
+                Use a tag or digest from{' '}
+                {catalog?.registries?.join(', ') ?? 'an approved registry'}.
+                Include your code and dependencies in the image.
               </p>
-            </div>
+            </details>
+            {catalog && !approved && (
+              <p role="alert" className="text-red-700">
+                This image is not approved for the selected hardware.
+              </p>
+            )}
+          </div>
+          {mode === 'script' && (
             <div className="text-sm">
-              <label htmlFor="job-arguments">Arguments (one per line)</label>
+              <label htmlFor="job-script" className="mist-editor-label">
+                <Code2 size={15} aria-hidden="true" /> Python script{' '}
+                <span aria-hidden="true">script.py</span>
+              </label>
               <textarea
-                id="job-arguments"
-                className={`${fieldClass} font-mono min-h-24`}
-                value={args}
-                onChange={(event) => setArgs(event.target.value)}
-                placeholder={'train.py\n--epochs\n10'}
+                id="job-script"
+                aria-label="Python script"
+                className={`${fieldClass} font-mono min-h-36`}
+                value={script}
+                onChange={(event) => setScript(event.target.value)}
+                spellCheck={false}
               />
             </div>
+          )}
+          {mode === 'container' && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="text-sm">
+                <label htmlFor="job-command">
+                  Command executable (optional)
+                </label>
+                <input
+                  id="job-command"
+                  className={`${fieldClass} font-mono`}
+                  value={command}
+                  onChange={(event) => setCommand(event.target.value)}
+                  placeholder="python"
+                />
+                <p className="mt-1 text-xs text-gray-600">
+                  Leave blank to use the image's default entrypoint. Enter the
+                  executable here and its arguments separately.
+                </p>
+              </div>
+              <div className="text-sm">
+                <label htmlFor="job-arguments">Arguments (one per line)</label>
+                <textarea
+                  id="job-arguments"
+                  className={`${fieldClass} font-mono min-h-24`}
+                  value={args}
+                  onChange={(event) => setArgs(event.target.value)}
+                  placeholder={'train.py\n--epochs\n10'}
+                />
+              </div>
+            </div>
+          )}
+          {mode === 'training-smoke' && (
+            <p className="text-sm">
+              Trains a small regression model on each requested accelerator and
+              checks its saved weights.
+            </p>
+          )}
+        </fieldset>
+        <fieldset className="mist-form-section mist-data-section">
+          <legend className="mist-section-label">
+            <span>3</span> Data & results
+          </legend>
+          {team && (
+            <div>
+              <label htmlFor="job-output-folder">Save results in</label>
+              <Picker
+                id="job-output-folder"
+                className={fieldClass}
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
+              >
+                <option value={user?.id}>My folder</option>
+                {commonWriter && <option value="common">Common folder</option>}
+              </Picker>
+            </div>
+          )}
+          {team && compute === 'tenstorrent' && mode !== 'training-smoke' && (
+            <div>
+              <label htmlFor="tt-runtime">Tenstorrent runtime</label>
+              <Picker
+                id="tt-runtime"
+                className={fieldClass}
+                value={
+                  image !== profile?.default_image ? 'container' : ttRuntime
+                }
+                disabled={image !== profile?.default_image}
+                onChange={(e) =>
+                  setTTRuntime(e.target.value as 'host' | 'container')
+                }
+              >
+                <option value="host">Tested installed runtime</option>
+                <option value="container">Runtime included in my image</option>
+              </Picker>
+              {image !== profile?.default_image && (
+                <p className="mist-output-note">
+                  Your image supplies TT libraries and Python.
+                </p>
+              )}
+            </div>
+          )}
+          <div className="text-sm">
+            <label htmlFor="job-dataset">Dataset (optional)</label>
+            <Picker
+              id="job-dataset"
+              className={fieldClass}
+              value={datasetID}
+              onChange={(e) => setDatasetID(e.target.value)}
+            >
+              <option value="">No dataset</option>
+              {datasets.map((ds) => (
+                <option key={ds.id} value={ds.id}>
+                  {ds.name}
+                </option>
+              ))}
+            </Picker>
+            <p className="mt-1 text-xs">Read-only input at /inputs.</p>
+            {datasetError && (
+              <p role="alert">Dataset list unavailable: {datasetError}</p>
+            )}
           </div>
-        )}
-        {mode === 'training-smoke' && (
-          <p className="text-sm">
-            Trains a small regression model on each requested accelerator and
-            checks its saved weights.
-          </p>
-        )}
-        <details className="text-sm">
+        </fieldset>
+
+        <details className="mist-advanced text-sm">
           <summary className="cursor-pointer font-medium">
-            Resources and environment
+            <SlidersHorizontal size={15} aria-hidden="true" /> Resources and
+            environment
           </summary>
           <div className="grid gap-4 md:grid-cols-3 mt-3">
             <div>
@@ -348,7 +528,7 @@ export function JobSubmissionForm({
                 className={fieldClass}
                 type="number"
                 min={10}
-                max={86400}
+                max={maxTimeout}
                 value={timeout}
                 onChange={(event) =>
                   setTimeoutSeconds(Number(event.target.value))
@@ -357,8 +537,10 @@ export function JobSubmissionForm({
             </div>
           </div>
           <p className="mt-2 text-xs text-gray-600">
-            Maximum 8 CPU and 32Gi RAM. The deadline includes time waiting for
-            resources.
+            Maximum 8 CPU and 32Gi RAM per job.{' '}
+            {team
+              ? 'The deadline starts after admission; jobs can wait in the queue for up to 24 hours.'
+              : 'The deadline includes time waiting for resources.'}
           </p>
           <div className="mt-3">
             <label htmlFor="job-directory">Working directory (optional)</label>
@@ -383,11 +565,21 @@ export function JobSubmissionForm({
             />
           </div>
         </details>
-        <p className="text-sm">
-          Save results under <code>/outputs</code>. Files there remain on the
-          shared storage after the job exits. Use the job’s Files button to
-          download them.
+        <p className="mist-output-note">
+          Results saved under <code>/outputs</code> stay in your team folder.
         </p>
+        {invalidDevices && (
+          <p role="alert" className="text-red-700">
+            Choose between 1 and {maxDevices}{' '}
+            {compute === 'nvidia' ? 'GPUs' : 'boards'} within your team
+            allowance.
+          </p>
+        )}
+        {invalidTimeout && (
+          <p role="alert" className="text-red-700">
+            The deadline must be between 10 and {maxTimeout} seconds.
+          </p>
+        )}
         {error && (
           <p role="alert" className="text-red-700">
             {error}
@@ -396,9 +588,11 @@ export function JobSubmissionForm({
         <button
           type="submit"
           disabled={disabled}
-          className="rounded px-4 py-2 bg-green-200 text-green-800 hover:bg-green-300 disabled:bg-gray-200 disabled:text-gray-600"
+          className="mist-button mist-button-primary mist-submit-button"
         >
-          {busy ? 'Submitting…' : 'Submit job'}
+          <Play size={15} aria-hidden="true" />{' '}
+          {busy ? 'Submitting…' : 'Submit job'}{' '}
+          <ArrowRight size={16} aria-hidden="true" />
         </button>
       </form>
     </Card>

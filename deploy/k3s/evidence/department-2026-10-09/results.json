@@ -1,0 +1,87 @@
+{
+  "started": "2026-10-09T05:22:29.799Z",
+  "site": "http://100.73.139.66:8088",
+  "checks": {
+    "team_filesystems_ready": true,
+    "team_read_write_and_cross_team_denial": true,
+    "scoped_readonly_sharing_and_running_job_revocation": true,
+    "durable_fifo_team_concurrency_fair_turns_and_cancel": true,
+    "policy_limits_and_legacy_bypass_denied": true,
+    "live_container_private_network_and_credentials_denied": true,
+    "training_writes_obey_filesystem_capacity": true,
+    "nvidia_real_training_uploaded_data_and_downloaded_weights": true,
+    "tenstorrent_real_training_uploaded_data_and_downloaded_weights": true,
+    "account_deactivation_stops_running_jobs": true,
+    "browser_rows_expand_and_saved_files_open": true,
+    "browser_admin_workspace_and_shared_folders": true,
+    "online_team_storage_growth": true,
+    "legacy_history_preserved": true
+  },
+  "jobs": [
+    {
+      "id": "mist-75fac1f6c8220c1a3cf11109",
+      "name": "Read-only shared input",
+      "team": "team-1416c881530c4ea5"
+    },
+    {
+      "id": "mist-53ad27bd38ebb05d81fd6035",
+      "name": "Revoke shared input",
+      "team": "team-1416c881530c4ea5"
+    },
+    {
+      "id": "mist-29df16c58727bed96f5d4ed5",
+      "name": "Queue holds capacity",
+      "team": "team-db3933031a6c2437"
+    },
+    {
+      "id": "mist-f27e6e3cc96da7e8541a6752",
+      "name": "Queue survives restart",
+      "team": "team-db3933031a6c2437"
+    },
+    {
+      "id": "mist-835e04d572467f624e6724e6",
+      "name": "Other team gets a turn",
+      "team": "team-1416c881530c4ea5"
+    },
+    {
+      "id": "mist-b46534ddeb9f18852b75f645",
+      "name": "Workload network isolation",
+      "team": "team-db3933031a6c2437"
+    },
+    {
+      "id": "mist-1c4a852d366b9d2349e1cf7c",
+      "name": "Filesystem capacity enforcement",
+      "team": "team-1416c881530c4ea5"
+    },
+    {
+      "id": "mist-8644eccafaf0b42c3d4add05",
+      "name": "Department training nvidia",
+      "team": "team-db3933031a6c2437",
+      "node": "utmist-z1opa08"
+    },
+    {
+      "id": "mist-e5c04ea2cc126a786d6fe783",
+      "name": "Department training tenstorrent",
+      "team": "team-db3933031a6c2437",
+      "node": "utmist-tt"
+    },
+    {
+      "id": "mist-5aa3c1f395918b993de4e076",
+      "name": "Account deactivation releases job",
+      "team": "team-1416c881530c4ea5"
+    }
+  ],
+  "teams": [
+    "team-db3933031a6c2437",
+    "team-1416c881530c4ea5"
+  ],
+  "legacy_job_count_before": 47,
+  "storage": {
+    "available_bytes": 994050048,
+    "capacity_bytes": 1021313024,
+    "enabled": true,
+    "upload_limit_bytes": 2147483648
+  },
+  "browser_errors": [],
+  "finished": "2026-10-09T05:25:50.157Z"
+}

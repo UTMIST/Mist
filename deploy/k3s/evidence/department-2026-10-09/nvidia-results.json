@@ -1,0 +1,36 @@
+[
+  {
+    "backend": "nvidia",
+    "device_id": 0,
+    "initial_mse": 0.08051128685474396,
+    "final_mse": 2.4448332247573035e-09,
+    "validation_mse": 5.969065242084071e-09,
+    "max_weight_change": 0.09999077022075653,
+    "checkpoint": "/outputs/nvidia-0.pt",
+    "checkpoint_reload_mse": 5.969065242084071e-09,
+    "device_name": "NVIDIA RTX A4000",
+    "started_at": "2026-10-09T05:24:44.711442+00:00",
+    "finished_at": "2026-10-09T05:24:45.079501+00:00",
+    "device_nodes": [
+      "/dev/nvidia0",
+      "/dev/nvidia1"
+    ]
+  },
+  {
+    "backend": "nvidia",
+    "device_id": 1,
+    "initial_mse": 0.08051128685474396,
+    "final_mse": 2.4448332247573035e-09,
+    "validation_mse": 5.969065242084071e-09,
+    "max_weight_change": 0.09999077022075653,
+    "checkpoint": "/outputs/nvidia-1.pt",
+    "checkpoint_reload_mse": 5.969065242084071e-09,
+    "device_name": "NVIDIA RTX A4000",
+    "started_at": "2026-10-09T05:24:45.310209+00:00",
+    "finished_at": "2026-10-09T05:24:45.517661+00:00",
+    "device_nodes": [
+      "/dev/nvidia0",
+      "/dev/nvidia1"
+    ]
+  }
+]

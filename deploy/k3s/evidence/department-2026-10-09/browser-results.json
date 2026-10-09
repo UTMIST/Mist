@@ -1,0 +1,19 @@
+{
+  "checks": {
+    "admin_browser_login": true,
+    "browser_account_creation": true,
+    "browser_team_creation_membership_common_write_and_policy": true,
+    "browser_upload_common_folder_browse_and_download": true,
+    "job_defaults_follow_loaded_team_policy": true,
+    "regular_browser_selfservice_image_submit_expand_logs_result_download": true,
+    "regular_browser_admin_controls_denied": true,
+    "browser_password_reset_revokes_sessions_new_login_works": true,
+    "responsive_job_dialog_and_device_slider": true,
+    "history_pagination_next_previous_real_legacy_jobs": true,
+    "desktop_mobile_layout_no_overflow_or_browser_errors": true
+  },
+  "browser_errors": [],
+  "started": "2026-10-09T06:33:05.573Z",
+  "job_id": "mist-164695b291e3ab44f689455d",
+  "finished": "2026-10-09T06:33:28.259Z"
+}

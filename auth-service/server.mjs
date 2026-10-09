@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { timingSafeEqual } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { betterAuth } from 'better-auth'
 import { getMigrations } from 'better-auth/db/migration'
@@ -23,7 +24,7 @@ const options = {
   session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
   advanced: { useSecureCookies: origin.startsWith('https:'), ipAddress: { ipAddressHeaders: ['x-real-ip'] } },
   rateLimit: { enabled: true, storage: 'database', window: 60, max: 120,
-    customRules: { '/sign-in/email': { window: 60, max: 8 } } },
+    customRules: { '/get-session': false, '/sign-in/email': { window: 60, max: 8 } } },
   plugins: [admin()],
   hooks: { before: createAuthMiddleware(async (ctx) => {
     if (ctx.path === '/admin/create-user' || ctx.path === '/admin/set-user-password') {
@@ -45,6 +46,18 @@ if (!database.prepare('SELECT id FROM user LIMIT 1').get()) {
 }
 const handler = toNodeHandler(auth)
 const server = createServer((req, res) => {
+  if (req.url === '/internal/members' && req.method === 'GET') {
+    const configured = process.env.MIST_INTERNAL_TOKEN ?? ''
+    const presented = req.headers.authorization?.replace(/^Bearer /, '') ?? ''
+    if (configured.length < 32 || Buffer.byteLength(configured) !== Buffer.byteLength(presented) ||
+        !timingSafeEqual(Buffer.from(configured), Buffer.from(presented))) {
+      res.writeHead(403); res.end(); return
+    }
+    const members = database.prepare('SELECT id, banned, role FROM user').all()
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify({ members: members.map(({ id, banned, role }) => ({ id, active: !banned, role })) }))
+    return
+  }
   if (req.url === '/healthz') {
     try { database.prepare('SELECT 1').get(); res.writeHead(200); res.end('ok') }
     catch { res.writeHead(503); res.end('database unavailable') }

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { createAuthClient } from 'better-auth/react'
 import { adminClient } from 'better-auth/client/plugins'
@@ -29,7 +29,8 @@ function Login({ refresh }: { refresh: () => void }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   return (
-    <main className="max-w-md mx-auto mt-16 p-8 border rounded-xl">
+    <main className="mist-login max-w-md mx-auto mt-16 p-8 border rounded-xl">
+      <p className="mist-eyebrow">MIST / RESEARCH COMPUTE</p>
       <h1 className="text-2xl font-bold mb-2">Sign in to Mist</h1>
       <p className="mb-6 text-gray-600">
         Run jobs on the team’s compute machines. Ask a Mist administrator for an
@@ -82,7 +83,10 @@ function Login({ refresh }: { refresh: () => void }) {
             {error}
           </p>
         )}
-        <button disabled={busy} className="rounded bg-green-200 p-2">
+        <button
+          disabled={busy}
+          className="mist-primary-link w-full justify-center"
+        >
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
@@ -91,6 +95,11 @@ function Login({ refresh }: { refresh: () => void }) {
 }
 export function AccountGate({ children }: { children: ReactNode }) {
   const session = usePolling(jobsAPI.session, 60000)
+  useEffect(() => {
+    window.addEventListener('mist:sign-in-required', session.refresh)
+    return () =>
+      window.removeEventListener('mist:sign-in-required', session.refresh)
+  }, [session.refresh])
   if (session.loading && !session.data)
     return (
       <p className="p-8" role="status">

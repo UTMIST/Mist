@@ -17,6 +17,12 @@ import (
 )
 
 type memberKey struct{}
+
+func hashID(id string) string {
+	digest := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(digest[:12])
+}
+
 type Member struct {
 	ID     string `json:"id"`
 	Email  string `json:"email"`
@@ -50,8 +56,7 @@ func newAuthGateway(raw string) (*AuthGateway, error) {
 		p.Out.Header.Del("X-Forwarded-Host")
 		p.Out.Header.Del("X-Forwarded-Proto")
 		p.Out.Header.Del("X-Real-IP")
-		host, _, _ := net.SplitHostPort(p.In.RemoteAddr)
-		p.Out.Header.Set("X-Real-IP", host)
+		p.Out.Header.Set("X-Real-IP", clientAddress(p.In))
 	}, ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, 503, map[string]string{"error": "Authentication service unavailable"})
 	}}
@@ -66,8 +71,7 @@ func (g *AuthGateway) session(r *http.Request) (*Member, error) {
 		return nil, err
 	}
 	req.Header.Set("Cookie", r.Header.Get("Cookie"))
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	req.Header.Set("X-Real-IP", host)
+	req.Header.Set("X-Real-IP", clientAddress(r))
 	response, err := g.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -86,6 +90,45 @@ func (g *AuthGateway) session(r *http.Request) (*Member, error) {
 		return nil, nil
 	}
 	return result.User, nil
+}
+
+type AccountStatus struct {
+	Active bool   `json:"active"`
+	Role   string `json:"role"`
+}
+
+func (g *AuthGateway) activeMembers(ctx context.Context) (map[string]AccountStatus, error) {
+	u := *g.upstream
+	u.Path = "/internal/members"
+	u.RawQuery = ""
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("MIST_INTERNAL_TOKEN"))
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, errors.New("authoritative account status unavailable")
+	}
+	var body struct {
+		Members []struct {
+			ID     string `json:"id"`
+			Active bool   `json:"active"`
+			Role   string `json:"role"`
+		} `json:"members"`
+	}
+	if err = json.NewDecoder(io.LimitReader(resp.Body, 2*1024*1024)).Decode(&body); err != nil {
+		return nil, err
+	}
+	result := map[string]AccountStatus{}
+	for _, m := range body.Members {
+		result[m.ID] = AccountStatus{Active: m.Active, Role: m.Role}
+	}
+	return result, nil
 }
 func (g *AuthGateway) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +166,12 @@ func (g *AuthGateway) middleware(next http.Handler) http.Handler {
 	})
 }
 func (a *App) requestExecutor(r *http.Request) *KubernetesExecutor {
+	if access, _ := r.Context().Value(teamContextKey{}).(*TeamAccess); access != nil {
+		clone := *a.executor
+		clone.namespace, clone.owner = access.Team.namespace(), access.Team.ID
+		clone.storage, clone.sharedPVC, clone.team = access.Store, "team-storage", access
+		return &clone
+	}
 	member, _ := r.Context().Value(memberKey{}).(*Member)
 	if member == nil {
 		return a.executor
@@ -135,4 +184,17 @@ func (a *App) requestExecutor(r *http.Request) *KubernetesExecutor {
 		clone.owner = "user-" + hex.EncodeToString(digest[:12])
 	}
 	return &clone
+}
+
+// Trust exactly the deployed Nginx host/gateway, never a client-supplied chain.
+func clientAddress(r *http.Request) string {
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	for _, trusted := range strings.Split(os.Getenv("MIST_TRUSTED_PROXY_IPS"), ",") {
+		if trusted != "" && trusted == host {
+			if ip := net.ParseIP(r.Header.Get("X-Real-IP")); ip != nil {
+				return ip.String()
+			}
+		}
+	}
+	return host
 }

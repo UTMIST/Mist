@@ -3,8 +3,8 @@
 UTMIST's compute platform. The Kubernetes pilot runs submitted CPU, NVIDIA,
 and Tenstorrent workloads as real Jobs. The Jobs page and CLI use the same
 API for submission, status, logs, and cancellation. The local foundation adds
-live hardware inventory, approved container image execution, and persistent
-per-job output directories.
+live hardware inventory, self-service container images, team workspaces,
+scoped shared storage and a durable fair job queue.
 
 ## Current pilot
 
@@ -14,22 +14,27 @@ per-job output directories.
   jobs can use the remaining devices; requests wait when capacity is occupied.
 - Website: http://100.73.139.66:8088. API on that origin: `/api`; auth: `/auth`.
 
-The five-part foundation now includes separate Mist member accounts, dataset
-uploads, shared NFS storage on QuietBox, and browser output downloads. Use the
-production website at **http://100.73.139.66:8088** from the existing Tailnet.
-The local development preview remains at http://127.0.0.1:3001/jobs.
+The department rollout includes admin/member login, team common/member folders,
+explicit cross-team read/use grants, enforced storage/resource limits, durable
+fair admission and revocation. The portal uses interactive compute choices,
+clear feature panels and searchable, paginated job rows that expand for details.
+Use **http://100.73.139.66:8088** privately through Tailscale.
 
-See [the complete foundation operating guide](docs/complete-foundation.md),
+See [the current department operating guide](docs/department-rollout.md),
 [private deployment operations](deploy/private/README.md),
-[the original execution plan](docs/foundation-execution-plan.md), and
-[the shared storage/deployment plan](docs/shared-storage-deployment-plan.md).
+[completed execution plan and evidence](docs/department-rollout-execution.md), and
+[portal design](docs/design-system.md). The earlier foundation guides record
+historical phases.
 
-Credits, fair queues, Jupyter, chaining and arbitrary distributed training remain
-outside this foundation. TT scripts must use compatible TT-NN code. Tailscale
-HTTPS Serve requires enabling the feature on the tailnet; the current endpoint
-is private HTTP over Tailscale, with no public hosting configured.
+Credits, Jupyter, chaining, browser image archives/builds and arbitrary distributed
+training remain outside this release. Custom TT code/images must use compatible
+TT libraries. Automatic backups, HTTPS and monitoring/cleanup products were
+explicitly excluded. Hosting remains private HTTP over Tailscale.
 
-## Run locally against this cluster
+## Developer preview against this cluster
+
+**Keep production authentication/team enforcement enabled for research users.**
+The standalone trusted-owner mode below is only for development.
 
 Use Go 1.25.1 and Node.js 22.16.0 or newer. Apply the workload prerequisites
 and claim templates described in the deployment guide first. Kubernetes is

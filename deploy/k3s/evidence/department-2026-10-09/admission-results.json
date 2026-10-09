@@ -1,0 +1,26 @@
+{
+  "host_network": {
+    "denied": true,
+    "reason": "The pods \"admission-probe\" is invalid: : ValidatingAdmissionPolicy 'mist-team-boundary' with binding 'mist-team-boundary' denied request: Team workloads cannot join host namespaces."
+  },
+  "host_pid": {
+    "denied": true,
+    "reason": "The pods \"admission-probe\" is invalid: : ValidatingAdmissionPolicy 'mist-team-boundary' with binding 'mist-team-boundary' denied request: Team workloads cannot join host namespaces."
+  },
+  "service_account_token": {
+    "denied": true,
+    "reason": "The pods \"admission-probe\" is invalid: : ValidatingAdmissionPolicy 'mist-team-boundary' with binding 'mist-team-boundary' denied request: Team workloads must disable Kubernetes credentials."
+  },
+  "privileged_container": {
+    "denied": true,
+    "reason": "The pods \"admission-probe\" is invalid: : ValidatingAdmissionPolicy 'mist-team-boundary' with binding 'mist-team-boundary' denied request: Team containers must drop capabilities and forbid privilege escalation."
+  },
+  "root_host_path": {
+    "denied": true,
+    "reason": "The pods \"admission-probe\" is invalid: : ValidatingAdmissionPolicy 'mist-team-boundary' with binding 'mist-team-boundary' denied request: Team volumes allow PVCs, scripts, scratch space and read-only TT runtime mounts."
+  },
+  "capability_add": {
+    "denied": true,
+    "reason": "The pods \"admission-probe\" is invalid: : ValidatingAdmissionPolicy 'mist-team-boundary' with binding 'mist-team-boundary' denied request: Team containers must drop capabilities and forbid privilege escalation."
+  }
+}

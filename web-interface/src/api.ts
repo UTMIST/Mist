@@ -19,6 +19,11 @@ export type Job = {
   output_directory?: string
   working_directory?: string
   timeout_seconds?: number
+  team_id?: string
+  creator_id?: string
+  creator_name?: string
+  storage_scope?: string
+  can_cancel?: boolean
 }
 
 export type Submission = {
@@ -37,6 +42,8 @@ export type Submission = {
   args?: string[]
   env?: Record<string, string>
   working_directory?: string
+  storage_scope?: string
+  tt_runtime?: 'host' | 'container'
 }
 
 export type MachineHardware = {
@@ -67,6 +74,9 @@ export type HardwareSnapshot = {
 }
 
 export type ImageCatalog = {
+  self_service?: boolean
+  teams_enabled?: boolean
+  registries?: string[]
   images: { reference: string; accelerators: Compute[] }[]
   profiles: {
     accelerator: Compute
@@ -78,12 +88,35 @@ export type ImageCatalog = {
 }
 
 const base = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/$/, '')
+let activeTeam = ''
+export function setActiveTeam(id: string) {
+  activeTeam = id
+}
+function teamQuery(): Record<string, string> {
+  return activeTeam ? { team_id: activeTeam } : {}
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const requestTeam = activeTeam
   const response = await fetch(`${base}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(requestTeam ? { 'X-Mist-Team': requestTeam } : {}),
+      ...options?.headers,
+    },
   })
+  if (response.status === 401 && path !== '/session')
+    window.dispatchEvent(new Event('mist:sign-in-required'))
+  if (
+    response.status === 403 &&
+    requestTeam &&
+    (!options?.method || options.method === 'GET') &&
+    !path.startsWith('/teams')
+  )
+    window.dispatchEvent(
+      new CustomEvent('mist:workspace-access-revoked', { detail: requestTeam }),
+    )
   let body
   try {
     body = await response.json()
@@ -128,6 +161,11 @@ export type Dataset = {
   sha256: string
   created: string
   state: string
+  team_id?: string
+  team_name?: string
+  scope?: string
+  member_name?: string
+  shared?: boolean
 }
 export type ResultFile = { path: string; size: number; modified: string }
 export const storageAPI = {
@@ -149,26 +187,55 @@ export const storageAPI = {
       signal,
     }),
   downloadURL: (id: string, path: string) =>
-    `${base}/jobs/${encodeURIComponent(id)}/files/download?${new URLSearchParams({ path })}`,
+    `${base}/jobs/${encodeURIComponent(id)}/files/download?${new URLSearchParams({ path, ...teamQuery() })}`,
+  datasetFiles: (id: string, signal?: AbortSignal) =>
+    request<{ files: ResultFile[] }>(
+      `/datasets/${encodeURIComponent(id)}/files`,
+      { signal },
+    ),
+  datasetDownloadURL: (id: string, path: string) =>
+    `${base}/datasets/${encodeURIComponent(id)}/files/download?${new URLSearchParams({ path, ...teamQuery() })}`,
+  folders: (signal?: AbortSignal) =>
+    request<{ folders: StorageFolder[] }>('/storage/folders', { signal }),
+  folderFiles: (folder: StorageFolder, signal?: AbortSignal) =>
+    request<{ files: ResultFile[] }>(
+      `/storage/files?${new URLSearchParams({ source_team: folder.team_id, scope: folder.scope })}`,
+      { signal },
+    ),
+  folderDownloadURL: (folder: StorageFolder, path: string) =>
+    `${base}/storage/files?${new URLSearchParams({ source_team: folder.team_id, scope: folder.scope, path, download: 'true', ...teamQuery() })}`,
   upload: (
     file: File,
     name: string,
     zip: boolean,
     progress: (value: number) => void,
+    scope?: string,
+    signal?: AbortSignal,
   ) =>
     new Promise<Dataset>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
+      const abort = () => xhr.abort()
+      if (signal?.aborted) {
+        reject(new Error('Upload cancelled'))
+        return
+      }
+      signal?.addEventListener('abort', abort, { once: true })
+      xhr.onloadend = () => signal?.removeEventListener('abort', abort)
+      xhr.onabort = () => reject(new Error('Upload cancelled'))
       xhr.open(
         'POST',
-        `${base}/datasets?${new URLSearchParams({ filename: file.name, name, ...(zip ? { format: 'zip' } : {}) })}`,
+        `${base}/datasets?${new URLSearchParams({ filename: file.name, name, ...(scope ? { scope } : {}), ...(zip ? { format: 'zip' } : {}) })}`,
       )
-      xhr.timeout = 30 * 60 * 1000
+      xhr.timeout = 4 * 60 * 60 * 1000
+      if (activeTeam) xhr.setRequestHeader('X-Mist-Team', activeTeam)
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) progress(Math.round((100 * e.loaded) / e.total))
       }
       xhr.onerror = () => reject(new Error('Upload connection failed'))
       xhr.ontimeout = () => reject(new Error('Upload timed out'))
       xhr.onload = () => {
+        if (xhr.status === 401)
+          window.dispatchEvent(new Event('mist:sign-in-required'))
         try {
           const body = JSON.parse(xhr.responseText)
           if (xhr.status >= 200 && xhr.status < 300) resolve(body)
@@ -179,4 +246,74 @@ export const storageAPI = {
       }
       xhr.send(file)
     }),
+}
+
+export type TeamPolicy = {
+  cpu: string
+  memory: string
+  nvidia: number
+  tenstorrent: number
+  concurrent: number
+  queued: number
+  storage_gib: number
+  runtime_seconds: number
+  registries: string[]
+}
+export type TeamMember = {
+  id: string
+  name: string
+  email: string
+  common_writer: boolean
+}
+export type StorageGrant = { id: string; target_team: string; scope: string }
+export type Team = {
+  id: string
+  name: string
+  disabled: boolean
+  policy: TeamPolicy
+  members: TeamMember[]
+  grants: StorageGrant[]
+}
+export type StorageFolder = {
+  team_id: string
+  team_name: string
+  scope: string
+  name: string
+  shared: boolean
+  writable: boolean
+}
+export const teamsAPI = {
+  list: (signal?: AbortSignal) =>
+    request<{ teams: Team[]; storage_budget_gib: number }>('/teams', {
+      signal,
+    }),
+  create: (name: string, storage_gib = 10) =>
+    request<Team>('/teams', {
+      method: 'POST',
+      body: JSON.stringify({ name, storage_gib }),
+    }),
+  update: (
+    id: string,
+    change: { name?: string; disabled?: boolean; policy?: TeamPolicy },
+  ) =>
+    request<Team>(`/teams/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(change),
+    }),
+  enroll: (id: string, user_id: string, common_writer: boolean) =>
+    request<Team>(`/teams/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id, common_writer }),
+    }),
+  removeMember: (id: string, user: string) =>
+    request<Team>(`/teams/${id}/members/${encodeURIComponent(user)}`, {
+      method: 'DELETE',
+    }),
+  grant: (id: string, target_team: string, scope: string) =>
+    request<Team>(`/teams/${id}/grants`, {
+      method: 'POST',
+      body: JSON.stringify({ target_team, scope }),
+    }),
+  revoke: (id: string, grant: string) =>
+    request<Team>(`/teams/${id}/grants/${grant}`, { method: 'DELETE' }),
 }

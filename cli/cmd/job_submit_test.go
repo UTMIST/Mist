@@ -16,6 +16,9 @@ func TestJobSubmitUsesRealAPI(t *testing.T) {
 		if r.Method != "POST" || r.URL.Path != "/jobs" {
 			t.Errorf("wrong request: %s %s", r.Method, r.URL.Path)
 		}
+		if r.Header.Get("X-Mist-Team") != "team-selected" {
+			t.Errorf("missing selected workspace header")
+		}
 		var body map[string]interface{}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["accelerator"] != "tenstorrent" || body["device_count"] != float64(2) || body["script"] != "print('train')" {
@@ -27,7 +30,7 @@ func TestJobSubmitUsesRealAPI(t *testing.T) {
 	defer server.Close()
 	var err error
 	output := CaptureOutput(func() {
-		err = (&JobSubmitCmd{Script: script, Compute: "TT", Devices: 2}).Run(&AppContext{APIBaseURL: server.URL})
+		err = (&JobSubmitCmd{Script: script, Compute: "TT", Devices: 2}).Run(&AppContext{APIBaseURL: server.URL, Config: &Config{TeamID: "team-selected"}})
 	})
 	if err != nil || !contains(output, "real-id") || contains(output, "Are you sure") {
 		t.Fatalf("%v: %s", err, output)

@@ -1,0 +1,15 @@
+[Unit]
+Description=Mist portal access boundary for shared Tailscale researchers
+After=network-pre.target tailscaled.service ufw.service k3s.service k3s-agent.service
+Wants=tailscaled.service
+PartOf=tailscaled.service k3s.service k3s-agent.service
+Before=nginx.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mist-portal-firewall.conf
+ExecStart=/usr/local/lib/mist/portal-firewall.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

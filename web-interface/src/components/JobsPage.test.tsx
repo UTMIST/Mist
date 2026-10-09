@@ -27,6 +27,12 @@ vi.mock('../api', () => ({
 let jobs: Job[]
 beforeEach(() => {
   vi.resetAllMocks()
+  HTMLDialogElement.prototype.showModal = function () {
+    this.setAttribute('open', '')
+  }
+  HTMLDialogElement.prototype.close = function () {
+    this.removeAttribute('open')
+  }
   vi.mocked(storageAPI.list).mockResolvedValue({
     datasets: [],
     upload_limit_bytes: 2147483648,
@@ -120,27 +126,29 @@ afterEach(() => {
 test('shows real job state, reads logs, and cancels through the API', async () => {
   render(<JobsPage />)
   await screen.findByText('Actual training')
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Show details for Actual training' }),
+  )
   expect(screen.getByText('Waiting for boards')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Logs' }))
   await screen.findByText('REAL_TRAINING_OUTPUT')
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
   await screen.findByText('Cancelled')
   expect(jobsAPI.cancel).toHaveBeenCalledWith('real-job')
-  expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+  await waitFor(() =>
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull(),
+  )
 })
 
 test('submits the requested Tenstorrent board count', async () => {
   render(<JobsPage />)
+  fireEvent.click(screen.getByRole('button', { name: 'New job' }))
   await screen.findByDisplayValue('cpu-runtime')
-  fireEvent.change(screen.getByLabelText('Compute'), {
-    target: { value: 'tenstorrent' },
-  })
+  fireEvent.click(screen.getByRole('radio', { name: /Tenstorrent/ }))
   fireEvent.change(screen.getByLabelText('Boards (two chips each)'), {
     target: { value: '2' },
   })
-  fireEvent.change(screen.getByLabelText('Workload'), {
-    target: { value: 'training-smoke' },
-  })
+  fireEvent.click(screen.getByRole('radio', { name: 'Training check' }))
   fireEvent.click(screen.getByRole('button', { name: 'Submit job' }))
   await waitFor(() =>
     expect(jobsAPI.submit).toHaveBeenCalledWith({
@@ -156,10 +164,9 @@ test('submits the requested Tenstorrent board count', async () => {
 
 test('passes executable and each argument separately, preserving spaces', async () => {
   render(<JobsPage />)
+  fireEvent.click(screen.getByRole('button', { name: 'New job' }))
   await screen.findByDisplayValue('cpu-runtime')
-  fireEvent.change(screen.getByLabelText('Workload'), {
-    target: { value: 'container' },
-  })
+  fireEvent.click(screen.getByRole('radio', { name: 'Container' }))
   fireEvent.change(screen.getByLabelText('Command executable (optional)'), {
     target: { value: 'python' },
   })
@@ -184,6 +191,7 @@ test('passes executable and each argument separately, preserving spaces', async 
 
 test('rejects unapproved images and invalid board counts before submission', async () => {
   render(<JobsPage />)
+  fireEvent.click(screen.getByRole('button', { name: 'New job' }))
   await screen.findByDisplayValue('cpu-runtime')
   fireEvent.change(screen.getByLabelText('Container image'), {
     target: { value: 'unapproved/image' },
@@ -191,9 +199,7 @@ test('rejects unapproved images and invalid board counts before submission', asy
   expect(
     screen.getByRole('button', { name: 'Submit job' }).hasAttribute('disabled'),
   ).toBe(true)
-  fireEvent.change(screen.getByLabelText('Compute'), {
-    target: { value: 'tenstorrent' },
-  })
+  fireEvent.click(screen.getByRole('radio', { name: /Tenstorrent/ }))
   fireEvent.change(screen.getByLabelText('Boards (two chips each)'), {
     target: { value: '5' },
   })
@@ -218,4 +224,40 @@ test('recovers the job list after a temporary API outage', async () => {
   })
   expect(screen.queryByRole('alert')).toBeNull()
   expect(screen.getByText('Actual training')).toBeTruthy()
+})
+
+test('paginates history and searches across all pages', async () => {
+  jobs = Array.from({ length: 23 }, (_, index) => ({
+    ...jobs[0],
+    id: `job-${index}`,
+    name: `Experiment ${index + 1}`,
+  }))
+  render(<JobsPage />)
+  await screen.findByText('Experiment 1')
+  expect(
+    screen.getAllByRole('button', { name: /Show details for Experiment/ }),
+  ).toHaveLength(10)
+  expect(screen.queryByText('Experiment 11')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+  expect(screen.getByText('Experiment 11')).toBeTruthy()
+  expect(screen.queryByText('Experiment 1')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+  expect(
+    screen.getAllByRole('button', { name: /Show details for Experiment/ }),
+  ).toHaveLength(3)
+  expect(
+    screen.getByRole('button', { name: 'Next page' }).hasAttribute('disabled'),
+  ).toBe(true)
+  fireEvent.change(screen.getByLabelText('Search job history'), {
+    target: { value: 'job-22' },
+  })
+  expect(screen.getByText('Experiment 23')).toBeTruthy()
+  expect(
+    screen.getAllByRole('button', { name: /Show details for Experiment/ }),
+  ).toHaveLength(1)
+  expect(
+    screen
+      .getByRole('button', { name: 'Previous page' })
+      .hasAttribute('disabled'),
+  ).toBe(true)
 })

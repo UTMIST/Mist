@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -51,6 +52,10 @@ type KubernetesExecutor struct {
 	cpuNode, ttNode string
 	storage         *SharedStorage
 	sharedPVC       string
+	team            *TeamAccess
+	inputPVC        string
+	inputSubPath    string
+	outputSubPath   string
 }
 
 func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
@@ -64,13 +69,25 @@ func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
 	mux.HandleFunc("/datasets", a.datasets)
 	mux.HandleFunc("/datasets/", a.dataset)
 	mux.HandleFunc("GET /storage", a.storageInfo)
+	mux.HandleFunc("GET /storage/folders", a.storageFolders)
+	mux.HandleFunc("GET /storage/files", a.storageFolderFiles)
 	if raw := os.Getenv("MIST_AUTH_URL"); raw != "" {
 		var err error
 		a.auth, err = newAuthGateway(raw)
 		if err != nil {
 			panic(err)
 		}
-		a.httpServer.Handler = a.auth.middleware(mux)
+		if os.Getenv("MIST_TEAMS_ENABLED") == "true" {
+			if executor.storage == nil {
+				panic("team workspaces require shared storage")
+			}
+			a.teams = newTeamService(a)
+			mux.HandleFunc("/teams", a.teamEndpoint)
+			mux.HandleFunc("/teams/", a.teamEndpoint)
+			a.httpServer.Handler = a.auth.middleware(a.teams.middleware(mux))
+		} else {
+			a.httpServer.Handler = a.auth.middleware(mux)
+		}
 	}
 	mux.HandleFunc("/jobs", a.kubernetesJobs)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
@@ -107,6 +124,8 @@ func NewKubernetesExecutor() (*KubernetesExecutor, error) {
 		return nil, fmt.Errorf("load Kubernetes credentials: %w", err)
 	}
 	config.Timeout = 20 * time.Second
+	config.QPS = 20
+	config.Burst = 40
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, err
@@ -172,6 +191,12 @@ type KubernetesJobStatus struct {
 	WorkingDirectory    string            `json:"working_directory,omitempty"`
 	TimeoutSeconds      int64             `json:"timeout_seconds"`
 	DatasetID           string            `json:"dataset_id,omitempty"`
+	TeamID              string            `json:"team_id,omitempty"`
+	CreatorID           string            `json:"creator_id,omitempty"`
+	CreatorName         string            `json:"creator_name,omitempty"`
+	StorageScope        string            `json:"storage_scope,omitempty"`
+	QueuePosition       int               `json:"queue_position,omitempty"`
+	CanCancel           *bool             `json:"can_cancel,omitempty"`
 }
 
 type AllocatedDevice struct {
@@ -243,10 +268,14 @@ func (e *KubernetesExecutor) normalize(req CreateJobRequest) (CreateJobRequest, 
 			req.Image = cpuImage
 		}
 	}
-	if !e.allowedImages[req.Image] {
+	if e.team != nil {
+		if err := validateImageReference(req.Image, e.team.Team.Policy.Registries, e.allowedImages); err != nil {
+			return req, err
+		}
+	} else if !e.allowedImages[req.Image] {
 		return req, errors.New("image is not in the server's approved image list")
 	}
-	if req.Accelerator == "tenstorrent" && req.Image != ttImage {
+	if e.team == nil && req.Accelerator == "tenstorrent" && req.Image != ttImage {
 		return req, errors.New("this QuietBox pilot requires the configured TT runtime image")
 	}
 	if req.Type == "training-smoke" && (req.Accelerator == "cpu" || req.Script != "" || len(req.Command) != 0) {
@@ -293,7 +322,7 @@ func (e *KubernetesExecutor) normalize(req CreateJobRequest) (CreateJobRequest, 
 		if key == "MIST_JOB_ID" || key == "MIST_CHECKPOINT_DIR" || key == "MIST_OUTPUT_DIR" || key == "MIST_INPUT_DIR" {
 			return req, fmt.Errorf("%s is managed by Mist", key)
 		}
-		if req.Accelerator == "tenstorrent" && (strings.HasPrefix(key, "TT_METAL_") || key == "PYTHONPATH" || key == "LD_LIBRARY_PATH") {
+		if req.Accelerator == "tenstorrent" && (key == "TT_METAL_VISIBLE_DEVICES" || ((e.team == nil || (req.Image == ttImage && req.TTRuntime != "container")) && (strings.HasPrefix(key, "TT_METAL_") || key == "PYTHONPATH" || key == "LD_LIBRARY_PATH"))) {
 			return req, fmt.Errorf("%s is managed by the TT runtime profile", key)
 		}
 	}
@@ -335,12 +364,21 @@ func (e *KubernetesExecutor) normalize(req CreateJobRequest) (CreateJobRequest, 
 	if req.Accelerator == "tenstorrent" && memory.Cmp(resource.MustParse("2Gi")) < 0 {
 		return req, errors.New("Tenstorrent runtime requires at least 2Gi memory")
 	}
+	if e.team != nil {
+		if err := validateTeamRequest(e.team.Team, e.team.Member, &req); err != nil {
+			return req, err
+		}
+	}
 	return req, nil
 }
 
 func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.Job {
 	requestJSON, _ := json.Marshal(req)
 	labels := map[string]string{managedLabel: "mist", "mist.io/owner": e.owner}
+	if e.team != nil {
+		labels["mist.io/team"] = e.team.Team.ID
+		labels["mist.io/creator"] = memberOwner(e.team.Member.ID)
+	}
 	resources := corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(req.CPU), corev1.ResourceMemory: resource.MustParse(req.Memory)}
 	workingDir := req.WorkingDirectory
 	if workingDir == "" && (req.Script != "" || req.Type == "training-smoke" || req.Accelerator == "tenstorrent") {
@@ -364,6 +402,9 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 	pod := corev1.PodSpec{RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: ptr(false),
 		ImagePullSecrets:              e.pullSecrets,
 		TerminationGracePeriodSeconds: ptr(int64(5)), NodeSelector: map[string]string{"kubernetes.io/hostname": e.cpuNode}}
+	if e.team != nil {
+		pod.SecurityContext = &corev1.PodSecurityContext{SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}}
+	}
 	if req.Accelerator == "nvidia" {
 		pvc = "training-nvidia-checkpoints"
 		count := resource.MustParse(strconv.Itoa(req.DeviceCount))
@@ -378,11 +419,13 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 		hugepages := resource.MustParse(fmt.Sprintf("%dGi", req.DeviceCount*2))
 		container.Resources.Requests["hugepages-1Gi"] = hugepages
 		container.Resources.Limits["hugepages-1Gi"] = hugepages
-		container.Env = append(container.Env, corev1.EnvVar{Name: "TT_METAL_HOME", Value: ttMetal}, corev1.EnvVar{Name: "PYTHONPATH", Value: ttMetal},
-			corev1.EnvVar{Name: "LD_LIBRARY_PATH", Value: ttMetal + "/build/lib"}, corev1.EnvVar{Name: "TT_METAL_CACHE", Value: "/tmp/tt-metal-cache"})
-		for _, host := range []struct{ name, path string }{{"metal", ttMetal}, {"python", "/home/utmist-tt/.local/share/uv/python"}} {
-			pod.Volumes = append(pod.Volumes, corev1.Volume{Name: host.name, VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: host.path, Type: ptr(corev1.HostPathDirectory)}}})
-			container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: host.name, MountPath: host.path, ReadOnly: true})
+		if req.TTRuntime != "container" {
+			container.Env = append(container.Env, corev1.EnvVar{Name: "TT_METAL_HOME", Value: ttMetal}, corev1.EnvVar{Name: "PYTHONPATH", Value: ttMetal},
+				corev1.EnvVar{Name: "LD_LIBRARY_PATH", Value: ttMetal + "/build/lib"}, corev1.EnvVar{Name: "TT_METAL_CACHE", Value: "/tmp/tt-metal-cache"})
+			for _, host := range []struct{ name, path string }{{"metal", ttMetal}, {"python", "/home/utmist-tt/.local/share/uv/python"}} {
+				pod.Volumes = append(pod.Volumes, corev1.Volume{Name: host.name, VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: host.path, Type: ptr(corev1.HostPathDirectory)}}})
+				container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: host.name, MountPath: host.path, ReadOnly: true})
+			}
 		}
 	}
 	pod.Volumes = append(pod.Volumes, corev1.Volume{Name: "checkpoints", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvc}}})
@@ -390,6 +433,9 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 	if e.storage != nil {
 		pod.Volumes[len(pod.Volumes)-1].PersistentVolumeClaim.ClaimName = e.sharedPVC
 		subpath := "jobs/" + id + "/outputs"
+		if e.outputSubPath != "" {
+			subpath = e.outputSubPath
+		}
 		for i := range container.VolumeMounts {
 			if container.VolumeMounts[i].Name == "checkpoints" {
 				container.VolumeMounts[i].SubPath = subpath
@@ -398,14 +444,22 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 		// The API creates directories before submission. Init is restricted to this job's directory.
 		pod.InitContainers = nil
 		if req.DatasetID != "" {
-			container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "checkpoints", MountPath: "/inputs", SubPath: "datasets/" + req.DatasetID + "/content", ReadOnly: true})
+			volume, subpath := "checkpoints", "datasets/"+req.DatasetID+"/content"
+			if e.inputSubPath != "" {
+				subpath = e.inputSubPath
+			}
+			if e.inputPVC != "" {
+				volume, subpath = "input", e.inputSubPath
+				pod.Volumes = append(pod.Volumes, corev1.Volume{Name: volume, VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: e.inputPVC, ReadOnly: true}}})
+			}
+			container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: volume, MountPath: "/inputs", SubPath: subpath, ReadOnly: true})
 			container.Env = append(container.Env, corev1.EnvVar{Name: "MIST_INPUT_DIR", Value: "/inputs"})
 		}
 	}
 	if req.Script != "" || req.Type == "training-smoke" {
 		configmap, mount := id+"-script", "/mist-script"
 		python := "python"
-		if req.Accelerator == "tenstorrent" {
+		if req.Accelerator == "tenstorrent" && req.TTRuntime != "container" {
 			python = ttPython
 		}
 		if req.Type == "training-smoke" {
@@ -430,12 +484,25 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 	if e.storage != nil {
 		annotations["mist.io/storage"] = "shared-v1"
 	}
+	if e.team != nil {
+		annotations["mist.io/creator-id"] = e.team.Member.ID
+		annotations["mist.io/creator-name"] = e.team.Member.Name
+		annotations["mist.io/storage-scope"] = req.StorageScope
+		annotations["mist.io/output-path"] = e.outputSubPath
+		annotations["mist.io/queued-at"] = time.Now().UTC().Format(time.RFC3339Nano)
+		if isAdmin(e.team.Member) {
+			annotations["mist.io/admin-submission"] = "true"
+		}
+	}
 	return &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: id, Namespace: e.namespace, Labels: labels, Annotations: annotations},
 		Spec: batchv1.JobSpec{BackoffLimit: ptr(int32(0)), ActiveDeadlineSeconds: ptr(req.TimeoutSeconds),
 			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: pod}}}
 }
 
 func (e *KubernetesExecutor) submit(ctx context.Context, request CreateJobRequest) (*KubernetesJobStatus, error) {
+	if e.team != nil {
+		return e.team.Service.submitTeam(ctx, e, request)
+	}
 	if e.storage != nil {
 		e.storage.mu.Lock()
 		defer e.storage.mu.Unlock()
@@ -508,6 +575,8 @@ func (e *KubernetesExecutor) submit(ctx context.Context, request CreateJobReques
 
 type submissionError struct{ error }
 
+func (e *submissionError) Unwrap() error { return e.error }
+
 func (e *KubernetesExecutor) managedJob(ctx context.Context, id string) (*batchv1.Job, error) {
 	if len(validation.IsDNS1123Subdomain(id)) != 0 {
 		return nil, &submissionError{errors.New("invalid job ID")}
@@ -545,6 +614,14 @@ func (e *KubernetesExecutor) baseStatus(job *batchv1.Job) (*KubernetesJobStatus,
 		JobState: JobStateScheduled, Payload: map[string]interface{}{"command": req.Command, "args": req.Args}}, Name: req.Name,
 		Image: req.Image, Accelerator: req.Accelerator, DeviceCount: req.DeviceCount, CPU: req.CPU, Memory: req.Memory, Owner: e.owner, CheckpointDirectory: "/checkpoints/" + job.Name,
 		WorkingDirectory: req.WorkingDirectory, TimeoutSeconds: req.TimeoutSeconds, DatasetID: req.DatasetID}
+	status.Owner = job.Labels["mist.io/owner"]
+	status.TeamID, status.CreatorID, status.CreatorName, status.StorageScope = job.Labels["mist.io/team"], job.Annotations["mist.io/creator-id"], job.Annotations["mist.io/creator-name"], job.Annotations["mist.io/storage-scope"]
+	if e.team != nil {
+		status.CanCancel = ptr(isAdmin(e.team.Member) || status.CreatorID == e.team.Member.ID)
+	}
+	if job.Annotations["mist.io/queued-at"] != "" && job.Annotations["mist.io/admitted-at"] == "" {
+		status.Message = "Queued: waiting for a fair turn and available team/machine resources"
+	}
 	// Older pilot jobs mounted the shared checkpoint root, before /outputs existed.
 	for _, container := range job.Spec.Template.Spec.Containers {
 		if container.Name != "workload" {
@@ -693,6 +770,9 @@ func (e *KubernetesExecutor) statusWithData(ctx context.Context, job *batchv1.Jo
 	if cancelled := job.Annotations[cancelAnnotation]; cancelled != "" {
 		status.JobState = JobStateCancelled
 		status.Message = "Cancelled by user"
+		if reason := job.Annotations["mist.io/stop-reason"]; reason != "" {
+			status.Message = reason
+		}
 		if when, err := time.Parse(time.RFC3339, cancelled); err == nil {
 			status.TimeCompleted = &when
 		}
@@ -765,6 +845,9 @@ func (e *KubernetesExecutor) cancel(ctx context.Context, id string) (*Kubernetes
 	if err != nil {
 		return nil, err
 	}
+	if e.team != nil && !isAdmin(e.team.Member) && job.Annotations["mist.io/creator-id"] != e.team.Member.ID {
+		return nil, &permissionError{errors.New("Only the job owner or an administrator can cancel this job")}
+	}
 	if job.Annotations[cancelAnnotation] != "" {
 		return e.statusFor(ctx, job)
 	}
@@ -832,6 +915,13 @@ func executorError(w http.ResponseWriter, err error) {
 	}
 	if apierrors.IsNotFound(err) {
 		code = http.StatusNotFound
+	}
+	var denied *permissionError
+	if errors.As(err, &denied) {
+		code = http.StatusForbidden
+	}
+	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
+		code = 507
 	}
 	writeJSON(w, code, map[string]string{"error": err.Error()})
 }

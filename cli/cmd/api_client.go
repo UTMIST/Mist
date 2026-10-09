@@ -28,6 +28,9 @@ func (ctx *AppContext) api(method, path string, body, out interface{}) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if team := ctx.teamID(); team != "" {
+		req.Header.Set("X-Mist-Team", team)
+	}
 	if ctx.Config != nil && ctx.Config.SessionCookie != "" {
 		req.Header.Set("Cookie", ctx.Config.SessionCookie)
 	}
@@ -64,4 +67,17 @@ func (ctx *AppContext) baseURL() string {
 		return strings.TrimRight(ctx.Config.APIBaseURL, "/")
 	}
 	return "http://127.0.0.1:3000"
+}
+
+func (ctx *AppContext) teamID() string {
+	if ctx.TeamID == "legacy" {
+		return ""
+	}
+	if ctx.TeamID != "" {
+		return ctx.TeamID
+	}
+	if ctx.Config != nil {
+		return ctx.Config.TeamID
+	}
+	return ""
 }

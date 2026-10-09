@@ -1,0 +1,7 @@
+{
+  "device_nodes": [
+    "/dev/nvidia0",
+    "/dev/nvidia1"
+  ],
+  "gpu_count": 2
+}

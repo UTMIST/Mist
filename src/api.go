@@ -30,6 +30,7 @@ type App struct {
 	statusRegistry *StatusRegistry
 	executor       *KubernetesExecutor
 	auth           *AuthGateway
+	teams          *TeamService
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
@@ -90,6 +91,9 @@ func (a *App) Start() error {
 	if err != nil {
 		return err
 	}
+	if a.teams != nil {
+		a.teams.start()
+	}
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
@@ -112,6 +116,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	if a.supervisor != nil {
 		a.supervisor.Stop()
+	}
+	if a.teams != nil {
+		a.teams.shutdown()
 	}
 	if a.executor != nil {
 		return nil
@@ -216,6 +223,8 @@ func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 type CreateJobRequest struct {
 	Type             string                 `json:"type"`
 	DatasetID        string                 `json:"dataset_id,omitempty"`
+	StorageScope     string                 `json:"storage_scope,omitempty"`
+	TTRuntime        string                 `json:"tt_runtime,omitempty"`
 	Payload          map[string]interface{} `json:"payload"`
 	RequiredGPU      string                 `json:"gpu,omitempty"`
 	Name             string                 `json:"name,omitempty"`

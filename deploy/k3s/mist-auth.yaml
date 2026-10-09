@@ -39,7 +39,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: auth
-          image: mist-auth:members-20261009
+          image: mist-auth:departments-20261009
           imagePullPolicy: Never
           ports:
             - name: http
@@ -48,6 +48,11 @@ spec:
             - secretRef:
                 name: mist-auth-bootstrap
           env:
+            - name: MIST_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mist-internal-auth
+                  key: MIST_INTERNAL_TOKEN
             - name: MIST_SITE_ORIGIN
               value: http://100.73.139.66:8088
             - name: MIST_ALLOWED_ORIGINS

@@ -15,6 +15,7 @@ import { Route as DatasetsRouteImport } from './routes/datasets'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as MachinesRouteImport } from './routes/machines'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as TeamsRouteImport } from './routes/teams'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +47,11 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeamsRoute = TeamsRouteImport.update({
+  id: '/teams',
+  path: '/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
   '/profile': typeof ProfileRoute
+  '/teams': typeof TeamsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
   '/profile': typeof ProfileRoute
+  '/teams': typeof TeamsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,13 +79,27 @@ export interface FileRoutesById {
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
   '/profile': typeof ProfileRoute
+  '/teams': typeof TeamsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/dashboard' | '/datasets' | '/jobs' | '/machines' | '/profile'
+    | '/'
+    | '/dashboard'
+    | '/datasets'
+    | '/jobs'
+    | '/machines'
+    | '/profile'
+    | '/teams'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/datasets' | '/jobs' | '/machines' | '/profile'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/datasets'
+    | '/jobs'
+    | '/machines'
+    | '/profile'
+    | '/teams'
   id:
     | '__root__'
     | '/'
@@ -86,6 +108,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/machines'
     | '/profile'
+    | '/teams'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -95,6 +118,7 @@ export interface RootRouteChildren {
   JobsRoute: typeof JobsRoute
   MachinesRoute: typeof MachinesRoute
   ProfileRoute: typeof ProfileRoute
+  TeamsRoute: typeof TeamsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -141,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/teams': {
+      id: '/teams'
+      path: '/teams'
+      fullPath: '/teams'
+      preLoaderRoute: typeof TeamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -151,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   JobsRoute: JobsRoute,
   MachinesRoute: MachinesRoute,
   ProfileRoute: ProfileRoute,
+  TeamsRoute: TeamsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

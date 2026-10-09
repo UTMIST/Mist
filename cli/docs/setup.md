@@ -21,7 +21,11 @@ The password prompt does not echo. Automation can use `--password-stdin`.
 The CLI saves a real session cookie in a mode-0600 config; `--config` selects
 an alternate file. Logout with `bin/mist auth logout` revokes the session.
 
+Select your team before submitting new work:
+
 ```bash
+bin/mist team list
+bin/mist team use YOUR_TEAM_ID
 bin/mist job submit /path/to/train.py --compute NVIDIA --devices 1 \
   --cpu 2 --memory 2Gi --timeout 1800 --name my-training
 bin/mist job submit /path/to/tt_train.py --compute TT --devices 1
@@ -52,3 +56,10 @@ from the member account. Legacy fake-token authentication is removed.
 ```bash
 go -C cli test ./...
 ```
+
+The actual team ID comes from `team list`; do not paste `YOUR_TEAM_ID` literally.
+`--team` or `MIST_TEAM` overrides the saved selection. Use `team use legacy` to
+read historical jobs; new work requires a team. `--scope common` requires common
+write permission. Custom tagged public images are allowed by team registry policy;
+TT custom images use `--tt-runtime container`. See the
+[department guide](../../docs/department-rollout.md) for limits and storage.

@@ -1,0 +1,32 @@
+[
+  {
+    "backend": "tenstorrent",
+    "device_id": 0,
+    "initial_mse": 0.08051129430532455,
+    "final_mse": 3.2111081964103505e-05,
+    "validation_mse": 5.255065480014309e-05,
+    "max_weight_change": 0.0986328125,
+    "checkpoint": "/outputs/tenstorrent-0.pt",
+    "checkpoint_reload_mse": 5.255065480014309e-05,
+    "started_at": "2026-10-09T05:25:02.341652+00:00",
+    "finished_at": "2026-10-09T05:25:13.379742+00:00",
+    "device_nodes": [
+      "/dev/tenstorrent/1"
+    ]
+  },
+  {
+    "backend": "tenstorrent",
+    "device_id": 1,
+    "initial_mse": 0.08051129430532455,
+    "final_mse": 3.2111081964103505e-05,
+    "validation_mse": 5.255065480014309e-05,
+    "max_weight_change": 0.0986328125,
+    "checkpoint": "/outputs/tenstorrent-1.pt",
+    "checkpoint_reload_mse": 5.255065480014309e-05,
+    "started_at": "2026-10-09T05:25:25.167206+00:00",
+    "finished_at": "2026-10-09T05:25:28.814332+00:00",
+    "device_nodes": [
+      "/dev/tenstorrent/1"
+    ]
+  }
+]

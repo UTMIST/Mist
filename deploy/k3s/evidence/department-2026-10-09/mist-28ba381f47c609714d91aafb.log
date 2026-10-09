@@ -1,0 +1,56 @@
+2026-10-09 05:50:26.046 | DEBUG    | ttnn:<module>:78 - Initial ttnn.CONFIG:
+Config{cache_path=/root/.cache/ttnn,model_cache_path=/root/.cache/ttnn/models,tmp_dir=/tmp/ttnn,enable_model_cache=false,enable_fast_runtime_mode=true,validate_program_args=false,throw_exception_on_fallback=false,enable_logging=false,enable_graph_report=false,enable_graph_python_stack_traces=false,enable_detailed_buffer_report=false,enable_detailed_tensor_report=false,enable_comparison_mode=false,comparison_mode_should_raise_exception=false,comparison_mode_pcc=0.9999,root_report_path=generated/ttnn/reports,report_name=std::nullopt,std::nullopt}
+2026-10-09 05:50:26.248 | info     |          Device | Opening user mode device driver (tt_cluster.cpp:228)
+2026-10-09 05:50:26.248 | info     |             UMD | Cluster constructor started. (cluster.cpp:389)
+2026-10-09 05:50:26.249 | info     |             UMD | Creating TopologyDiscovery for architecture: wormhole_b0 (topology_discovery.cpp:96)
+2026-10-09 05:50:26.249 | info     |             UMD | Starting topology discovery. (topology_discovery.cpp:115)
+2026-10-09 05:50:26.250 | info     |             UMD | Established firmware bundle version: 19.4.2 (topology_discovery.cpp:575)
+2026-10-09 05:50:26.258 | info     |             UMD | Completed topology discovery. (topology_discovery.cpp:119)
+2026-10-09 05:50:26.302 | warning  |             UMD | hwloc_set_area_membind(): failed for physical_device_id: 1 on NodeSet: [0] with errno: Operation not permitted (pid: 1 tid: 134777867474752) (cpuset_lib.cpp:440)
+2026-10-09 05:50:26.302 | warning  |             UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 1 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)
+2026-10-09 05:50:26.302 | warning  |             UMD | hwloc_set_area_membind(): failed for physical_device_id: 1 on NodeSet: [0] with errno: Operation not permitted (pid: 1 tid: 134777867474752) (cpuset_lib.cpp:440)
+2026-10-09 05:50:26.302 | warning  |             UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 1 ch: 1). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)
+2026-10-09 05:50:26.305 | info     |             UMD | Opening local chip ids/PCIe ids: {0}/[1] and remote chip ids {1} (cluster.cpp:173)
+2026-10-09 05:50:26.305 | info     |             UMD | IOMMU: disabled (cluster.cpp:147)
+2026-10-09 05:50:26.305 | info     |             UMD | KMD version: 2.5.0 (cluster.cpp:150)
+2026-10-09 05:50:26.305 | info     |             UMD | Cluster constructor completed. (cluster.cpp:648)
+2026-10-09 05:50:26.306 | info     |             UMD | Starting devices in cluster (cluster.cpp:1188)
+2026-10-09 05:50:26.310 | info     |             UMD | Starting devices in cluster completed. (cluster.cpp:1196)
+Tenstorrent devices=2; torch used for data/metrics=2.11.0+cpu
+Opening Tenstorrent device 0
+2026-10-09 05:50:26.386 | info     |     Distributed | Using auto discovery to generate mesh graph. (metal_env.cpp:437)
+2026-10-09 05:50:26.386 | info     |     Distributed | Constructing control plane using auto-discovery (no mesh graph descriptor). (metal_env.cpp:499)
+2026-10-09 05:50:26.386 | info     |          Fabric | Logical multi-mesh adjacency: intermesh degree histogram {0:1}; intra-mesh degree histograms mesh0 {1:2} (topology_mapper_utils.cpp:3329)
+2026-10-09 05:50:26.386 | info     |          Fabric | Physical multi-mesh adjacency: intermesh degree histogram {0:1}; intra-mesh degree histograms mesh0 {1:2} (topology_mapper_utils.cpp:3337)
+tt:0 step=0 mse=0.18213829
+tt:0 step=20 mse=0.00123700
+tt:0 step=40 mse=0.00011524
+tt:0 step=60 mse=0.00006454
+tt:0 step=80 mse=0.00006277
+{"backend": "tenstorrent", "device_id": 0, "initial_mse": 0.3193739652633667, "final_mse": 6.238709465833381e-05, "validation_mse": 0.00017507212760392576, "max_weight_change": 0.3046875, "checkpoint": "/checkpoints/mist-28ba381f47c609714d91aafb/tenstorrent-0.pt"}
+Opening Tenstorrent device 1
+2026-10-09 05:50:40.978 | info     |           Metal | Fabric config changed from FabricConfig::DISABLED to FabricConfig::FABRIC_1D, reinitializing control plane (metal_env.cpp:337)
+2026-10-09 05:50:40.978 | info     |     Distributed | Using auto discovery to generate mesh graph. (metal_env.cpp:437)
+2026-10-09 05:50:40.978 | info     |     Distributed | Constructing control plane using auto-discovery (no mesh graph descriptor). (metal_env.cpp:499)
+2026-10-09 05:50:40.978 | info     |          Fabric | Logical multi-mesh adjacency: intermesh degree histogram {0:1}; intra-mesh degree histograms mesh0 {1:2} (topology_mapper_utils.cpp:3329)
+2026-10-09 05:50:40.978 | info     |          Fabric | Physical multi-mesh adjacency: intermesh degree histogram {0:1}; intra-mesh degree histograms mesh0 {1:2} (topology_mapper_utils.cpp:3337)
+2026-10-09 05:50:40.979 | info     |           Metal | Enabling FabricConfig::FABRIC_1D only for dispatch. If your workload requires fabric, please set the fabric config accordingly. (device_manager.cpp:291)
+2026-10-09 05:50:40.979 | info     |           Metal | Dispatch on FabricConfig::FABRIC_1D with 1 Command Queues
+ (device_manager.cpp:299)
+2026-10-09 05:50:40.980 | info     |           Metal | Initializing Fabric (fabric_firmware_initializer.cpp:296)
+2026-10-09 05:50:42.982 | info     |           Metal | Fabric initialized on 2 devices (fabric_firmware_initializer.cpp:444)
+2026-10-09 05:50:42.982 | info     |           Metal | Fabric Initialized with config FabricConfig::FABRIC_1D (fabric_firmware_initializer.cpp:313)
+tt:1 step=0 mse=0.18213829
+tt:1 step=20 mse=0.00123700
+tt:1 step=40 mse=0.00011524
+tt:1 step=60 mse=0.00006454
+tt:1 step=80 mse=0.00006277
+{"backend": "tenstorrent", "device_id": 1, "initial_mse": 0.3193739652633667, "final_mse": 6.238709465833381e-05, "validation_mse": 0.00017507212760392576, "max_weight_change": 0.3046875, "checkpoint": "/checkpoints/mist-28ba381f47c609714d91aafb/tenstorrent-1.pt"}
+TRAINING_PASSED backend=tenstorrent devices=2
+2026-10-09 05:50:56.847 | info     |    BuildKernels | JIT cache stats: 0/58 hits (0.0%) [0 cached, 10 build-once dedup, 0 merged artifacts, 0 merged genfiles] (build_cache_telemetry.cpp:207)
+2026-10-09 05:50:56.847 | info     |    BuildKernels | JIT telemetry: 2 registered TelemetryTokens (build_cache_telemetry.cpp:230)
+2026-10-09 05:50:56.852 | info     |          Device | Closing user mode device drivers (tt_cluster.cpp:513)
+2026-10-09 05:50:56.852 | info     |             UMD | Closing devices in cluster (cluster.cpp:1201)
+2026-10-09 05:50:56.860 | info     |             UMD | Closing devices in cluster completed. (cluster.cpp:1210)
+2026-10-09 05:50:56.860 | info     |             UMD | Cluster destructor started. (cluster.cpp:916)
+2026-10-09 05:50:56.860 | info     |             UMD | Cluster destructor completed. (cluster.cpp:919)

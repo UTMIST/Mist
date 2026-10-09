@@ -13,6 +13,7 @@ type Config struct {
 	AccessToken   string `json:"access_token,omitempty"`
 	SessionCookie string `json:"session_cookie,omitempty"`
 	APIBaseURL    string `json:"api_base_url,omitempty"`
+	TeamID        string `json:"team_id,omitempty"`
 	// maybe APIBaseURL, etc.
 }
 
@@ -21,9 +22,11 @@ type AppContext struct {
 	HTTPClient *http.Client
 	APIBaseURL string
 	ConfigPath string
+	TeamID     string
 }
 
 type Globals struct {
+	Workspace  string `name:"team" env:"MIST_TEAM" help:"Team workspace ID, or legacy (overrides saved workspace)"`
 	ConfigPath string `name:"config" help:"Path to config file" default:"${config_path}"`
 	APIURL     string `name:"api-url" env:"MIST_API_URL" help:"Mist API URL (default http://127.0.0.1:3000)"`
 }
@@ -32,6 +35,7 @@ type CLI struct {
 	Globals
 
 	// Define your CLI structure here: Top Level Commands
+	Team TeamCmd `cmd:"" help:"List and select team workspaces"`
 	Auth AuthCmd `cmd:"" help:"Authentication commands"`
 	Job  JobCmd  `cmd:"" help:"Job management commands"`
 	// Config ConfigCmd `cmd:"" help:"Configuration commands"`
@@ -77,6 +81,7 @@ func Main() {
 	}
 
 	appCtx.APIBaseURL = cli.APIURL
+	appCtx.TeamID = cli.Globals.Workspace
 	appCtx.ConfigPath = cli.ConfigPath
 	err := kctx.Run()
 	kctx.FatalIfErrorf(err)

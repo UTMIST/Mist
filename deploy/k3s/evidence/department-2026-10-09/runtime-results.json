@@ -1,0 +1,41 @@
+{
+  "checks": {
+    "concurrent_tt_jobs_distinct_boards_real_training": true,
+    "nonzero_exit_visible_no_retry": true,
+    "execution_deadline_failure_visible": true
+  },
+  "jobs": [
+    {
+      "id": "mist-28ba381f47c609714d91aafb",
+      "name": "Concurrent TT board A"
+    },
+    {
+      "id": "mist-aeba50ca436d70aa879381ce",
+      "name": "Concurrent TT board B"
+    },
+    {
+      "id": "mist-613d2049819ee13de76a57f1",
+      "name": "Intentional failure"
+    },
+    {
+      "id": "mist-34416e68372f1bb5048f40b9",
+      "name": "Execution deadline"
+    }
+  ],
+  "allocations": {
+    "mist-28ba381f47c609714d91aafb": [
+      {
+        "driver": "tenstorrent.com",
+        "pool": "utmist-tt",
+        "device": "tt-0"
+      }
+    ],
+    "mist-aeba50ca436d70aa879381ce": [
+      {
+        "driver": "tenstorrent.com",
+        "pool": "utmist-tt",
+        "device": "tt-1"
+      }
+    ]
+  }
+}

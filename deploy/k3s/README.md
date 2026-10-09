@@ -1,9 +1,9 @@
 # Accelerator jobs on k3s
 
 
-**October 9 update:** Shared datasets/results, member login and private production
-hosting are implemented. Earlier local pilot descriptions below record the
-original phase. Use [the current operating guide](../../docs/complete-foundation.md) for today's behavior.
+**October 9 update:** Team workspaces, scoped storage, enforced limits, durable queueing and private
+production hosting are implemented. Earlier local pilot descriptions below record the
+original phase. Use [the current operating guide](../../docs/department-rollout.md) for today's behavior.
 
 For the original NVIDIA-node setup and recovery procedure, read the
 [setup runbook](setup-runbook.md). Its final section records the QuietBox worker

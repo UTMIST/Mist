@@ -49,6 +49,36 @@ func TestSharedDatasetAtomicLimitsAndOwnership(t *testing.T) {
 		t.Fatal("failed upload published metadata")
 	}
 }
+
+func TestSharedDatasetConfiguredCeilingAndMissingStorage(t *testing.T) {
+	t.Setenv("MIST_MAX_DATASET_GIB", "4")
+	root := t.TempDir()
+	s, err := NewSharedStorage(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reject an oversized declared body without reading or staging gigabytes.
+	request := httptest.NewRequest("POST", "/datasets?filename=data.bin", strings.NewReader("small"))
+	request.ContentLength = 5 * 1024 * 1024 * 1024
+	if _, err = s.upload(request, "test"); err == nil {
+		t.Fatal("configured dataset ceiling was bypassed")
+	}
+	if limit := s.availableUploadLimit(true); limit < 0 || limit > 4*1024*1024*1024 {
+		t.Fatalf("unsafe advertised upload limit: %d", limit)
+	}
+	if err = os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	if s.availableUploadLimit(true) != 0 {
+		t.Fatal("missing storage advertised upload capacity")
+	}
+	for _, value := range []string{"0", "65", "invalid"} {
+		t.Setenv("MIST_MAX_DATASET_GIB", value)
+		if _, err = NewSharedStorage(t.TempDir()); err == nil {
+			t.Fatalf("accepted invalid upload ceiling %q", value)
+		}
+	}
+}
 func TestSharedZipRejectsTraversalSymlinksAndExpansion(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
