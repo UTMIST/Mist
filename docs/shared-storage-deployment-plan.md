@@ -147,3 +147,24 @@ Current foundation behavior remains distinct: individual owned jobs are already
 self-service, but image eligibility uses a global exact-reference allowlist and
 Tenstorrent uses the fixed tested runtime profile. Team policies and self-service
 custom image eligibility are follow-up implementation work.
+
+### Team membership and storage requirements
+
+The user requires multiple teammates per team, explicitly enrolled as members.
+Each team needs both shared team storage and individual member storage:
+
+- Shared team datasets/files are visible to authorized members of that team.
+- Individual storage is private to its owning member by default; intentional
+  sharing publishes content into the team's shared area.
+- Members of another team cannot discover, list, read, download, modify or use
+  either that team's shared files or its members' personal files through jobs.
+- All dataset/file access and job input/output attachment must verify the
+  authenticated member, team membership and the selected storage scope.
+- Workloads mount only their authorized selected input and own output locations.
+  File and network access from running containers must enforce the same boundary;
+  a UI filter or a differently named folder is insufficient isolation.
+- Administrators assign memberships and team conditions. Normal uploads and
+  submissions within those conditions remain self-service.
+
+These are new team features. The completed foundation currently provides
+per-account ownership checks, rather than this team-sharing/membership model.
