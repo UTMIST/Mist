@@ -160,8 +160,10 @@ Current documentation covers user/admin operations, image submission, storage,
 deployment, limits, design and verification. The historical `main` tip
 `1050b022e36399f4b3b1dba1a3b3d670fcfca539` is preserved on the remote branch
 [`archive/main-before-k3s-20261009`](https://github.com/UTMIST/Mist/tree/archive/main-before-k3s-20261009).
-The department implementation replaces the active main code through a squash
-pull request. GitHub requires one other reviewer to approve the latest push;
+The department implementation is prepared for main in
+[PR #110](https://github.com/UTMIST/Mist/pull/110), using a squash merge.
+The initial merge attempt was rejected by GitHub branch policy; main has not
+yet been updated. GitHub requires one other reviewer to approve the latest push;
 this account has maintain/push access and cannot bypass that rule. The live
 private portal already runs the verified implementation. Git publication does
 not reset accounts, jobs or files, or switch the live services again.
