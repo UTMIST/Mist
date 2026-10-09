@@ -191,3 +191,25 @@ storage/
 
 Folder names illustrate the organization; enforced authorization determines
 access. Cross-team sharing exposes only the explicitly granted scope.
+
+### Portal login and administrator workspace
+
+The same portal and login page serve administrators and regular members.
+Authenticated roles determine which controls appear and which API actions are
+authorized; there is no separate administrator account required for ordinary
+research work.
+
+- Regular members use their team workspace to upload files, submit jobs, view
+  logs and retrieve results within the team's policies.
+- Administrators have the same research workflow plus administration controls
+  for teams, memberships, resource limits, image policies and access grants.
+- An administrator can also be a team member. Ordinary uploads and jobs use the
+  selected team's membership, storage permissions and resource policies.
+- Administrative actions must be explicitly authorized on the server; hiding
+  controls in the UI alone is insufficient. Administrative authority is distinct
+  from membership and does not implicitly make the account a member of every
+  team or bypass limits on its own research jobs.
+
+The foundation already supports login, basic member administration and ordinary
+administrator jobs. The team workspace and additional team administration
+controls described here remain follow-up work.
