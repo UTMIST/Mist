@@ -14,7 +14,6 @@ type Config struct {
 	SessionCookie string `json:"session_cookie,omitempty"`
 	APIBaseURL    string `json:"api_base_url,omitempty"`
 	TeamID        string `json:"team_id,omitempty"`
-	// maybe APIBaseURL, etc.
 }
 
 type AppContext struct {
@@ -34,13 +33,10 @@ type Globals struct {
 type CLI struct {
 	Globals
 
-	// Define your CLI structure here: Top Level Commands
 	Team TeamCmd `cmd:"" help:"List and select team workspaces"`
 	Auth AuthCmd `cmd:"" help:"Authentication commands"`
 	Job  JobCmd  `cmd:"" help:"Job management commands"`
-	// Config ConfigCmd `cmd:"" help:"Configuration commands"`
 	Help HelpCmd `cmd:"" help:"Show help information"`
-	// Config ConfigCmd `cmd:"" help: "Display Cluster Configuration"`
 }
 
 func loadConfig(path string) (*Config, error) {

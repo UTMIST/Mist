@@ -8,14 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -56,57 +53,6 @@ type KubernetesExecutor struct {
 	inputPVC        string
 	inputSubPath    string
 	outputSubPath   string
-}
-
-func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
-	mux := http.NewServeMux()
-	a := &App{executor: executor, log: log, httpServer: &http.Server{
-		Addr: envOr("MIST_HTTP_ADDR", "127.0.0.1:3000"), Handler: mux,
-		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}}
-	mux.HandleFunc("/session", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]interface{}{"enabled": false, "user": nil})
-	})
-	mux.HandleFunc("/datasets", a.datasets)
-	mux.HandleFunc("/datasets/", a.dataset)
-	mux.HandleFunc("GET /storage", a.storageInfo)
-	mux.HandleFunc("GET /storage/folders", a.storageFolders)
-	mux.HandleFunc("GET /storage/files", a.storageFolderFiles)
-	if raw := os.Getenv("MIST_AUTH_URL"); raw != "" {
-		var err error
-		a.auth, err = newAuthGateway(raw)
-		if err != nil {
-			panic(err)
-		}
-		if os.Getenv("MIST_TEAMS_ENABLED") == "true" {
-			if executor.storage == nil {
-				panic("team workspaces require shared storage")
-			}
-			a.teams = newTeamService(a)
-			mux.HandleFunc("/teams", a.teamEndpoint)
-			mux.HandleFunc("/teams/", a.teamEndpoint)
-			a.httpServer.Handler = a.auth.middleware(a.teams.middleware(mux))
-		} else {
-			a.httpServer.Handler = a.auth.middleware(mux)
-		}
-	}
-	mux.HandleFunc("/jobs", a.kubernetesJobs)
-	mux.HandleFunc("/jobs/status", a.getJobStatus)
-	mux.HandleFunc("/jobs/", a.kubernetesJob)
-	mux.HandleFunc("GET /hardware", a.hardware)
-	mux.HandleFunc("GET /images", a.images)
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			writeJSON(w, 405, map[string]string{"error": "method not allowed"})
-			return
-		}
-		_, err := executor.client.BatchV1().Jobs(executor.namespace).List(r.Context(), metav1.ListOptions{Limit: 1, LabelSelector: managedLabel + "=mist"})
-		if err != nil {
-			executorError(w, err)
-			return
-		}
-		writeJSON(w, 200, map[string]string{"status": "ok", "executor": "kubernetes"})
-	})
-	return a
 }
 
 func NewKubernetesExecutor() (*KubernetesExecutor, error) {
@@ -171,39 +117,6 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 func ptr[T any](value T) *T { return &value }
-
-type KubernetesJobStatus struct {
-	Job
-	Name                string            `json:"name"`
-	Image               string            `json:"image"`
-	Accelerator         string            `json:"accelerator"`
-	DeviceCount         int               `json:"device_count"`
-	CPU                 string            `json:"cpu"`
-	Memory              string            `json:"memory"`
-	Owner               string            `json:"owner"`
-	Node                string            `json:"node,omitempty"`
-	Pod                 string            `json:"pod,omitempty"`
-	ExitCode            *int32            `json:"exit_code,omitempty"`
-	Message             string            `json:"message,omitempty"`
-	Devices             []AllocatedDevice `json:"devices,omitempty"`
-	CheckpointDirectory string            `json:"checkpoint_directory"`
-	OutputDirectory     string            `json:"output_directory"`
-	WorkingDirectory    string            `json:"working_directory,omitempty"`
-	TimeoutSeconds      int64             `json:"timeout_seconds"`
-	DatasetID           string            `json:"dataset_id,omitempty"`
-	TeamID              string            `json:"team_id,omitempty"`
-	CreatorID           string            `json:"creator_id,omitempty"`
-	CreatorName         string            `json:"creator_name,omitempty"`
-	StorageScope        string            `json:"storage_scope,omitempty"`
-	QueuePosition       int               `json:"queue_position,omitempty"`
-	CanCancel           *bool             `json:"can_cancel,omitempty"`
-}
-
-type AllocatedDevice struct {
-	Driver string `json:"driver"`
-	Pool   string `json:"pool"`
-	Device string `json:"device"`
-}
 
 func (e *KubernetesExecutor) normalize(req CreateJobRequest) (CreateJobRequest, error) {
 	explicitImage := req.Image != ""
@@ -899,103 +812,4 @@ func (e *KubernetesExecutor) cancel(ctx context.Context, id string) (*Kubernetes
 		return nil, err
 	}
 	return e.statusFor(ctx, job)
-}
-
-func writeJSON(w http.ResponseWriter, code int, value interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(value)
-}
-
-func executorError(w http.ResponseWriter, err error) {
-	code := http.StatusBadGateway
-	var invalid *submissionError
-	if errors.As(err, &invalid) {
-		code = http.StatusBadRequest
-	}
-	if apierrors.IsNotFound(err) {
-		code = http.StatusNotFound
-	}
-	var denied *permissionError
-	if errors.As(err, &denied) {
-		code = http.StatusForbidden
-	}
-	if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
-		code = 507
-	}
-	writeJSON(w, code, map[string]string{"error": err.Error()})
-}
-
-func (a *App) kubernetesJobs(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		var req CreateJobRequest
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128*1024))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&req); err != nil {
-			writeJSON(w, 400, map[string]string{"error": "invalid submission: " + err.Error()})
-			return
-		}
-		if err := decoder.Decode(new(interface{})); err != io.EOF {
-			writeJSON(w, 400, map[string]string{"error": "request must contain one JSON object"})
-			return
-		}
-		status, err := a.requestExecutor(r).submit(r.Context(), req)
-		if err != nil {
-			executorError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusCreated, map[string]interface{}{"job_id": status.ID, "job": status})
-	case http.MethodGet:
-		jobs, err := a.requestExecutor(r).list(r.Context())
-		if err != nil {
-			executorError(w, err)
-			return
-		}
-		writeJSON(w, 200, map[string]interface{}{"jobs": jobs, "count": len(jobs)})
-	default:
-		w.Header().Set("Allow", "GET, POST")
-		writeJSON(w, 405, map[string]string{"error": "method not allowed"})
-	}
-}
-
-func (a *App) kubernetesJob(w http.ResponseWriter, r *http.Request) {
-	if strings.Contains(r.URL.Path, "/files") {
-		a.jobFiles(w, r)
-		return
-	}
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/jobs/"), "/")
-	if len(parts) == 0 || parts[0] == "" || len(parts) > 2 {
-		http.NotFound(w, r)
-		return
-	}
-	id := parts[0]
-	if len(parts) == 2 && parts[1] == "logs" && r.Method == http.MethodGet {
-		logs, err := a.requestExecutor(r).logs(r.Context(), id)
-		if err != nil {
-			executorError(w, err)
-			return
-		}
-		writeJSON(w, 200, map[string]string{"job_id": id, "logs": logs})
-		return
-	}
-	if (len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost) || (len(parts) == 1 && r.Method == http.MethodDelete) {
-		status, err := a.requestExecutor(r).cancel(r.Context(), id)
-		if err != nil {
-			executorError(w, err)
-			return
-		}
-		writeJSON(w, 200, status)
-		return
-	}
-	if len(parts) == 1 && r.Method == http.MethodGet {
-		status, err := a.requestExecutor(r).get(r.Context(), id)
-		if err != nil {
-			executorError(w, err)
-			return
-		}
-		writeJSON(w, 200, status)
-		return
-	}
-	writeJSON(w, 405, map[string]string{"error": "method not allowed"})
 }
