@@ -108,3 +108,22 @@ obsolete Bun lockfile was removed. CLI login/logout use real sessions, and
 `job submit --dataset` attaches an owned dataset. SQLite backup integrity was
 `ok`; restart checks preserved historical/new jobs, datasets and downloadable
 results. The production website does not depend on a terminal session.
+
+## Department rollout scope decision — October 9, 2026
+
+The user plans to introduce Mist to several research teams next week and has
+explicitly excluded these additions from that rollout:
+
+- Automatic backups and additional recovery testing.
+- HTTPS/Tailscale Serve enablement.
+- Monitoring and storage cleanup features.
+
+The remaining proposed priorities are team membership/permissions and workload
+isolation, team resource quotas, fair queuing, representative research workload
+and capacity tests, and a documented container-image submission/approval process.
+These are proposed follow-up work, not completed foundation features.
+
+The current access model remains private HTTP over the existing Tailscale
+network. Existing manual operating procedures are documented in the foundation
+guide. Credits, special job priorities, Jupyter, chaining, and browser image
+upload/build services remain outside the immediate rollout scope.
