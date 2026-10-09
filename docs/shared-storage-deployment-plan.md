@@ -151,16 +151,22 @@ custom image eligibility are follow-up implementation work.
 ### Team membership and storage requirements
 
 The user requires multiple teammates per team, explicitly enrolled as members.
-Each team needs both shared team storage and individual member storage:
+Each team needs one team storage area containing a common folder and a folder
+for each member. The user clarified that member folders are visible within the
+team; they are not private from teammates:
 
-- Shared team datasets/files are visible to authorized members of that team.
-- Individual storage is private to its owning member by default; intentional
-  sharing publishes content into the team's shared area.
+- Authorized team members can browse/read the team's common folder and the
+  individual member folders within that team.
+- Member folders organize each teammate's files; they do not create a separate
+  privacy boundary within the team. Write/delete permissions need an explicit
+  policy and are not implied by permission to view files.
 - Members of another team cannot discover, list, read, download, modify or use
-  either that team's shared files or its members' personal files through jobs.
+  the team's files through jobs unless explicitly granted access.
+- Explicit cross-team grants must specify their recipients, storage scope and
+  permitted actions; grants must be revocable and checked on subsequent access.
 - All dataset/file access and job input/output attachment must verify the
-  authenticated member, team membership and the selected storage scope.
-- Workloads mount only their authorized selected input and own output locations.
+  authenticated member, team membership or explicit grant, and selected scope.
+- Workloads mount only their authorized selected input and output locations.
   File and network access from running containers must enforce the same boundary;
   a UI filter or a differently named folder is insufficient isolation.
 - Administrators assign memberships and team conditions. Normal uploads and
@@ -168,3 +174,20 @@ Each team needs both shared team storage and individual member storage:
 
 These are new team features. The completed foundation currently provides
 per-account ownership checks, rather than this team-sharing/membership model.
+
+Example intended organization:
+
+```text
+storage/
+  team-a/                 # visible to Team A members
+    common/
+    alice/
+    bob/
+  team-b/                 # visible to Team B members
+    common/
+    carol/
+    dan/
+```
+
+Folder names illustrate the organization; enforced authorization determines
+access. Cross-team sharing exposes only the explicitly granted scope.
