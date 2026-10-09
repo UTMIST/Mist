@@ -1,65 +1,43 @@
-package cmd 
+package cmd
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
-	// "os"
-	// "fmt"
 )
 
-
-// Just printing out the confirmation 
-func TestJobSubmitConfirmation(t *testing.T){
-	// This job should not exist in the dummy 
-	cmd := &JobSubmitCmd{Script: "test", Compute:"TT"}
-	output := CaptureOutput(func(){
-		_ = cmd.Run() 
+func TestJobSubmitUsesRealAPI(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "train.py")
+	_ = os.WriteFile(script, []byte("print('train')"), 0600)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/jobs" {
+			t.Errorf("wrong request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("X-Mist-Team") != "team-selected" {
+			t.Errorf("missing selected workspace header")
+		}
+		var body map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["accelerator"] != "tenstorrent" || body["device_count"] != float64(2) || body["script"] != "print('train')" {
+			t.Errorf("wrong submission: %+v", body)
+		}
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte(`{"job_id":"real-id"}`))
+	}))
+	defer server.Close()
+	var err error
+	output := CaptureOutput(func() {
+		err = (&JobSubmitCmd{Script: script, Compute: "TT", Devices: 2}).Run(&AppContext{APIBaseURL: server.URL, Config: &Config{TeamID: "team-selected"}})
 	})
-	if want := "Are you sure? (y/n): "; !contains(output, want){
-		t.Errorf("expected output to contain %q, got %q", want, output)
+	if err != nil || !contains(output, "real-id") || contains(output, "Are you sure") {
+		t.Fatalf("%v: %s", err, output)
 	}
 }
-
-// Valid proceeding with TT work 
-func TestJobSubmitProceed(t *testing.T){
-	cmd := &JobSubmitCmd{Script: "test", Compute: "TT"}
-	output := CaptureOutput(func(){
-		MockInput("y\n", func() {
-			_ = cmd.Run()
-		})
-
-	})
-	
-	if !contains(output, "Confirmed, proceeding...\nSubmitting job with script: test\nRequested GPU type: TT") {
-		t.Errorf("expected 'Confirmed, proceeding...' but got:\n%s", output)
+func TestJobSubmitRejectsMissingFile(t *testing.T) {
+	if err := (&JobSubmitCmd{Script: "/does-not-exist.py", Compute: "CPU"}).Run(&AppContext{}); err == nil {
+		t.Fatal("missing file accepted")
 	}
-}
-
-// Valid Cancellation: Putting in N 
-func TestJobSubmitCancel(t *testing.T){
-	cmd := &JobSubmitCmd{Script: "test", Compute: "TT"}
-	output := CaptureOutput(func(){
-		MockInput("n\n", func() {
-			_ = cmd.Run()
-		})
-	})
-
-	if !contains(output, "Cancelled.") {
-		t.Errorf("expected 'Cancelled.' but got:\n%s", output)
-	}
-	// fmt.Printf("Got the output %s", output)
-}
-
-// Valid Cancellation: Putting in bogus response 
-func TestJobSubmitBogusResponse(t *testing.T){
-	cmd := &JobSubmitCmd{Script: "test", Compute: "TT"}
-	output := CaptureOutput(func(){
-		MockInput("bogus\n", func() {
-			_ = cmd.Run()
-		})
-	})
-
-	if !contains(output, "Cancelled.") {
-		t.Errorf("expected 'Cancelled.' but got:\n%s", output)
-	}
-	// fmt.Printf("Got the output %s", output)
 }

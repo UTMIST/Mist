@@ -1,0 +1,12 @@
+{
+  "checks": {
+    "actual_upload_over_2_gib_checksum_verified": true,
+    "large_file_mounted_readonly_real_job": true,
+    "own_probe_removed_after_job_no_user_files_deleted": true
+  },
+  "team_id": "team-7acd03dd93cac1af",
+  "dataset_id": "dataset-22a8a7f21644eebf07f8e9b0",
+  "bytes": 2151677952,
+  "upload_seconds": 65.0,
+  "job_id": "mist-8444679f5946e19925cd4732"
+}

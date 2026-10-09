@@ -8,60 +8,42 @@ import (
 )
 
 type ListCmd struct {
-	All bool `help:"List all jobs, including completed and failed ones." short:"a"`
+	All bool `help:"Include completed, failed, and cancelled jobs" short:"a"`
+}
+type Job struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Status      string    `json:"job_state"`
+	GPUType     string    `json:"accelerator"`
+	CreatedAt   time.Time `json:"created"`
+	Node        string    `json:"node"`
+	DeviceCount int       `json:"device_count"`
+	ExitCode    *int      `json:"exit_code"`
+	Message     string    `json:"message"`
 }
 
-type Job struct {
-	ID        string
-	Name      string
-	Status    string
-	GPUType   string
-	CreatedAt time.Time
+func printJobs(jobs []Job) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "Job ID\tName\tStatus\tCompute\tDevices\tNode\tCreated")
+	for _, job := range jobs {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n", job.ID, job.Name, job.Status, job.GPUType, job.DeviceCount, job.Node, job.CreatedAt.Format(time.RFC3339))
+	}
+	_ = w.Flush()
 }
 
 func (l *ListCmd) Run(ctx *AppContext) error {
-	// Mock data - pull from API in real implementation
-	jobs := []Job{
-		{
-			ID:        "ID:1",
-			Name:      "docker_container_name_1",
-			Status:    "Running",
-			GPUType:   "AMD",
-			CreatedAt: time.Now(),
-		},
-		{
-			ID:        "ID:2",
-			Name:      "docker_container_name_2",
-			Status:    "Enqueued",
-			GPUType:   "TT",
-			CreatedAt: time.Now().Add(-time.Hour * 24),
-		},
-		{
-			ID:        "ID:3",
-			Name:      "docker_container_name_3",
-			Status:    "Running",
-			GPUType:   "TT",
-			CreatedAt: time.Now().Add(-time.Hour * 24),
-		},
+	var response struct {
+		Jobs []Job `json:"jobs"`
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "Job ID\tName\tStatus\tGPU Type\tCreated At")
-	fmt.Fprintln(w, "--------------------------------------------------------------")
-
-	for _, job := range jobs {
-		// Maybe filter based on running?
-		fmt.Fprintf(
-			w,
-			"%s\t%s\t%s\t%s\t%s\n",
-			job.ID,
-			job.Name,
-			job.Status,
-			job.GPUType,
-			job.CreatedAt.Format(time.RFC1123),
-		)
+	if err := ctx.api("GET", "/jobs", nil, &response); err != nil {
+		return err
 	}
-
-	w.Flush()
-
+	jobs := []Job{}
+	for _, job := range response.Jobs {
+		if l.All || job.Status == "Scheduled" || job.Status == "InProgress" {
+			jobs = append(jobs, job)
+		}
+	}
+	printJobs(jobs)
 	return nil
 }

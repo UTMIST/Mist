@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: mist-team-boundary
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods, pods/ephemeralcontainers]
+  variables:
+    - name: containers
+      expression: 'object.spec.containers + (has(object.spec.initContainers) ? object.spec.initContainers : []) + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers : [])'
+  validations:
+    - expression: '(!has(object.spec.hostNetwork) || !object.spec.hostNetwork) && (!has(object.spec.hostPID) || !object.spec.hostPID) && (!has(object.spec.hostIPC) || !object.spec.hostIPC)'
+      message: Team workloads cannot join host namespaces.
+    - expression: 'has(object.spec.automountServiceAccountToken) && !object.spec.automountServiceAccountToken'
+      message: Team workloads must disable Kubernetes credentials.
+    - expression: 'has(object.spec.securityContext) && has(object.spec.securityContext.seccompProfile) && object.spec.securityContext.seccompProfile.type == "RuntimeDefault"'
+      message: Team workloads must use the default seccomp profile.
+    - expression: 'variables.containers.all(c, has(c.securityContext) && has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation && (!has(c.securityContext.privileged) || !c.securityContext.privileged) && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) && "ALL" in c.securityContext.capabilities.drop && (!has(c.securityContext.capabilities.add) || size(c.securityContext.capabilities.add) == 0))'
+      message: Team containers must drop capabilities and forbid privilege escalation.
+    - expression: '!has(object.spec.volumes) || object.spec.volumes.all(v, has(v.persistentVolumeClaim) || has(v.configMap) || has(v.emptyDir) || (has(v.hostPath) && v.hostPath.path in ["/home/utmist-tt/TT/tt-metal", "/home/utmist-tt/.local/share/uv/python"] && variables.containers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name != v.name || (has(m.readOnly) && m.readOnly)))))'
+      message: Team volumes allow PVCs, scripts, scratch space and read-only TT runtime mounts.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: mist-team-boundary
+spec:
+  policyName: mist-team-boundary
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        mist.io/workloads: "true"

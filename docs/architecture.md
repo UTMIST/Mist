@@ -1,3 +1,32 @@
+# Architecture
+
+Current private department pilot, October 9, 2026. See
+[department rollout](department-rollout.md) for permissions, resource/storage
+rules, the API contract and operating limits.
+
+```mermaid
+flowchart LR
+    Web[Browser / CLI] --> Portal[Nginx private Tailscale portal]
+    Portal --> API[Go API + single admission controller]
+    API --> Auth[Better Auth + SQLite PVC]
+    API --> State[Team policies + durable queued Jobs]
+    State --> K8s[k3s scheduler and device operators]
+    K8s --> Main[CPU / NVIDIA main node]
+    K8s --> TT[QuietBox Tenstorrent node]
+    Main --> Store[Scoped NFS team filesystems on QuietBox]
+    TT --> Store
+```
+
+The API authenticates and applies team policy before persisting a suspended Job.
+Its single controller admits work fairly; Kubernetes/containerd place and run the
+containers using NVIDIA device resources or TT DRA claims. The shared store has
+one bounded filesystem per team, read-only input mounts and job-specific outputs.
+SSH is for machine administration, not job execution. The current pilot has no
+separate Redis scheduler, cloud load balancer or new monitoring product.
+
+<details>
+<summary>Historical architecture sketch — July 6, 2025</summary>
+
 ```mermaid
 ---
 config:
@@ -33,3 +62,5 @@ flowchart LR
 ```
 
 Architecture as of 7/6/2025
+
+</details>

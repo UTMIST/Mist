@@ -1,0 +1,15 @@
+[Unit]
+Description=Mist bounded team filesystem provisioning
+After=local-fs.target nfs-server.service
+RequiresMountsFor=/srv/mist-storage
+Requires=nfs-server.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/mist/team_volumes.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,72 @@
+# One per-pod claim; n300 count is boards, not individual chips.
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mist-tenstorrent-1-boards
+  namespace: mist
+spec:
+  spec:
+    devices:
+      requests:
+      - name: boards
+        exactly:
+          deviceClassName: tenstorrent.com
+          count: 1
+          selectors:
+          - cel:
+              expression: device.attributes["tenstorrent.com"].boardName == "n300"
+                && device.attributes["tenstorrent.com"].chipCount == 2
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mist-tenstorrent-2-boards
+  namespace: mist
+spec:
+  spec:
+    devices:
+      requests:
+      - name: boards
+        exactly:
+          deviceClassName: tenstorrent.com
+          count: 2
+          selectors:
+          - cel:
+              expression: device.attributes["tenstorrent.com"].boardName == "n300"
+                && device.attributes["tenstorrent.com"].chipCount == 2
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mist-tenstorrent-3-boards
+  namespace: mist
+spec:
+  spec:
+    devices:
+      requests:
+      - name: boards
+        exactly:
+          deviceClassName: tenstorrent.com
+          count: 3
+          selectors:
+          - cel:
+              expression: device.attributes["tenstorrent.com"].boardName == "n300"
+                && device.attributes["tenstorrent.com"].chipCount == 2
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: mist-tenstorrent-4-boards
+  namespace: mist
+spec:
+  spec:
+    devices:
+      requests:
+      - name: boards
+        exactly:
+          deviceClassName: tenstorrent.com
+          count: 4
+          selectors:
+          - cel:
+              expression: device.attributes["tenstorrent.com"].boardName == "n300"
+                && device.attributes["tenstorrent.com"].chipCount == 2

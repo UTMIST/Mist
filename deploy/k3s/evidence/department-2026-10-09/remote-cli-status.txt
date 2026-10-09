@@ -1,0 +1,3 @@
+Job ID                         Name               Status   Compute  Devices  Node            Created
+mist-7d426bc89696c01e19474c00  remote-cli-nvidia  Success  nvidia   1        utmist-z1opa08  2026-10-09T05:39:46Z
+Exit code: 0

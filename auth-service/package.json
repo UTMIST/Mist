@@ -1,0 +1,11 @@
+{
+  "name": "mist-auth",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.16.0" },
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": {
+    "better-auth": "1.7.7",
+    "better-sqlite3": "13.0.3"
+  }
+}

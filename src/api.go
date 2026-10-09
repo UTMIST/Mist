@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	log2 "mist/multilogger"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type App struct {
@@ -26,6 +28,9 @@ type App struct {
 	wg             sync.WaitGroup
 	log            *slog.Logger
 	statusRegistry *StatusRegistry
+	executor       *KubernetesExecutor
+	auth           *AuthGateway
+	teams          *TeamService
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
@@ -61,24 +66,39 @@ func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
 }
 
 func (a *App) Start() error {
-	// Connect to redis
-	if err := a.redisClient.Ping(context.Background()).Err(); err != nil {
-		a.log.Error("redis ping failed", "err", err)
-		return err
-	}
+	if a.executor != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := a.executor.client.BatchV1().Jobs(a.executor.namespace).List(ctx, metav1.ListOptions{Limit: 1}); err != nil {
+			return err
+		}
+	} else {
+		// Connect to redis
+		if err := a.redisClient.Ping(context.Background()).Err(); err != nil {
+			a.log.Error("redis ping failed", "err", err)
+			return err
+		}
 
-	// Start supervisor
-	if err := a.supervisor.Start(); err != nil {
-		a.log.Error("supervisor start failed", "err", err)
-		return err
+		// Start supervisor
+		if err := a.supervisor.Start(); err != nil {
+			a.log.Error("supervisor start failed", "err", err)
+			return err
+		}
 	}
 
 	// Launch HTTP server
+	listener, err := net.Listen("tcp", a.httpServer.Addr)
+	if err != nil {
+		return err
+	}
+	if a.teams != nil {
+		a.teams.start()
+	}
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
 		slog.Info("http server started", "address", a.httpServer.Addr)
-		if err := a.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := a.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			a.log.Error("HTTP server error", "err", err)
 		}
 	}()
@@ -94,7 +114,15 @@ func (a *App) Shutdown(ctx context.Context) error {
 	// Wait for ListenAndServe goroutine to finish
 	a.wg.Wait()
 
-	a.supervisor.Stop()
+	if a.supervisor != nil {
+		a.supervisor.Stop()
+	}
+	if a.teams != nil {
+		a.teams.shutdown()
+	}
+	if a.executor != nil {
+		return nil
+	}
 
 	if err := a.scheduler.Close(); err != nil {
 		a.log.Error("error closing scheduler", "err", err)
@@ -115,6 +143,31 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 func main() {
+	mode := envOr("MIST_EXECUTOR", "kubernetes")
+	if mode != "kubernetes" && mode != "docker" {
+		fmt.Fprintln(os.Stderr, "MIST_EXECUTOR must be kubernetes or docker")
+		os.Exit(1)
+	}
+	if mode == "kubernetes" {
+		log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		executor, err := NewKubernetesExecutor()
+		if err != nil {
+			log.Error("Kubernetes configuration failed", "error", err)
+			os.Exit(1)
+		}
+		app := NewKubernetesApp(executor, log)
+		if err := app.Start(); err != nil {
+			log.Error("API startup failed", "error", err)
+			os.Exit(1)
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_ = app.Shutdown(shutdown)
+		return
+	}
 	cfg, err := log2.GetLogConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to get log config: %v\n", err)
@@ -168,9 +221,25 @@ func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateJobRequest struct {
-	Type        string                 `json:"type"`
-	Payload     map[string]interface{} `json:"payload"`
-	RequiredGPU string                 `json:"gpu,omitempty"`
+	Type             string                 `json:"type"`
+	DatasetID        string                 `json:"dataset_id,omitempty"`
+	StorageScope     string                 `json:"storage_scope,omitempty"`
+	TTRuntime        string                 `json:"tt_runtime,omitempty"`
+	Payload          map[string]interface{} `json:"payload"`
+	RequiredGPU      string                 `json:"gpu,omitempty"`
+	Name             string                 `json:"name,omitempty"`
+	Image            string                 `json:"image,omitempty"`
+	Command          []string               `json:"command,omitempty"`
+	Args             []string               `json:"args,omitempty"`
+	WorkingDirectory string                 `json:"working_directory,omitempty"`
+	Script           string                 `json:"script,omitempty"`
+	ScriptName       string                 `json:"script_name,omitempty"`
+	Env              map[string]string      `json:"env,omitempty"`
+	CPU              string                 `json:"cpu,omitempty"`
+	Memory           string                 `json:"memory,omitempty"`
+	Accelerator      string                 `json:"accelerator,omitempty"`
+	DeviceCount      int                    `json:"device_count,omitempty"`
+	TimeoutSeconds   int64                  `json:"timeout_seconds,omitempty"`
 }
 
 type CreateJobResponse struct {
@@ -235,6 +304,15 @@ func (a *App) getJobStatus(w http.ResponseWriter, r *http.Request) {
 
 	if jobID == "" {
 		http.Error(w, "Job ID is required", http.StatusBadRequest)
+		return
+	}
+	if a.executor != nil {
+		status, err := a.requestExecutor(r).get(r.Context(), jobID)
+		if err != nil {
+			executorError(w, err)
+			return
+		}
+		writeJSON(w, 200, status)
 		return
 	}
 

@@ -1,0 +1,191 @@
+{
+  "verified_at": "2026-10-03T20:42:24.107077+00:00",
+  "status": "passed",
+  "implementation": {
+    "executor": "kubernetes (default)",
+    "workload_namespace": "mist",
+    "api_namespace": "mist-system",
+    "owner": "utmist (configured single owner, not authenticated)",
+    "api_url": "http://127.0.0.1:3000",
+    "jobs_url": "http://127.0.0.1:3001/jobs",
+    "api_image": "mist-api:k3s-pilot-20261003",
+    "api_image_config_digest": "sha256:d33a5da4e1761641292340b2f607d4ec8ce95afb5f76c2797044b30747a81743",
+    "api_image_index_digest": "sha256:54f36ea00c210f7d3c28a909404ae3b0eab4600a97e72deaee6db2b0b9642b6d"
+  },
+  "cluster": {
+    "k3s_version": "v1.36.4+k3s1",
+    "nodes": {
+      "utmist-z1opa08": {
+        "internal_ip": "10.0.0.175",
+        "nvidia_rtx_a4000_gpus": 2
+      },
+      "utmist-tt": {
+        "internal_ip": "10.0.0.112",
+        "n300_boards": 4,
+        "chips_per_board": 2
+      }
+    },
+    "tt_operator": "0.3.0",
+    "fabric_manager": "0.2.30",
+    "tt_dra_driver": "0.0.59"
+  },
+  "api_acceptance": {
+    "run": "api-1003-202246",
+    "submitted_jobs": 17,
+    "expected_terminal_states": {
+      "Success": 13,
+      "Failure": 2,
+      "Cancelled": 2
+    },
+    "invalid_submissions_rejected_without_creating_jobs": true,
+    "unmanaged_jobs_hidden_and_cancellation_denied": true,
+    "cpu_execution_and_persisted_output": true,
+    "actual_failure_exit_code": 17,
+    "deadline_failure_reported": true,
+    "cancelled_logs_retained": true,
+    "cancellation_released_whole_tt_reservation": true,
+    "gpu_queues_and_automatic_reuse": true,
+    "tt_queues_and_automatic_reuse": true,
+    "nvidia_gpu_counts_tested": [
+      1,
+      2
+    ],
+    "tt_board_counts_tested": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "training": "Independent 32x32 regression per chip/GPU; NVIDIA autograd, TT explicit TT-NN gradients",
+    "concurrency": {
+      "nvidia": {
+        "concurrent_jobs": 2,
+        "first_device_training_overlap_seconds": 1.168433
+      },
+      "tenstorrent": {
+        "concurrent_jobs": 4,
+        "first_device_training_overlap_seconds": 9.202772
+      }
+    },
+    "archived_checkpoints_from_initial_17_jobs": {
+      "cpu": {
+        "persisted_output": true
+      },
+      "nvidia": {
+        "training_results": 5,
+        "checkpoints": 5,
+        "max_validation_mse": 9.320668823420419e-07,
+        "convergence_and_checkpoint_reload_passed": true
+      },
+      "tenstorrent": {
+        "training_results": 24,
+        "checkpoints": 24,
+        "max_validation_mse": 0.00017509252938907593,
+        "convergence_and_checkpoint_reload_passed": true
+      }
+    },
+    "additional_three_board_job": {
+      "id": "mist-05fcb5a03c359c8a24890d84",
+      "state": "Success",
+      "chips_tested": 6,
+      "exit_code": 0
+    }
+  },
+  "clients": {
+    "cli_submit_status_logs_cancel": "passed",
+    "browser_cpu_submit_status_logs_cancel": "passed",
+    "browser_two_tt_boards_four_chip_training": "passed",
+    "browser_temporary_api_outage_recovery": "passed"
+  },
+  "restart": {
+    "retained_jobs": 23,
+    "states_exit_codes_and_logs_preserved": true,
+    "local_port_forward_recovered": true
+  },
+  "access_checks": [
+    {
+      "verb": "create",
+      "resource": "jobs",
+      "namespace": "mist",
+      "allowed": true,
+      "expected": true
+    },
+    {
+      "verb": "get",
+      "resource": "pods/log",
+      "namespace": "mist",
+      "allowed": true,
+      "expected": true
+    },
+    {
+      "verb": "get",
+      "resource": "resourceclaims.resource.k8s.io",
+      "namespace": "mist",
+      "allowed": true,
+      "expected": true
+    },
+    {
+      "verb": "get",
+      "resource": "secrets",
+      "namespace": "mist",
+      "allowed": false,
+      "expected": false
+    },
+    {
+      "verb": "get",
+      "resource": "nodes",
+      "namespace": "mist",
+      "allowed": false,
+      "expected": false
+    },
+    {
+      "verb": "create",
+      "resource": "pods/exec",
+      "namespace": "mist",
+      "allowed": false,
+      "expected": false
+    },
+    {
+      "verb": "create",
+      "resource": "jobs",
+      "namespace": "gpu-operator",
+      "allowed": false,
+      "expected": false
+    }
+  ],
+  "tests": {
+    "backend_full_suite": "go -C src test -timeout 90s ./... passed with an isolated local Redis",
+    "backend_kubernetes_suite": "go -C src test -run TestKubernetes ./... passed",
+    "cli": "go -C cli test ./... passed",
+    "web_component_tests": "3 tests passed",
+    "web_production_build": "npm run build passed",
+    "typescript": "npx tsc --noEmit passed",
+    "default_executor_and_default_private_kubeconfig_loading": "passed"
+  },
+  "evidence_directory": "/home/utmist/mist-api-results-2026-10-03",
+  "evidence_files": [
+    "api-acceptance.json",
+    "checkpoint-verification.json",
+    "concurrency-verification.json",
+    "cpu-checkpoints.tar.gz",
+    "nvidia-checkpoints.tar.gz",
+    "tenstorrent-checkpoints.tar.gz",
+    "cli.json",
+    "browser.json",
+    "jobs-browser.png",
+    "rbac.json",
+    "restart.json",
+    "default-executor.json",
+    "three-boards.json",
+    "browser-recovery.json"
+  ],
+  "limits": [
+    "Local single-owner pilot; no per-request authentication, credits or team quotas.",
+    "Node-local checkpoint PVCs shared by jobs of the same compute profile.",
+    "History depends on retained Kubernetes Jobs; normal logs depend on retained Pods and kubelet log retention.",
+    "Host-mounted TT-Metal/Python runtime; hugepage mounts are host-shared.",
+    "Independent chip tests do not validate large models, TT autograd, distributed training or arbitrary mesh topology.",
+    "Vendor ResourceSlice memory capacity is incorrect; claims do not use it for placement.",
+    "Legacy Docker/Redis supervisor remains incomplete; other web pages and authentication commands retain prototype behavior."
+  ]
+}

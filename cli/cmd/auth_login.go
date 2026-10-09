@@ -1,109 +1,148 @@
 package cmd
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/term"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
-// TODO: Update with real auth URL
-const authUrl = "https://example.com/login"
-
 type LoginCmd struct {
-}
-
-func openUrl() error {
-
-	var cmd *exec.Cmd
-	url := authUrl
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default: // Linux, BSD, etc.
-		cmd = exec.Command("xdg-open", url)
-	}
-
-	return cmd.Start()
-}
-
-func saveTokenToConfig(ctx *AppContext, token string) error {
-	configPath := defaultConfigPath()
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	if ctx.Config == nil {
-		ctx.Config = &Config{}
-	}
-	ctx.Config.AccessToken = token
-
-	data, err := json.MarshalIndent(ctx.Config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-	if err := os.WriteFile(configPath, data, 0o600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-	fmt.Println("Token saved:", token)
-	return nil
-}
-
-func getLongLivedToken(shortLivedToken string) (string, error) {
-	// Placeholder for actual implementation to exchange short-lived token for long-lived token
-	// In a real scenario, this would involve making an HTTP request to the auth server
-	return shortLivedToken + "_long_lived", nil
+	Email         string `help:"Mist member email" required:""`
+	PasswordStdin bool   `help:"Read password from standard input (for automation)"`
 }
 
 func (l *LoginCmd) Run(ctx *AppContext) error {
-	// mist auth login
-	if ctx.Config != nil && ctx.Config.AccessToken != "" {
-
-		// Already logged in, ask if they want to re-login
-		fmt.Println("Already logged in with token:", ctx.Config.AccessToken)
-		fmt.Print("Re-enter token? (y/N): ")
-		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" && answer != "yes" {
-			fmt.Println("Aborting login.")
-			return nil
+	var password string
+	if l.PasswordStdin {
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, 130))
+		if err != nil {
+			return err
+		}
+		password = strings.TrimSpace(string(data))
+	} else {
+		fmt.Print("Password: ")
+		data, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return fmt.Errorf("password input: %w (use --password-stdin for automation)", err)
+		}
+		password = string(data)
+	}
+	base := ctx.baseURL()
+	u, err := url.Parse(base)
+	if err != nil {
+		return err
+	}
+	u.Path = "/auth/sign-in/email"
+	u.RawQuery = ""
+	body, _ := json.Marshal(map[string]string{"email": l.Email, "password": password})
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", u.Scheme+"://"+u.Host)
+	response, err := ctx.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		return fmt.Errorf("login failed (HTTP %d)", response.StatusCode)
+	}
+	cookies := []string{}
+	for _, cookie := range response.Cookies() {
+		if strings.Contains(cookie.Name, "session_token") && cookie.Value != "" {
+			cookies = append(cookies, cookie.Name+"="+cookie.Value)
 		}
 	}
-
-	fmt.Println("Opening browser for authentication...")
-	fmt.Printf("If your browser didn't open, click here: \033]8;;%s\033\\%s\033]8;;\033\\\n", authUrl, authUrl)
-
-	err := openUrl()
-	if err != nil {
-		fmt.Println("Error opening browser:", err)
+	if len(cookies) == 0 {
+		return fmt.Errorf("login returned no session cookie")
+	}
+	if ctx.Config == nil {
+		ctx.Config = &Config{}
+	}
+	ctx.Config.SessionCookie = strings.Join(cookies, "; ")
+	ctx.Config.AccessToken = ""
+	ctx.Config.APIBaseURL = base
+	if err := ctx.saveConfig(); err != nil {
 		return err
 	}
-	fmt.Print("token: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	token, _ := reader.ReadString('\n')
-	token = strings.TrimSpace(token)
-
-	token, err = getLongLivedToken(token)
-	if err != nil {
-		fmt.Println("Error obtaining long-lived token:", err)
+	fmt.Println("Signed in. Session saved in protected CLI configuration.")
+	return nil
+}
+func (ctx *AppContext) saveConfig() error {
+	path := ctx.ConfigPath
+	if path == "" {
+		path = defaultConfigPath()
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-
-	err = saveTokenToConfig(ctx, token)
+	data, err := json.MarshalIndent(ctx.Config, "", "  ")
 	if err != nil {
-		fmt.Println("Error during token saving")
 		return err
 	}
+	file, err := os.CreateTemp(filepath.Dir(path), ".mist-config-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if err = file.Chmod(0600); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), path)
+}
 
-	fmt.Println("Saved token to config")
+type LogoutCmd struct{}
 
+func (l *LogoutCmd) Run(ctx *AppContext) error {
+	if ctx.Config == nil || ctx.Config.SessionCookie == "" {
+		fmt.Println("Not signed in.")
+		return nil
+	}
+	base, err := url.Parse(ctx.baseURL())
+	if err != nil {
+		return err
+	}
+	origin := base.Scheme + "://" + base.Host
+	base.Path = "/auth/sign-out"
+	base.RawQuery = ""
+	req, err := http.NewRequest(http.MethodPost, base.String(), strings.NewReader("{}"))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", origin)
+	req.Header.Set("Cookie", ctx.Config.SessionCookie)
+	response, err := ctx.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	response.Body.Close()
+	if response.StatusCode != 200 {
+		return fmt.Errorf("sign out failed (HTTP %d)", response.StatusCode)
+	}
+	ctx.Config.SessionCookie = ""
+	ctx.Config.AccessToken = ""
+	if err := ctx.saveConfig(); err != nil {
+		return err
+	}
+	fmt.Println("Signed out.")
 	return nil
 }

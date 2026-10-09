@@ -1,0 +1,246 @@
+# Complete foundation: parts 4 and 5
+
+Authorized October 8, 2026 after completion of parts 1–3. Continue on
+`feat/local-job-foundation` from `8f1b7f1`. The user requests finishing the
+remaining foundation instead of handing it to other developers. No permission
+prompts are needed for this work. Preserve existing jobs, checkpoints, network
+links and unrelated disk contents.
+
+## Remaining scope
+
+### Part 4: shared datasets and result downloads
+
+- [x] Create `/srv/mist-storage` on QuietBox's existing NVMe filesystem.
+- [x] Provide NFSv4 shared storage to the two current Kubernetes nodes, over
+  their existing LAN. Keep QuietBox's router Ethernet cable connected.
+- [x] Install the NFS host client/server packages and persistent configuration.
+- [x] Add shared persistent volumes and mount storage in the API.
+- [x] Upload datasets through the API and website with size limits/progress,
+  stable dataset IDs, checksums, ready/error handling, and atomic publication.
+- [x] Select a dataset for a job; attach only that dataset read-only at `/inputs`.
+- [x] Store new job outputs on shared storage; preserve the `/outputs` and
+  checkpoint aliases. Keep old local checkpoints retrievable.
+- [x] List and download saved job files with ownership checks, streaming, and
+  protection against traversal and escaping symlinks. Do not execute archives.
+- [x] Verify an uploaded dataset is consumed by jobs on both physical machines,
+  with actual accelerator computation and persistent downloadable results.
+
+Use a bounded pilot budget (initially 100GiB for new datasets/outputs), an
+upload limit (initially 2GiB per dataset), and explicit cleanup/retention docs.
+NFS is central storage, not a backup. Preserve the existing checkpoint PVCs.
+Metadata must not be writable by workload containers through output mounts.
+
+### Part 5: login and private deployment
+
+- [x] Use maintained Better Auth for separate Mist member accounts. Keep the
+  existing Go executor and add a small auth service with persistent SQLite on
+  a node-local volume, not SQLite on NFS.
+- [x] Seed the first administrator from protected local credentials, outside
+  Git/tool output. Disable public signup; administrators add members.
+- [x] Authenticate API access, derive job/dataset ownership from the session,
+  and verify isolation with two actual member sessions.
+- [x] Add login/logout, current account, password change and member management
+  UI. Remove prototype profile/account behavior from the active workflow.
+- [x] Serve the production frontend with same-origin API/auth proxying and
+  persistent services; avoid relying on Vite for the deployed website.
+- [x] Make the site accessible through the existing private Tailscale network.
+  Use HTTPS through Tailscale Serve if already available; otherwise keep a
+  private Tailnet endpoint and record the HTTPS prerequisite accurately.
+- [x] Add startup, restoration, membership, image approval, storage quota,
+  backup and cleanup documentation and repeatable deployment scripts.
+- [x] Verify browser login → upload → select dataset/image/device → run → logs
+  → download, from both machines, plus denial of anonymous/other-owner access.
+- [x] Commit tested changes and record exact deployed image/evidence paths.
+
+## Decisions
+
+- Keep image-reference submission and current NVIDIA/TT allocation units.
+  Arbitrary TT models, distributed training, credits, Jupyter, chaining and
+  image build/archive upload services are outside the five-part foundation.
+- Deploy privately; no public domain, Funnel, paid service or external account
+  provisioning is implied. Use existing host and cluster access.
+- A shared tailnet infrastructure account does not identify individual team
+  members; Mist accounts provide independent ownership.
+- Existing owner `utmist` and retained jobs remain visible to the initial
+  administrator through an explicit migration mapping.
+- HTTP cookies alone are not authorization. Go verifies sessions against the
+  auth service, and state-changing routes require trusted browser origins.
+- Test first, then replace the deployed API/frontend with the verified build.
+
+## Resume information
+
+- Go/Node runtimes: `~/.local/share/mist-runtimes/go-1.25.1/bin/go` and
+  `~/.local/share/mist-runtimes/node-22.16.0/bin/node`.
+- Kubeconfig: `/home/utmist/.kube/config`; k3s nodes `utmist-z1opa08`, `utmist-tt`.
+- QuietBox SSH: `utmist-tt@100.95.175.37`, identity
+  `/home/utmist/.ssh/id_ed25519_quietbox_codex`, IdentitiesOnly/BatchMode.
+- Authorized host operations can use Docker bind/chroot. Package installation
+  needs host networking because host systemd-resolved listens on loopback.
+- Current API deployed in `mist-system`; workloads in `mist`.
+- Main tailnet hostname: `utmist.tail459b5e.ts.net`; IP `100.73.139.66`.
+- Baseline evidence: `deploy/k3s/foundation-results.json`,
+  `/home/utmist/mist-foundation-results-2026-10-08`.
+
+## Progress
+
+- Plan recorded; repository clean at start. QuietBox SSH and authorized Docker
+  host access work. QuietBox still has approximately 1.9TiB available.
+- Tailscale is connected; no Serve configuration exists. Existing Nginx is
+  active. Preserve its current default service while adding the Mist endpoint.
+
+## Completed verification (October 9 UTC)
+
+- Actual production browser flow passed: login, dataset upload, CPU and both NVIDIA
+  GPUs, one TT board/two chips, logs, saved file download, account/member actions,
+  ownership isolation and deactivation. No browser runtime errors.
+- QuietBox submitted an authenticated NVIDIA training job, which ran on the main
+  node and returned downloadable loss metrics.
+- Focused Go tests (including race checks), CLI tests/login/logout, frontend
+  interaction tests, TypeScript and production build passed.
+- Old checkpoint PVCs preserved; legacy outputs copied to shared storage.
+- NFS/client firewall configuration and production restart/backup checks are
+  documented in `docs/complete-foundation.md` and `deploy/private/README.md`.
+- Private HTTP website is live. Tailscale Serve is disabled; HTTPS requires the
+  tailnet administrator to enable Serve, accurately recorded as a prerequisite.
+
+Final review: frontend dependencies now use the checked-in npm lockfile; the
+obsolete Bun lockfile was removed. CLI login/logout use real sessions, and
+`job submit --dataset` attaches an owned dataset. SQLite backup integrity was
+`ok`; restart checks preserved historical/new jobs, datasets and downloadable
+results. The production website does not depend on a terminal session.
+
+## Department rollout scope decision — October 9, 2026
+
+The user plans to introduce Mist to several research teams next week and has
+explicitly excluded these additions from that rollout:
+
+- Automatic backups and additional recovery testing.
+- HTTPS/Tailscale Serve enablement.
+- Monitoring and storage cleanup features.
+
+The remaining proposed priorities are team membership/permissions and workload
+isolation, team resource quotas, fair queuing, representative research workload
+and capacity tests, and a documented self-service container-image workflow.
+These are proposed follow-up work, not completed foundation features.
+
+The current access model remains private HTTP over the existing Tailscale
+network. Existing manual operating procedures are documented in the foundation
+guide. Credits, special job priorities, Jupyter, chaining, and browser image
+upload/build services remain outside the immediate rollout scope.
+
+### Team self-service clarification
+
+The user clarified that administrators assign each team's conditions and limits;
+teams normally do not request administrator permission for individual actions.
+The intended rollout model is:
+
+- Administrators configure membership, permissions and team resource policies.
+- Team members upload datasets, submit compatible container images/references,
+  run jobs and retrieve results independently within their assigned policies.
+- The platform validates those policies and admits/queues requests automatically;
+  ordinary submissions do not require a human approval step.
+- Replace the proposed per-image administrator approval process with a documented
+  self-service image policy. Define allowed image sources and runtime compatibility
+  as platform/team rules rather than approving each new image manually.
+
+Current foundation behavior remains distinct: individual owned jobs are already
+self-service, but image eligibility uses a global exact-reference allowlist and
+Tenstorrent uses the fixed tested runtime profile. Team policies and self-service
+custom image eligibility are follow-up implementation work.
+
+### Team membership and storage requirements
+
+The user requires multiple teammates per team, explicitly enrolled as members.
+Each team needs one team storage area containing a common folder and a folder
+for each member. The user clarified that member folders are visible within the
+team; they are not private from teammates:
+
+- Authorized team members can browse/read the team's common folder and the
+  individual member folders within that team.
+- Member folders organize each teammate's files; they do not create a separate
+  privacy boundary within the team. Write/delete permissions need an explicit
+  policy and are not implied by permission to view files.
+- Members of another team cannot discover, list, read, download, modify or use
+  the team's files through jobs unless explicitly granted access.
+- Explicit cross-team grants must specify their recipients, storage scope and
+  permitted actions; grants must be revocable and checked on subsequent access.
+- All dataset/file access and job input/output attachment must verify the
+  authenticated member, team membership or explicit grant, and selected scope.
+- Workloads mount only their authorized selected input and output locations.
+  File and network access from running containers must enforce the same boundary;
+  a UI filter or a differently named folder is insufficient isolation.
+- Administrators assign memberships and team conditions. Normal uploads and
+  submissions within those conditions remain self-service.
+
+These are new team features. The completed foundation currently provides
+per-account ownership checks, rather than this team-sharing/membership model.
+
+Example intended organization:
+
+```text
+storage/
+  team-a/                 # visible to Team A members
+    common/
+    alice/
+    bob/
+  team-b/                 # visible to Team B members
+    common/
+    carol/
+    dan/
+```
+
+Folder names illustrate the organization; enforced authorization determines
+access. Cross-team sharing exposes only the explicitly granted scope.
+
+### Portal login and administrator workspace
+
+The same portal and login page serve administrators and regular members.
+Authenticated roles determine which controls appear and which API actions are
+authorized; there is no separate administrator account required for ordinary
+research work.
+
+- Regular members use their team workspace to upload files, submit jobs, view
+  logs and retrieve results within the team's policies.
+- Administrators have the same research workflow plus administration controls
+  for teams, memberships, resource limits, image policies and access grants.
+- An administrator can also be a team member. Ordinary uploads and jobs use the
+  selected team's membership, storage permissions and resource policies.
+- Administrative actions must be explicitly authorized on the server; hiding
+  controls in the UI alone is insufficient. Administrative authority is distinct
+  from membership and does not implicitly make the account a member of every
+  team or bypass limits on its own research jobs.
+
+The foundation already supports login, basic member administration and ordinary
+administrator jobs. The team workspace and additional team administration
+controls described here remain follow-up work.
+
+### Rollout review: implementation details still to define
+
+The main workflow is covered by the proposed rollout scope. These details belong
+within that work; they are not completed features or authorization to implement
+every proposed default:
+
+- File permissions: distinguish team-wide read access from write/delete access.
+  Proposed default is members managing their own folders, with explicitly
+  assigned write permissions for the common folder and cross-team grants.
+- Membership and grant revocation: deny subsequent access immediately and define
+  how to handle queued/running jobs that already hold access. Revoking a browser
+  permission does not remove a file mount from an existing running job.
+- Storage quota enforcement: count datasets and generated results, including
+  writes from running containers. Upload-only checks do not enforce a team cap.
+- Failure handling: expose useful reasons for image pull failure, full storage,
+  unavailable devices and offline nodes; define cancellation, runtime limits and
+  retry behavior so jobs release resources and do not silently duplicate work.
+- Rollout capacity and migration: verify representative dataset/model sizes and
+  GPU/TT runtime compatibility, and preserve existing account-owned files/jobs
+  when introducing team ownership. Current pilot limits are 2GiB per upload and
+  100GiB total new shared storage.
+- Private container registries: decide whether launch supports private images;
+  if supported, credentials must be team-scoped and unavailable to other teams
+  and their workloads. Public image references do not need registry credentials.
+
+Account administration should also define an administrator-assisted password
+reset path; self-service email recovery and external email provisioning are not
+implied. Automatic backups, HTTPS, monitoring and cleanup remain excluded as
+requested. Multi-machine distributed training is outside the existing foundation
+and should not be represented as tested by the two separate accelerator smokes.

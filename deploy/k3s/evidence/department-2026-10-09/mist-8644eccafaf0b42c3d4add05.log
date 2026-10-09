@@ -1,0 +1,18 @@
+CUDA devices=2; torch=2.5.1+cu124
+Training on cuda:0: NVIDIA RTX A4000
+DATASET_LOADED file=/inputs/regression.json
+cuda:0 step=0 mse=0.08051129
+cuda:0 step=20 mse=0.00135718
+cuda:0 step=40 mse=0.00003812
+cuda:0 step=60 mse=0.00000139
+cuda:0 step=80 mse=0.00000006
+{"backend": "nvidia", "device_id": 0, "initial_mse": 0.08051128685474396, "final_mse": 2.4448332247573035e-09, "validation_mse": 5.969065242084071e-09, "max_weight_change": 0.09999077022075653, "checkpoint": "/outputs/nvidia-0.pt"}
+Training on cuda:1: NVIDIA RTX A4000
+DATASET_LOADED file=/inputs/regression.json
+cuda:1 step=0 mse=0.08051129
+cuda:1 step=20 mse=0.00135718
+cuda:1 step=40 mse=0.00003812
+cuda:1 step=60 mse=0.00000139
+cuda:1 step=80 mse=0.00000006
+{"backend": "nvidia", "device_id": 1, "initial_mse": 0.08051128685474396, "final_mse": 2.4448332247573035e-09, "validation_mse": 5.969065242084071e-09, "max_weight_change": 0.09999077022075653, "checkpoint": "/outputs/nvidia-1.pt"}
+TRAINING_PASSED backend=nvidia devices=2

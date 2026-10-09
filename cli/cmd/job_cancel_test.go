@@ -1,46 +1,25 @@
-package cmd 
+package cmd
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
-	"fmt"
 )
 
-
-// Added job, with no compute type added 
-func TestJobCancelJobDoesNotExist(t *testing.T){
-	// This job should not exist in the dummy 
-	cmd := &JobCancelCmd{ID: "job_12345"}
-	output := CaptureOutput(func(){
-		_ = cmd.Run() 
+func TestJobCancelCallsAPIWithoutConfirmation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/jobs/cancel-id/cancel" {
+			t.Errorf("wrong request: %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"id":"cancel-id","job_state":"Cancelled"}`))
+	}))
+	defer server.Close()
+	out := CaptureOutput(func() {
+		if err := (&JobCancelCmd{ID: "cancel-id"}).Run(&AppContext{APIBaseURL: server.URL}); err != nil {
+			t.Error(err)
+		}
 	})
-	if want := "job_12345 does not exist in your jobs.\nUse the command \"job list\" for your list of jobs."; !contains(output, want){
-		t.Errorf("expected output to contain %q, got %q", want, output)
+	if !contains(out, "Cancelled") || contains(out, "Are you sure") {
+		t.Fatal(out)
 	}
-}
-
-// Added job, with compute type 
-func TestJobCancelValid(t *testing.T){
-	// This job should not exist in the dummy 
-	cmd := &JobCancelCmd{ID: "ID:1"}
-	output := CaptureOutput(func(){
-		_ = cmd.Run() 
-	})
-	if want := "Are you sure you want to cancel ID:1? (y/n):"; !contains(output, want){
-		t.Errorf("expected output to contain %q, got %q", want, output)
-	}
-}
-
-
-func TestJobCancelProceed(t *testing.T){
-	cmd := &JobCancelCmd{ID: "ID:1"}
-	// Lowkey, we should refactor this into a 
-	output := CaptureOutput(func(){
-		MockInput("y\n", func() {
-			_ = cmd.Run()
-		})
-	})
-	if !contains(output, "Confirmed, proceeding job cancellation...."){
-		t.Errorf("expected 'Confirmed, proceeding job cancellation....' but got:\n%s", output)
-	}
-	// fmt.Printf("Got the output %s\n", output)
 }

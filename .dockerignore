@@ -1,0 +1,5 @@
+.git
+web-interface/node_modules
+web-interface/dist
+logs
+**/__pycache__

@@ -1,0 +1,104 @@
+{
+  "site": "http://100.73.139.66:8088",
+  "started": "2026-10-09T03:36:21.090Z",
+  "jobs": [
+    {
+      "id": "mist-22600b7fdeaa5e5f921b25e9",
+      "backend": "cpu",
+      "state": "Success",
+      "node": "utmist-z1opa08",
+      "files": [
+        {
+          "path": "dataset-check.json",
+          "size": 37
+        }
+      ]
+    },
+    {
+      "id": "mist-78b599aa6e10655067ab8d86",
+      "backend": "nvidia",
+      "state": "Success",
+      "node": "utmist-z1opa08",
+      "files": [
+        {
+          "path": "allocation.json",
+          "size": 85
+        },
+        {
+          "path": "nvidia-0.pt",
+          "size": 5409
+        },
+        {
+          "path": "nvidia-1.pt",
+          "size": 5409
+        },
+        {
+          "path": "results.json",
+          "size": 1081
+        }
+      ]
+    },
+    {
+      "id": "mist-5a2e0e2e99adcded65b1fc5d",
+      "backend": "tenstorrent",
+      "state": "Success",
+      "node": "utmist-tt",
+      "files": [
+        {
+          "path": "allocation.json",
+          "size": 72
+        },
+        {
+          "path": "results.json",
+          "size": 977
+        },
+        {
+          "path": "tenstorrent-0.pt",
+          "size": 5843
+        },
+        {
+          "path": "tenstorrent-1.pt",
+          "size": 5843
+        }
+      ]
+    }
+  ],
+  "checks": {
+    "browser_login": true,
+    "browser_upload_select_train_download": true,
+    "member_password_change": true,
+    "member_creation_isolation_deactivation": true,
+    "anonymous_signup_csrf_denied": true
+  },
+  "dataset": {
+    "id": "dataset-197f830f9dfd0a7b1d4cf7b3",
+    "sha256": "98f61f87e9d30c36f0a8933028bbfcda06d56c393f12a4b5363cc1584decc01e",
+    "size": 248398
+  },
+  "browser_errors": [],
+  "finished": "2026-10-09T03:37:08.265Z",
+  "quietbox_submission": {
+    "submitted_from": "utmist-tt",
+    "job_id": "mist-32bf668f4232ca4b3b3f9472",
+    "node": "utmist-z1opa08",
+    "state": "Success",
+    "downloaded_metrics": {
+      "initial": 0.08051128685474396,
+      "final": 2.4448332247573035e-09,
+      "cuda": true
+    }
+  },
+  "operations": {
+    "api_auth_restart_preserves_jobs_datasets_downloads": true,
+    "legacy_outputs_downloadable": 10,
+    "checked_zip_upload_and_unused_delete": true,
+    "auth_backup_integrity": "ok",
+    "checked_at": "2026-10-09T03:43:07Z"
+  },
+  "images": {
+    "mist-api:complete-20261009": "sha256:de7b759498b0fdc157d846b36b5bebb560c6e7a1cc7f3c5d34904a6494273611",
+    "mist-auth:members-20261009": "sha256:bec799095b8ca79faabe75457143e366b67d3ca0fe6cc3dc7de5c5c9c4517c64"
+  },
+  "scope": "Five-part foundation, privately hosted; HTTPS Serve prerequisite remains explicit",
+  "evidence_directory": "/home/utmist/mist-complete-results-2026-10-09"
+}

@@ -1,0 +1,6 @@
+{
+  "device_nodes": [
+    "/dev/tenstorrent/1"
+  ],
+  "chip_count": 2
+}

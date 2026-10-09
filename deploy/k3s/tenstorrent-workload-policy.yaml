@@ -1,0 +1,40 @@
+# Applies only to the managed workload namespace. Operator DaemonSets live
+# elsewhere and retain the privileges their vendor components require.
+# Direct single-node probes remain allowed: device cgroups deny unclaimed
+# character devices. Whole-device-directory and Docker-socket mounts are denied.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: mist-accelerator-isolation
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods, pods/ephemeralcontainers]
+  variables:
+    - name: containers
+      expression: 'object.spec.containers + (has(object.spec.initContainers) ? object.spec.initContainers : []) + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers : [])'
+  validations:
+    - expression: 'variables.containers.all(c, !has(c.securityContext) || ((!has(c.securityContext.privileged) || !c.securityContext.privileged) && (!has(c.securityContext.allowPrivilegeEscalation) || !c.securityContext.allowPrivilegeEscalation) && (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add) || size(c.securityContext.capabilities.add) == 0)))'
+      message: Mist workloads cannot enable privileged access, privilege escalation, or additional Linux capabilities.
+    - expression: '(!has(object.spec.hostPID) || !object.spec.hostPID) && (!has(object.spec.hostIPC) || !object.spec.hostIPC)'
+      message: Mist workloads cannot join the host PID or IPC namespace.
+    - expression: '!has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.hostPath) || v.hostPath.path in ["/home/utmist-tt/TT/tt-metal", "/home/utmist-tt/.local/share/uv/python", "/dev/tenstorrent/0", "/dev/tenstorrent/1", "/dev/tenstorrent/2", "/dev/tenstorrent/3"])'
+      message: Use DRA/CDI for devices and PVCs for storage; arbitrary host mounts are forbidden in Mist.
+    - expression: '!has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.hostPath) || !(v.hostPath.path in ["/home/utmist-tt/TT/tt-metal", "/home/utmist-tt/.local/share/uv/python"]) || variables.containers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name != v.name || (has(m.readOnly) && m.readOnly))))'
+      message: The host TT-Metal and Python environment mounts must be read-only.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: mist-accelerator-isolation
+spec:
+  policyName: mist-accelerator-isolation
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: mist

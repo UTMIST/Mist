@@ -1,10 +1,1673 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 @plugin "@tailwindcss/typography";
 
 @theme {
   --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
-  --color-main: #000000;
-  --color-accent: #4493f8;
+  --color-main: #262722;
+  --color-accent: #526649;
   --color-gray: #999999;
+  --color-gray-50: #f8f7f3;
+  --color-gray-100: #f0efe9;
+  --color-gray-200: #e5e3db;
+  --color-gray-300: #d1cfc5;
+  --color-gray-500: #77786c;
+  --color-gray-600: #65665c;
+  --color-gray-800: #33352e;
+  --color-green-200: #e1e9dc;
+  --color-green-300: #d1dfc8;
+  --color-green-800: #365031;
+}
+
+@layer base {
+  body {
+    margin: 0;
+    background: #f8f7f4;
+    color: #292b25;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 {
+    font-size: clamp(28px, 3vw, 38px) !important;
+    font-weight: 500 !important;
+    letter-spacing: -0.045em;
+    line-height: 1.2;
+  }
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+  }
+  label {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #56594e;
+  }
+  input:not([type='checkbox']),
+  select,
+  textarea {
+    background-color: #fffefa;
+    border-color: #dbdcd1;
+    border-radius: 7px;
+    min-height: 40px;
+    font-size: 13px;
+  }
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #708066;
+    outline-offset: 2px;
+  }
+  button {
+    cursor: pointer;
+    font-weight: 500;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
+  }
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid #708066;
+    outline-offset: 3px;
+  }
+  code,
+  pre {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.9em;
+  }
+  pre {
+    border-radius: 8px;
+  }
+  table th {
+    font-size: 11px;
+    color: #75786d;
+    font-weight: 500;
+  }
+  ::selection {
+    background: #d8e2ce;
+  }
+}
+
+.mist-shell {
+  min-height: 100vh;
+}
+.mist-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 238px;
+  background: #f0efe8;
+  border-right: 1px solid #e3e3d9;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 20px 20px;
+  z-index: 20;
+}
+.mist-brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 0 8px 34px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.06em;
+}
+.mist-brand-caption {
+  display: block;
+  font-size: 11px;
+  color: #808275;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.mist-nav-caption {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: #939689;
+  padding: 0 12px 12px;
+}
+.mist-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mist-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  color: #6c7061;
+  border-radius: 7px;
+}
+.mist-nav a > span {
+  width: 18px;
+  font-size: 18px;
+  color: #929889;
+}
+.mist-nav a:hover {
+  background: #e8e8de;
+  color: #30352a;
+}
+.mist-nav a.is-active {
+  background: #e1e4d7;
+  color: #30392a;
+  font-weight: 600;
+}
+.mist-nav a.is-active > span {
+  color: #516446;
+}
+.mist-sidebar-account {
+  margin-top: auto;
+  padding-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.mist-sidebar-account select {
+  width: 100%;
+  font-size: 11px;
+  min-height: 36px;
+}
+.mist-sidebar-account > button {
+  text-align: left;
+  font-size: 11px;
+  color: #7b7e72;
+  padding-left: 6px;
+}
+.mist-account-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  padding: 4px;
+}
+.mist-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #dfe2d5;
+  color: #555f4a;
+  font-size: 12px;
+}
+.mist-content {
+  margin-left: 238px;
+  max-width: 1500px;
+}
+.mist-content > main,
+.mist-content > div {
+  padding: 40px clamp(24px, 4vw, 64px) 70px;
+}
+.mist-card {
+  background: #fffefa;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px #292b2503;
+}
+.mist-card h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.mist-content form.border,
+.mist-content section.border {
+  background: #fffefa;
+  border-color: #e5e3db;
+  border-radius: 10px;
+}
+.mist-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+}
+.mist-eyebrow {
+  font-size: 10px;
+  color: #808578;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.mist-description {
+  color: #7b7f71;
+  font-size: 13px;
+  margin-top: 12px;
+}
+.mist-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #7b826c;
+  border: 1px solid #e2e5d9;
+  border-radius: 20px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+.mist-live > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #7e9570;
+}
+.mist-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid #e5e3db;
+  border-radius: 10px;
+  background: #fffefa;
+}
+.mist-metrics > div {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #ecebe3;
+}
+.mist-metrics > div:last-child {
+  border: 0;
+}
+.mist-metrics span {
+  color: #828777;
+  font-size: 11px;
+}
+.mist-metrics strong {
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+@media (max-width: 900px) {
+  .mist-sidebar {
+    position: relative;
+    width: auto;
+    padding: 14px 20px;
+    border-right: 0;
+    border-bottom: 1px solid #e3e3d9;
+  }
+  .mist-brand {
+    padding: 0 0 14px;
+  }
+  .mist-brand-caption,
+  .mist-nav-caption {
+    display: none;
+  }
+  .mist-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .mist-nav a {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+  .mist-nav a > span {
+    display: none;
+  }
+  .mist-sidebar-account {
+    margin-top: 0;
+    padding-top: 12px;
+    gap: 12px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .mist-sidebar-account label {
+    display: none;
+  }
+  .mist-sidebar-account select {
+    max-width: 200px;
+  }
+  .mist-content {
+    margin-left: 0;
+  }
+  .mist-content > main,
+  .mist-content > div {
+    padding: 28px 20px 48px;
+  }
+  .mist-live {
+    display: none;
+  }
+  .mist-metrics > div {
+    padding: 14px 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.mist-overview-hero {
+  padding: clamp(28px, 5vw, 60px);
+  background: #eeeee4;
+  border: 1px solid #e4e5d8;
+  border-radius: 10px;
+}
+.mist-overview-hero h2 {
+  font-size: clamp(32px, 4vw, 54px);
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  line-height: 1.15;
+  margin: 18px 0;
+}
+.mist-overview-hero > p:not(.mist-eyebrow) {
+  color: #787e6c;
+  font-size: 14px;
+}
+.mist-primary-link,
+.mist-secondary-link {
+  padding: 11px 18px;
+  border-radius: 6px;
+  font-size: 12px;
+  display: inline-flex;
+  gap: 22px;
+  align-items: center;
+}
+.mist-primary-link {
+  background: #30372b;
+  color: #f7f7ee;
+}
+.mist-primary-link:hover {
+  background: #48553b;
+}
+.mist-secondary-link {
+  border: 1px solid #d5d9c8;
+  color: #535d45;
+}
+.mist-secondary-link:hover {
+  background: #e5e9dc;
+}
+.mist-overview-tile {
+  display: block;
+  padding: 28px;
+  border: 1px solid #e5e3db;
+  border-radius: 10px;
+  background: #fffefa;
+}
+.mist-overview-tile:hover {
+  border-color: #c3cbb7;
+}
+.mist-overview-tile h2 {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 14px 0 10px;
+  display: flex;
+  justify-content: space-between;
+}
+.mist-overview-tile h2 > span {
+  color: #969e87;
+}
+.mist-overview-tile > p {
+  font-size: 12px;
+  color: #848878;
+}
+
+.mist-login {
+  margin-top: 12vh;
+  background: #fffefa;
+  border-color: #e5e3db;
+  box-shadow: 0 10px 50px #30372b06;
+  padding: 40px;
+}
+.mist-login .mist-eyebrow {
+  margin-bottom: 28px;
+}
+
+@font-face {
+  font-family: Manrope;
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url(/fonts/manrope-latin.woff2) format('woff2');
+}
+
+/* Application components: clear surfaces, action hierarchy and input states. */
+:where(.mist-content) button:not(.mist-job-summary) {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  min-height: 34px;
+  border: 1px solid #d9dcd2;
+  border-radius: 7px;
+  background: linear-gradient(#fffefa, #f3f3ec);
+  color: #41483a;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px #222a2010;
+  transition:
+    background 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+:where(.mist-content) button:not(.mist-job-summary):hover:not(:disabled) {
+  border-color: #aeb8a3;
+  background: #ecefe5;
+  box-shadow: 0 2px 4px #222a2014;
+}
+:where(.mist-content) button:active:not(:disabled) {
+  box-shadow: inset 0 1px 3px #222a2015;
+}
+.mist-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-decoration: none;
+  padding: 8px 12px;
+  border: 1px solid #d9dcd2;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #f7f8f2;
+}
+.mist-button-primary,
+:where(.mist-content) button.bg-green-200 {
+  background: linear-gradient(#536447, #425439) !important;
+  border-color: #425439 !important;
+  color: #fffef6 !important;
+  box-shadow:
+    inset 0 1px #ffffff18,
+    0 1px 2px #26351a20 !important;
+}
+.mist-button-primary:hover:not(:disabled),
+:where(.mist-content) button.bg-green-200:hover:not(:disabled) {
+  background: #34482c !important;
+  border-color: #34482c !important;
+}
+.mist-button-danger {
+  color: #a33e35 !important;
+  background: #fffdfa !important;
+  border-color: #e4ccc7 !important;
+}
+.mist-button-danger:hover:not(:disabled) {
+  background: #faeeeb !important;
+  border-color: #ce9c92 !important;
+}
+.mist-button-warning {
+  border-color: #d6c697 !important;
+  color: #7b6329 !important;
+}
+.mist-button:disabled,
+:where(.mist-content) button:disabled {
+  opacity: 0.45;
+  box-shadow: none !important;
+}
+.mist-card,
+.mist-content section.border,
+.mist-content form.border {
+  border-color: #dfe0d6;
+  box-shadow: 0 1px 3px #292b2508;
+}
+.mist-panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #e8e9e0;
+}
+.mist-panel-heading h2,
+.mist-card .mist-panel-heading h2 {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+.mist-panel-heading p {
+  font-size: 12px;
+  color: #7b806f;
+  margin-top: 3px;
+  line-height: 1.5;
+}
+.mist-panel-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  background: #f0f2e9;
+  border: 1px solid #e1e5d6;
+  color: #667759;
+  border-radius: 9px;
+}
+.mist-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border: 1px solid #dce3d2;
+  background: #f1f5ea;
+  color: #627651;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.mist-content input:not([type='checkbox']):not([type='radio']),
+.mist-content select,
+.mist-content textarea {
+  border: 1px solid #d7dbcf;
+  background: #fffefa;
+  box-shadow: inset 0 1px 2px #29332004;
+}
+.mist-content input:hover:not(:disabled):not([type='radio']),
+.mist-content select:hover:not(:disabled),
+.mist-content textarea:hover:not(:disabled) {
+  border-color: #b8c1ac;
+}
+.mist-content label {
+  color: #424a39;
+}
+.mist-content input[type='checkbox'] {
+  accent-color: #566e45;
+  width: 15px;
+  height: 15px;
+}
+.mist-content [role='alert'] {
+  padding: 10px 12px;
+  border: 1px solid #ebcdc7;
+  background: #fff4f0;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.mist-content p[role='status'] {
+  padding: 10px 12px;
+  background: #eef4e8;
+  border: 1px solid #d6e3ca;
+  border-radius: 7px;
+  color: #445f36;
+}
+.mist-form-section {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  border-bottom: 1px solid #e9eae2;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+}
+.mist-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+  color: #4e5842;
+  font-weight: 650;
+  padding-bottom: 14px;
+}
+.mist-section-label > span {
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  height: 20px;
+  width: 20px;
+  border: 1px solid #dae1ce;
+  border-radius: 5px;
+  background: #f0f4e9;
+}
+.mist-compute-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.mist-compute-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 12px 10px;
+  border: 1px solid #dce0d3;
+  border-radius: 8px;
+  background: #fffefa;
+  cursor: pointer;
+  transition:
+    border-color 150ms,
+    background 150ms,
+    box-shadow 150ms;
+  min-width: 0;
+}
+.mist-compute-option:hover {
+  background: #f5f7ef;
+  border-color: #afbc9e;
+}
+.mist-compute-option.is-selected {
+  background: #f1f5e9;
+  border-color: #70855b;
+  box-shadow:
+    0 0 0 1px #70855b,
+    0 2px 5px #3b502f0a;
+}
+.mist-compute-option.is-unavailable {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mist-compute-option strong {
+  font-size: 12px;
+  color: #35442a;
+  font-weight: 650;
+}
+.mist-compute-option > span:not(.mist-choice-top) {
+  font-size: 10px;
+  font-weight: 400;
+  color: #7e846f;
+}
+.mist-compute-option small {
+  font-size: 9px;
+  color: #647453;
+  margin-top: 6px;
+  font-weight: 500;
+}
+.mist-choice-top {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  color: #788b62;
+}
+.mist-choice-check {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 1px solid #d6dec9;
+  border-radius: 50%;
+  color: transparent;
+}
+.is-selected .mist-choice-check {
+  background: #667e50;
+  border-color: #667e50;
+  color: white;
+}
+.mist-compute-option input,
+.mist-segmented input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  min-height: 0;
+  cursor: pointer;
+}
+.mist-compute-option:has(input:focus-visible),
+.mist-segmented label:has(input:focus-visible) {
+  outline: 2px solid #61794c;
+  outline-offset: 3px;
+}
+.mist-device-count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.mist-device-count label {
+  margin: 0;
+}
+.mist-device-count input {
+  width: 65px;
+}
+.mist-device-count span {
+  color: #7d8471;
+  font-size: 11px;
+}
+.mist-segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #f0f1e9;
+  border: 1px solid #e2e5d9;
+  border-radius: 8px;
+}
+.mist-segmented label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  font-size: 11px;
+  margin: 0;
+  padding: 8px;
+  border-radius: 5px;
+  color: #7b836e;
+  cursor: pointer;
+  text-align: center;
+}
+.mist-segmented label.is-selected {
+  background: #fffefa;
+  color: #3a4d2a;
+  box-shadow: 0 1px 3px #24331a14;
+}
+.mist-editor-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.mist-editor-label > span {
+  margin-left: auto;
+  color: #949b88;
+  font-size: 10px;
+  font-family: monospace;
+}
+#job-script {
+  min-height: 210px;
+  font-size: 12px;
+  line-height: 1.8;
+  background: #f9faf5;
+  border-color: #dce1d2;
+  padding: 14px;
+  tab-size: 4;
+}
+.mist-advanced {
+  border: 1px solid #dfe3d5;
+  border-radius: 8px;
+  background: #fafbf5;
+  padding: 12px 14px;
+}
+.mist-advanced summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #5d6c4c;
+  list-style: none;
+}
+.mist-advanced summary::after {
+  content: '+';
+  margin-left: auto;
+  font-size: 16px;
+}
+.mist-advanced[open] summary::after {
+  content: '−';
+}
+.mist-advanced[open] summary {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e6eadd;
+}
+.mist-submit-button {
+  width: 100%;
+  min-height: 44px !important;
+  font-size: 13px !important;
+}
+.mist-submit-button svg:last-child {
+  margin-left: auto;
+}
+.mist-help {
+  color: #7c8470;
+  font-size: 11px;
+}
+.mist-history-panel > .mist-panel-heading {
+  padding: 20px;
+  margin: 0;
+}
+.mist-history-toolbar {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  background: #fafbf6;
+  border-bottom: 1px solid #e5e8dd;
+}
+.mist-history-toolbar > select {
+  max-width: 135px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+.mist-search-field {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+}
+.mist-search-field svg {
+  position: absolute;
+  left: 11px;
+  top: 12px;
+  color: #8a957b;
+  pointer-events: none;
+}
+.mist-search-field input {
+  width: 100%;
+  padding: 8px 10px 8px 34px;
+  min-width: 0;
+  font-size: 12px !important;
+}
+.mist-job-summary {
+  background: #fffefa;
+  position: relative;
+  transition: background 150ms;
+}
+.mist-job-summary:hover {
+  background: #f1f5e9;
+}
+.mist-job-summary[aria-expanded='true'] {
+  background: #f0f4e7;
+  box-shadow: inset 3px 0 #778c61;
+}
+.mist-job-summary[aria-expanded='true'] + div {
+  background: #f9fbf3;
+  border-top: 1px solid #e7eddb;
+}
+.mist-history-labels {
+  color: #818d72;
+  background: #f7f9f1;
+  border-color: #e2e7d8;
+}
+.mist-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid #e3e7d9;
+  background: #fafbf6;
+  font-size: 10px;
+  color: #7a866d;
+}
+.mist-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mist-pagination label {
+  margin: 0;
+  font-size: 10px;
+}
+.mist-pagination select {
+  min-height: 30px;
+  padding: 3px 7px;
+  font-size: 11px;
+}
+.mist-pagination button {
+  min-height: 30px !important;
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+}
+.mist-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: #8b977c;
+}
+.mist-empty-state h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #526442;
+}
+.mist-empty-state p {
+  font-size: 12px;
+  max-width: 300px;
+}
+.mist-metrics > button {
+  border: 0 !important;
+  border-right: 1px solid #e5e9da !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: #fffefa !important;
+  padding: 18px 24px !important;
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch !important;
+  gap: 4px !important;
+  text-align: left;
+}
+.mist-metrics > button:first-child {
+  border-radius: 9px 0 0 9px !important;
+}
+.mist-metrics > button:last-child {
+  border-right: 0 !important;
+  border-radius: 0 9px 9px 0 !important;
+}
+.mist-metrics > button:hover,
+.mist-metrics > button[aria-pressed='true'] {
+  background: #f0f4e7 !important;
+}
+.mist-metrics > button > span {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.mist-metrics > button > span > svg:last-child {
+  margin-left: auto;
+  color: #a0ab92;
+}
+.mist-upload-zone {
+  position: relative;
+  border: 1.5px dashed #c0cbb1;
+  border-radius: 9px;
+  padding: 30px 16px;
+  background: #f8faf2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  color: #839571;
+  text-align: center;
+  transition:
+    background 150ms,
+    border-color 150ms;
+}
+.mist-upload-zone:hover,
+.mist-upload-zone.is-dragging {
+  border-color: #6d8751;
+  background: #edf3e3;
+}
+.mist-upload-zone:focus-within {
+  outline: 2px solid #6d8751;
+  outline-offset: 3px;
+}
+.mist-upload-zone input[type='file'] {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+.mist-upload-zone label {
+  font-size: 10px;
+  margin: 0;
+  color: #7b8b66;
+}
+.mist-upload-zone strong {
+  font-size: 13px;
+  color: #51643e;
+  overflow-wrap: anywhere;
+}
+.mist-upload-zone > span {
+  font-size: 11px;
+  color: #929c85;
+}
+.mist-upload-panel {
+  max-width: 700px;
+}
+.mist-folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.mist-folder-tile {
+  display: flex !important;
+  flex-direction: column;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  gap: 5px !important;
+  padding: 16px !important;
+  background: #fffefa !important;
+  border: 1px solid #e0e6d7 !important;
+  min-width: 0;
+  text-align: left;
+  box-shadow: none !important;
+}
+.mist-folder-tile > svg {
+  color: #8a9f70;
+  margin-bottom: 4px;
+}
+.mist-folder-tile strong {
+  font-size: 12px;
+  color: #566547;
+  overflow-wrap: anywhere;
+}
+.mist-folder-tile > span {
+  font-size: 10px;
+  color: #98a28b;
+}
+.mist-folder-tile small {
+  font-size: 9px;
+  background: #f0f4e8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #7b8d66;
+}
+.mist-folder-tile:hover,
+.mist-folder-tile.is-selected {
+  border-color: #8ca26f !important;
+  background: #f2f7e9 !important;
+}
+.mist-dataset-list li {
+  background: #fafbf5;
+  border-color: #e3e8da;
+}
+.mist-dataset-list li > button {
+  align-self: center;
+}
+.mist-content pre {
+  padding: 16px;
+  background: #f1f4e9;
+  border: 1px solid #dde5d0;
+}
+.mist-overview-tile {
+  transition:
+    border-color 150ms,
+    box-shadow 150ms,
+    transform 150ms;
+}
+.mist-overview-tile:hover {
+  border-color: #9eaf8a;
+  box-shadow: 0 5px 15px #344a2010;
+  transform: translateY(-2px);
+}
+@media (max-width: 767px) {
+  .mist-panel-heading {
+    gap: 9px;
+  }
+  .mist-panel-heading h2 {
+    font-size: 15px;
+  }
+  .mist-panel-heading p {
+    font-size: 11px;
+  }
+  .mist-panel-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .mist-metrics > button {
+    padding: 14px 12px !important;
+  }
+  .mist-metrics > button > span {
+    font-size: 10px;
+    gap: 4px;
+  }
+  .mist-metrics > button > span > svg:last-child {
+    display: none;
+  }
+  .mist-history-toolbar {
+    padding: 12px;
+    gap: 8px;
+  }
+  .mist-history-toolbar > select {
+    max-width: 108px;
+  }
+  .mist-history-panel > .mist-panel-heading {
+    padding: 16px;
+  }
+  .mist-pagination {
+    padding: 12px;
+  }
+  .mist-pagination > span {
+    order: -1;
+    flex-basis: 100%;
+  }
+  .mist-folder-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mist-compute-option {
+    padding: 10px 8px;
+  }
+}
+.mist-storage-panel li {
+  border-color: #e4e9da;
+}
+
+/* Focused workspaces and shared selection controls. */
+.mist-picker {
+  position: relative;
+  min-width: 0;
+}
+.mist-picker-trigger {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px !important;
+  min-height: 40px;
+  background: #fffefa !important;
+  border: 1px solid #d7ddcf !important;
+  border-radius: 8px;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  text-align: left;
+  box-shadow: none !important;
+}
+.mist-picker-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mist-picker-trigger > svg {
+  flex-shrink: 0;
+  color: #8b987a;
+}
+.mist-picker-trigger:hover,
+.mist-picker-trigger[aria-expanded='true'] {
+  border-color: #8da475 !important;
+  background: #f9fbf3 !important;
+}
+.mist-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(360px, 80vw);
+  z-index: 40;
+  background: #fffefa;
+  border: 1px solid #dbe2d0;
+  border-radius: 10px;
+  padding: 5px;
+  box-shadow:
+    0 8px 30px #35402520,
+    0 2px 5px #35402510;
+}
+.mist-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 8px;
+  color: #96a384;
+  border-bottom: 1px solid #ecf0e4;
+}
+.mist-picker-search input {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  min-height: 32px !important;
+  width: 100%;
+  outline: none;
+  padding: 0;
+  font-size: 12px;
+}
+.mist-picker-menu [role='listbox'] {
+  max-height: 230px;
+  overflow: auto;
+  padding-top: 4px;
+}
+.mist-picker-menu button[role='option'] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between !important;
+  gap: 10px;
+  width: 100%;
+  background: transparent !important;
+  padding: 9px 10px !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-weight: 500 !important;
+  border-radius: 5px;
+  font-size: 12px;
+  text-align: left;
+}
+.mist-picker-menu button[role='option'] > span {
+  overflow-wrap: anywhere;
+}
+.mist-picker-menu button[role='option'].is-highlighted,
+.mist-picker-menu button[role='option'][aria-selected='true'] {
+  background: #f0f5e6 !important;
+  color: #536c3d;
+}
+.mist-picker-empty {
+  padding: 16px;
+  text-align: center;
+  color: #8b947d;
+  font-size: 12px;
+}
+.mist-sidebar-account .mist-picker-trigger {
+  font-size: 11px !important;
+}
+.mist-modal {
+  position: fixed;
+  inset: 0;
+  margin: auto !important;
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(900px, calc(100dvh - 48px));
+  padding: 0 !important;
+  border: 1px solid #d9dfce;
+  border-radius: 14px;
+  background: #fffefa;
+  box-shadow: 0 24px 100px #28321d35;
+  overflow: auto;
+}
+.mist-modal::backdrop {
+  background: #26301c55;
+  backdrop-filter: blur(4px);
+}
+.mist-modal .mist-modal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 24px !important;
+  background: #f5f7ee;
+  border-bottom: 1px solid #e3e8d8;
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  font-size: 14px;
+}
+.mist-modal .mist-modal-heading button {
+  border: 0;
+  padding: 5px;
+  background: transparent;
+  box-shadow: none;
+}
+.mist-modal .mist-modal-body {
+  padding: 0 !important;
+}
+.mist-modal .mist-submission-panel {
+  border: 0;
+  box-shadow: none;
+  padding: 24px;
+  border-radius: 0;
+}
+.mist-modal .mist-submission-panel > .mist-panel-heading {
+  display: none;
+}
+.mist-modal .mist-form-section {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  gap: 12px;
+}
+.mist-modal .mist-compute-option {
+  padding: 14px;
+}
+.mist-modal .mist-data-section {
+  grid-template-columns: 1fr 1fr;
+}
+.mist-modal .mist-data-section legend {
+  grid-column: 1 / -1;
+}
+.mist-modal .mist-submit-button {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  box-shadow: 0 0 0 10px #fffefa !important;
+}
+.mist-inline-help {
+  font-size: 10px;
+  color: #919c81;
+  margin-top: 5px;
+}
+.mist-inline-help summary {
+  cursor: pointer;
+}
+.mist-inline-help p {
+  font-size: 11px;
+  color: #79866a;
+  padding-top: 5px;
+}
+.mist-output-note {
+  font-size: 11px;
+  color: #829170;
+}
+.mist-range {
+  appearance: none;
+  min-height: 0 !important;
+  height: 4px;
+  background: #dfe7d3 !important;
+  border: 0 !important;
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  flex: 1;
+}
+.mist-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #69844b;
+  border: 3px solid #fffefa;
+  box-shadow:
+    0 0 0 1px #a0b38d,
+    0 2px 4px #3c4a2520;
+}
+.mist-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #69844b;
+  border: 3px solid #fffefa;
+  box-shadow: 0 0 0 1px #a0b38d;
+}
+.mist-hardware-details {
+  border: 1px solid #e0e5d6;
+  border-radius: 9px;
+  background: #fffefa;
+}
+.mist-hardware-details summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #596949;
+}
+.mist-hardware-details summary > span:last-child {
+  color: #8c997b;
+  font-size: 11px;
+}
+.mist-hardware-details .mist-card {
+  border: 0;
+  box-shadow: none;
+}
+.mist-history-toolbar > .mist-picker {
+  width: 140px;
+}
+.mist-pagination .mist-picker {
+  width: 68px;
+}
+.mist-pagination .mist-picker-trigger {
+  min-height: 30px;
+  padding: 5px 8px !important;
+}
+@media (max-width: 767px) {
+  .mist-modal {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 10px;
+  }
+  .mist-modal .mist-submission-panel {
+    padding: 18px;
+  }
+  .mist-modal .mist-compute-option {
+    padding: 12px 8px;
+  }
+  .mist-modal .mist-data-section {
+    grid-template-columns: 1fr;
+  }
+  .mist-history-toolbar > .mist-picker {
+    width: 115px;
+  }
+}
+.mist-library-toolbar {
+  margin: 0 0 16px;
+}
+.mist-library-toolbar input {
+  width: 100%;
+  max-width: 380px;
+  padding: 9px 12px;
+}
+.mist-storage-meter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 14px 18px;
+  background: #fffefa;
+  border: 1px solid #dfe6d4;
+  border-radius: 9px;
+}
+.mist-storage-meter > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6e8057;
+  font-size: 12px;
+}
+.mist-storage-meter strong {
+  font-size: 11px;
+  color: #879774;
+  font-weight: 500;
+  margin-left: 8px;
+}
+.mist-storage-meter progress {
+  width: 130px;
+  height: 5px;
+  border-radius: 4px;
+  accent-color: #8aa467;
+}
+.mist-storage-meter small {
+  color: #8a977b;
+  font-size: 11px;
+  margin-left: auto;
+}
+.mist-folder-details {
+  border: 1px solid #e0e5d6;
+  border-radius: 9px;
+  background: #fffefa;
+}
+.mist-folder-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #5d7049;
+}
+.mist-folder-details > summary > span {
+  font-size: 11px;
+  font-weight: 400;
+  color: #95a283;
+}
+.mist-folder-details .mist-storage-panel {
+  border: 0;
+  box-shadow: none;
+}
+.mist-modal .mist-upload-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  max-width: none;
+}
+.mist-modal .mist-upload-panel > .mist-panel-heading {
+  display: none;
+}
+.mist-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 16px;
+}
+.mist-team-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.mist-team-card h2 {
+  font-size: 17px;
+  margin-bottom: 3px;
+}
+.mist-team-card > p {
+  color: #929e81;
+  font-size: 11px;
+}
+.mist-team-card-stats {
+  display: flex;
+  gap: 25px;
+  margin: 18px 0;
+  padding: 14px 0;
+  border-top: 1px solid #e9eddc;
+  border-bottom: 1px solid #e9eddc;
+}
+.mist-team-card-stats > span {
+  display: flex;
+  flex-direction: column;
+  font-size: 10px;
+  color: #99a489;
+}
+.mist-team-card-stats strong {
+  color: #5d7148;
+  font-size: 14px;
+  font-weight: 600;
+}
+.mist-team-card-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+.mist-settings-tabs {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e5eadb;
+  padding-bottom: 8px;
+}
+.mist-settings-tabs button {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  font-size: 12px !important;
+}
+.mist-settings-tabs button[aria-selected='true'] {
+  color: #547235;
+  background: #edf3e3 !important;
+}
+.mist-modal section.border {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.mist-picker {
+  border: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+.mist-history-toolbar .mist-picker-menu {
+  left: auto;
+  right: 0;
+}
+.mist-picker.is-above .mist-picker-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+/* Account directory and focused administrative actions. */
+.mist-modal .mist-dialog-form {
+  padding: 24px;
+}
+.mist-member-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mist-member-toolbar .mist-search-field {
+  display: block;
+  margin: 0;
+  max-width: 400px;
+}
+.mist-member-list > li {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 15px 0;
+  border-top: 1px solid #e9eddc;
+}
+.mist-member-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.mist-member-identity strong {
+  color: #566947;
+  font-size: 12px;
+  font-weight: 600;
+}
+.mist-member-identity span {
+  color: #98a087;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.mist-member-actions {
+  display: flex;
+  gap: 6px;
+}
+.mist-member-actions button {
+  min-height: 32px !important;
+  padding: 5px 9px !important;
+  font-size: 11px !important;
+}
+.mist-dataset-metadata {
+  margin-top: 5px;
+  max-width: 420px;
+}
+.mist-dataset-metadata code,
+.mist-dataset-metadata p {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .mist-member-list > li {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .mist-member-identity {
+    flex-basis: calc(100% - 100px);
+  }
+  .mist-member-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .mist-storage-meter small {
+    margin-left: 0;
+  }
+  .mist-folder-details > summary {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+}
+
+.mist-job-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  border: 1px solid #e3e7db;
+  border-radius: 20px;
+  padding: 3px 10px;
+  width: fit-content;
+  color: #7c8470;
+  background: #f3f5ee;
+}
+.mist-job-status[data-state='Success'] {
+  color: #56713b;
+  background: #edf4e3;
+  border-color: #dce9cf;
+}
+.mist-job-status[data-state='InProgress'] {
+  color: #56737b;
+  background: #edf3f5;
+  border-color: #dae7eb;
+}
+.mist-job-status[data-state='Scheduled'] {
+  color: #90783d;
+  background: #faf6e9;
+  border-color: #eee5c9;
+}
+.mist-job-status[data-state='Failure'] {
+  color: #a46958;
+  background: #fbf0ed;
+  border-color: #efdcd5;
+}
+
+.mist-content .mist-storage-pending {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #6f805c;
+  font-size: 12px;
+}
+.mist-storage-pending svg {
+  flex-shrink: 0;
+}
+
+.mist-storage-pools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.mist-storage-pools .mist-storage-meter {
+  gap: 10px;
+}
+.mist-storage-pools .mist-storage-meter strong {
+  margin-left: 0;
+}
+.mist-team-card-stats {
+  gap: 16px;
+}
+@media (max-width: 1100px) {
+  .mist-storage-pools {
+    grid-template-columns: 1fr;
+  }
 }

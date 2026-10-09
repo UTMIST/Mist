@@ -1,29 +1,32 @@
 package cmd
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
-// Added job, with no compute type added
-func TestJobStatusJobDoesNotExist(t *testing.T) {
-	// This job should not exist in the dummy
-	cmd := &JobStatusCmd{ID: "job_12345"}
-	output := CaptureOutput(func() {
-		_ = cmd.Run()
+func TestJobStatusPropagatesFailureAndExitCode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"failed-id","name":"failed","job_state":"Failure","exit_code":17}`))
+	}))
+	defer server.Close()
+	out := CaptureOutput(func() {
+		if err := (&JobStatusCmd{ID: "failed-id"}).Run(&AppContext{APIBaseURL: server.URL}); err != nil {
+			t.Error(err)
+		}
 	})
-	if want := "job_12345 does not exist in your jobs.\nUse the command \"job list\" for your list of jobs."; !contains(output, want) {
-		t.Errorf("expected output to contain %q, got %q", want, output)
+	if !contains(out, "Failure") || !contains(out, "Exit code: 17") {
+		t.Fatal(out)
 	}
 }
-
-// Added job, with compute type
-func TestJobStatusValid(t *testing.T) {
-	// This job should not exist in the dummy
-	cmd := &JobStatusCmd{ID: "ID:1"}
-	output := CaptureOutput(func() {
-		_ = cmd.Run()
-	})
-	if want := "docker_container_name_1"; !contains(output, want) {
-		t.Errorf("expected output to contain %q, got %q", want, output)
+func TestJobStatusDoesNotInventSuccessForMissingJob(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		_, _ = w.Write([]byte(`{"error":"job not found"}`))
+	}))
+	defer server.Close()
+	if err := (&JobStatusCmd{ID: "missing"}).Run(&AppContext{APIBaseURL: server.URL}); err == nil || !contains(err.Error(), "job not found") {
+		t.Fatal(err)
 	}
 }

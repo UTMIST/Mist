@@ -1,0 +1,5 @@
+PASS untrusted source reaches portal
+PASS untrusted source denied 100.73.139.66:22
+PASS untrusted source denied 100.73.139.66:6443
+PASS untrusted source denied 100.73.139.66:30491
+PASS untrusted source denied 10.43.1.116:3000

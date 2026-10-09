@@ -1,0 +1,101 @@
+{
+  "recorded_at": "2026-10-09T07:59:10.227717+00:00",
+  "source_branch": "feat/local-job-foundation",
+  "suites": {
+    "backend": {
+      "passed": true,
+      "test_count": 33,
+      "skipped": 0,
+      "tests": [
+        "TestContainerJobCPU",
+        "TestRunContainerCPUIntegration",
+        "TestHardwareCountsExternalScheduledPodsAndDRAReservations",
+        "TestHardwareDoesNotAdvertiseOfflineOrIncompleteInventory",
+        "TestGPURequestIncludesInitPeakAndSidecars",
+        "TestHardwarePermissionFailureIsAnError",
+        "TestCustomImagePreservesEntrypointAndWorkingDirectory",
+        "TestTenstorrentCustomImageRestrictionIsInCatalogAndValidation",
+        "TestIntegration",
+        "TestDummySupervisors",
+        "TestStatusRegistry_BasicOperations",
+        "TestJobEnqueueAndSupervisor",
+        "TestKubernetesRejectInvalidSubmission",
+        "TestKubernetesReportsActualExitBeforeControllerCompletion",
+        "TestKubernetesReportsCurrentWaitingReasonAfterPlacement",
+        "TestKubernetesCancellationPersistsAcrossExecutorRestart",
+        "TestKubernetesDoesNotExposeUnmanagedJobs",
+        "TestKubernetesHTTPRejectsUnknownAndMultipleObjects",
+        "TestSharedDatasetAtomicLimitsAndOwnership",
+        "TestSharedDatasetConfiguredCeilingAndMissingStorage",
+        "TestSharedZipRejectsTraversalSymlinksAndExpansion",
+        "TestSharedJobMountAndEscapingOutput",
+        "TestMemberAuthIsolationAndFailureClosed",
+        "TestDepartmentTeamPermissionsAndScopedSharing",
+        "TestDepartmentPolicyAndStorageBudget",
+        "TestDepartmentDurableFairAdmission",
+        "TestDepartmentAgedHeadDrainsCapacityWithoutStarvation",
+        "TestDepartmentDemotionRevokesAdministratorWritePrivilege",
+        "TestMemberProxyAddressCannotBeSpoofed",
+        "TestDepartmentPendingPodClaimDoesNotDoubleReserveBoards",
+        "TestDepartmentSplitDatasetAndModelPaths",
+        "TestDepartmentMissingModelMountCannotBorrowDatasetCapacity",
+        "TestDepartmentDefaultPoolsAndLegacyPolicy"
+      ]
+    },
+    "docker_module": {
+      "passed": true,
+      "test_count": 10,
+      "skipped": 0,
+      "tests": [
+        "TestCreateDeleteVolume",
+        "TestCreateVolumeTwice",
+        "TestRemoveNonexistentVolume",
+        "TestRunContainerCPU",
+        "TestRemoveVolumeInUse",
+        "TestAttachNonexistentVolume",
+        "TestTwoContainersSameVolume",
+        "TestTwoContainersSameVolumeConcurrent",
+        "TestVolumeLimit",
+        "TestContainerLimit"
+      ]
+    }
+  },
+  "other_checks": {
+    "cli_go_tests": "passed",
+    "logger_go_tests": "passed",
+    "react_tests": {
+      "passed": true,
+      "test_count": 10
+    },
+    "typescript": "passed",
+    "full_frontend_eslint": "passed",
+    "production_frontend_build": "passed",
+    "migration_tests": {
+      "passed": true,
+      "test_count": 6
+    },
+    "live_browser": {
+      "passed": true,
+      "check_count": 11,
+      "browser_errors": []
+    },
+    "live_cluster": {
+      "nodes_ready": 2,
+      "api_available_replicas": 1,
+      "auth_available_replicas": 1
+    }
+  },
+  "legacy_test_isolation": "Dedicated Redis container with no published ports; preview Redis and data preserved. Existing CPU Docker fixtures ran against host Docker; test containers and volumes removed.",
+  "live_accelerator_evidence": [
+    "split-storage-results.json",
+    "runtime-results.json",
+    "container-mode-result.json"
+  ],
+  "large_upload_or_exhaustion_repeated": false,
+  "limitations": [
+    "No 200/500 GiB transfer stress or exhaustive edge-case claim",
+    "Custom CUDA demonstration image preloaded locally; no registry push tested in that demonstration",
+    "Arbitrary research model compatibility, high availability and disk-failure recovery not verified",
+    "Features explicitly excluded by the user are outside this release"
+  ]
+}

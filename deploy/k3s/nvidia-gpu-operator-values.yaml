@@ -1,0 +1,10 @@
+# This node already has a working NVIDIA host driver. Let the operator install
+# the container toolkit and device plugin without replacing that driver.
+driver:
+  enabled: false
+
+# CDI handles allocated workload GPUs. Enable the NRI plugin for GPU management
+# containers without changing k3s's containerd runtime configuration. This is
+# intended for the pilot; NVIDIA documents the NRI plugin as not yet GA.
+cdi:
+  nriPluginEnabled: true

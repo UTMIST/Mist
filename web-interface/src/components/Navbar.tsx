@@ -1,79 +1,95 @@
 import { Link } from '@tanstack/react-router'
-import type { LinkProps } from '@tanstack/react-router'
-import { getUser, logout } from '#/util.ts'
+import { authClient, useAccount } from '#/auth.tsx'
 import { useState } from 'react'
-
-type NavlinkProps = {
-  href: LinkProps['to']
-  text: string
-}
-
-function Navlink(props: NavlinkProps) {
-  return (
-    <Link
-      className="hover:text-main transition-colors duration-200 py-1 px-2 rounded-lg hover:bg-gray-100"
-      to={props.href}
-      inactiveProps={{ className: 'text-gray' }}
-    >
-      {props.text}
-    </Link>
-  )
-}
+import { LayoutDashboard, Play, Database, Server, Users } from 'lucide-react'
+import { WorkspaceSelector } from '#/teams.tsx'
 
 export default function Navbar() {
-  const [dropdown, setDropdown] = useState(false)
-  const user = getUser()
-
+  const account = useAccount()
+  const [error, setError] = useState('')
   return (
-    <nav className="flex items-center text-lg border rounded-xl mx-auto mt-8 mb-4 px-8 py-2 w-fit gap-8">
-      <div className="flex gap-8">
-        <Navlink href="/dashboard" text="Dashboard" />
-        <Navlink href="/machines" text="Machines" />
-        <Navlink href="/jobs" text="Jobs" />
-      </div>
-      <div className="relative">
-        <div
-          className="flex items-center cursor-pointer py-1 px-2 rounded-lg hover:bg-gray-100 transition-colors duration-200"
-          onClick={() => setDropdown(!dropdown)}
+    <header className="mist-sidebar">
+      <Link to="/dashboard" className="mist-brand" aria-label="Mist overview">
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 28 28"
+          fill="none"
+          aria-hidden="true"
         >
-          {user.username}
-          <svg
-            className="w-5 h-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
+          <path d="M14 2 26 9 14 16 2 9 14 2Z" fill="currentColor" />
+          <path
+            d="m2 14 12 7 12-7M2 19l12 7 12-7"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+        </svg>
+        <span>
+          Mist<span className="mist-brand-caption">Research compute</span>
+        </span>
+      </Link>
+      <p className="mist-nav-caption">WORKSPACE</p>
+      <nav aria-label="Main navigation" className="mist-nav">
+        <Link to="/dashboard" activeProps={{ className: 'is-active' }}>
+          <span aria-hidden="true">
+            <LayoutDashboard size={17} />
+          </span>{' '}
+          Overview
+        </Link>
+        <Link to="/jobs" activeProps={{ className: 'is-active' }}>
+          <span aria-hidden="true">
+            <Play size={17} />
+          </span>{' '}
+          Jobs
+        </Link>
+        <Link to="/datasets" activeProps={{ className: 'is-active' }}>
+          <span aria-hidden="true">
+            <Database size={17} />
+          </span>{' '}
+          Datasets
+        </Link>
+        <Link to="/machines" activeProps={{ className: 'is-active' }}>
+          <span aria-hidden="true">
+            <Server size={17} />
+          </span>{' '}
+          Machines
+        </Link>
+        <Link to="/teams" activeProps={{ className: 'is-active' }}>
+          <span aria-hidden="true">
+            <Users size={17} />
+          </span>{' '}
+          Teams
+        </Link>
+      </nav>
+      <div className="mist-sidebar-account">
+        <WorkspaceSelector />
+        <Link
+          to="/profile"
+          activeProps={{ className: 'is-active' }}
+          className="mist-account-link"
+        >
+          <span className="mist-avatar" aria-hidden="true">
+            {account.user?.name[0] ?? 'M'}
+          </span>
+          <span>
+            {account.user?.name ?? 'Local pilot'}
+            <span className="mist-brand-caption">Account settings</span>
+          </span>
+        </Link>
+        {account.enabled && (
+          <button
+            onClick={async () => {
+              const result = await authClient.signOut()
+              if (result.error)
+                setError(result.error.message ?? 'Sign out failed')
+              else account.refresh()
+            }}
           >
-            <path d="M12 15L7 10H17L12 15Z" fill="#1D1B20" />
-          </svg>
-          <img
-            src={user.profilePicture}
-            alt="Profile Picture"
-            className="w-7 h-7 rounded-full"
-          ></img>
-        </div>
-        {dropdown && (
-          <div className="absolute top-full right-0 border rounded-b m-2 p-1 pr-3 pl-3 text-xl bg-white z-100">
-            <ul>
-              <li>
-                <Link
-                  to="/profile"
-                  className="block px-2 py-1 rounded hover:bg-gray-100 transition-colors duration-200"
-                >
-                  Profile
-                </Link>
-              </li>
-              <li>
-                <button
-                  onClick={logout}
-                  className="block w-full text-left px-2 py-1 rounded hover:bg-gray-100 transition-colors duration-200"
-                >
-                  Logout
-                </button>
-              </li>
-            </ul>
-          </div>
+            Sign out
+          </button>
         )}
+        {error && <p role="alert">{error}</p>}
       </div>
-    </nav>
+    </header>
   )
 }

@@ -1,0 +1,219 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mist-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mist
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mist-api
+  namespace: mist-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mist-api
+  namespace: mist
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, create, update, delete]
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, create, update, delete]
+  - apiGroups: [resource.k8s.io]
+    resources: [resourceclaims, resourceclaimtemplates]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mist-api
+  namespace: mist
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mist-api
+subjects:
+  - kind: ServiceAccount
+    name: mist-api
+    namespace: mist-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mist-hardware-reader
+rules:
+  - apiGroups: [""]
+    resources: [nodes, pods]
+    verbs: [list]
+  - apiGroups: [resource.k8s.io]
+    resources: [resourceclaims, resourceslices]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mist-hardware-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mist-hardware-reader
+subjects:
+  - kind: ServiceAccount
+    name: mist-api
+    namespace: mist-system
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mist-cpu-checkpoints
+  namespace: mist
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-nvidia-checkpoints
+  namespace: mist
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-tenstorrent-checkpoints
+  namespace: mist
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mist-api
+  namespace: mist-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mist-api
+  template:
+    metadata:
+      labels:
+        app: mist-api
+    spec:
+      serviceAccountName: mist-api
+      nodeSelector:
+        kubernetes.io/hostname: utmist-z1opa08
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: mist-api:departments-20261009
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: MIST_TEAMS_ENABLED
+              value: "true"
+            - name: MIST_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mist-internal-auth
+                  key: MIST_INTERNAL_TOKEN
+            - name: MIST_EXECUTOR
+              value: kubernetes
+            - name: MIST_HTTP_ADDR
+              value: 0.0.0.0:3000
+            - name: MIST_NAMESPACE
+              value: mist
+            - name: MIST_PILOT_OWNER
+              value: utmist
+            # Local examples must be built/imported on the CPU/NVIDIA node.
+            # Registry-backed images are approved here using exact references.
+            - name: MIST_ALLOWED_IMAGES
+              value: "python:3.10-slim,pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime,ghcr.io/tenstorrent/tt-metal/tt-metalium/ubuntu-22.04-dev-amd64:6b765c0bc2b40ea02566d169d7b0ee902377ba04,busybox:1.36,alpine:3.16.3,nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0,mist-training:cpu-v1,mist-training:nvidia-v1"
+            - name: MIST_AUTH_URL
+              value: http://mist-auth.mist-system.svc.cluster.local:3002
+            - name: MIST_TRUSTED_PROXY_IPS
+              value: "10.42.0.1,10.0.0.175,127.0.0.1"
+            - name: MIST_LEGACY_OWNER_EMAIL
+              value: utmist.infra@gmail.com
+            - name: MIST_ALLOWED_ORIGINS
+              value: http://100.73.139.66:8088,http://utmist.tail459b5e.ts.net:8088,http://127.0.0.1:8088,http://127.0.0.1:3001,http://localhost:3001,https://utmist.tail459b5e.ts.net
+            - name: MIST_STORAGE_ROOT
+              value: /storage
+            - name: MIST_SHARED_PVC
+              value: mist-shared-jobs
+          volumeMounts:
+            - name: storage
+              mountPath: /storage
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: mist-shared-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mist-api
+  namespace: mist-system
+spec:
+  selector:
+    app: mist-api
+  ports:
+    - port: 3000
+      targetPort: http

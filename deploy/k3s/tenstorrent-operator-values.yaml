@@ -1,0 +1,29 @@
+# Pinned with tt-operator chart 0.3.0. Host TT driver/firmware are managed
+# separately. Reuse the cluster's existing NVIDIA-provided NFD installation.
+node-feature-discovery:
+  enabled: false
+tt-k8s-driver-manager:
+  enabled: false
+tt-telemetry:
+  enabled: false
+jobset:
+  enabled: false
+kubepmix:
+  enabled: false
+tt-fabric-manager:
+  enabled: true
+  fullnameOverride: tt-fabric-manager
+  imagePullSecrets: []
+  controller:
+    nodeSelector:
+      kubernetes.io/hostname: utmist-z1opa08
+  agent:
+    nodeSelector:
+      kubernetes.io/hostname: utmist-tt
+tt-dra-driver:
+  enabled: true
+  imagePullSecrets: []
+  kubeletPlugin:
+    nodeSelector:
+      kubernetes.io/hostname: utmist-tt
+    fabricManagerAgentAddress: tt-fabric-manager-agent.tt-operator-system.svc.cluster.local:50053

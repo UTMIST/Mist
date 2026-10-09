@@ -1,0 +1,8 @@
+# CPU: docker build -f deploy/k3s/examples/Dockerfile.training -t mist-training:cpu-v1 deploy/k3s/examples
+# NVIDIA: add --build-arg BASE_IMAGE=pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+ARG BASE_IMAGE=python:3.10-slim
+FROM ${BASE_IMAGE}
+WORKDIR /app
+COPY train.py dataset.csv /app/
+ENTRYPOINT ["python", "-u", "train.py"]
+CMD ["--backend", "cpu"]

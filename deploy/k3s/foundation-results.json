@@ -1,0 +1,133 @@
+{
+  "recorded_at": "2026-10-09T02:57:05.690026+00:00",
+  "branch": "feat/local-job-foundation",
+  "baseline_commit": "2f9b178",
+  "scope": "Parts 1\u20133 plus node-local persistent outputs. Shared datasets/downloads (4), deployment/login (5) remain.",
+  "api_image": "mist-api:foundation-20261008",
+  "api_image_id": "sha256:57ed3a9eebe54610f7353f29bbd24d93259f0d664e171381a5023a2d7d5e4770",
+  "checks": {
+    "frontend_interactions": 5,
+    "kubernetes_backend_tests": 12,
+    "src_test_suite": "passed with isolated Redis and existing Docker test image",
+    "cli_test_suite": "passed",
+    "typescript": "passed",
+    "production_build": "passed",
+    "changed_frontend_lint": "passed",
+    "browser_cpu_packaged_image": "passed",
+    "browser_two_nvidia_gpus": "passed",
+    "browser_tt_two_boards_four_chips": "passed",
+    "browser_exit_17_and_cancel": "passed",
+    "nvidia_occupied_queue_cancel_reuse": "passed",
+    "tt_occupied_queue_cancel_reuse": "passed",
+    "persistent_outputs_new_containers_both_nodes": "passed",
+    "literal_arguments_working_directory_output_alias": "passed",
+    "image_pull_reason_and_deadline_in_browser": "passed",
+    "history_survives_api_restarts": "passed",
+    "rbac_inventory_read_only": "passed"
+  },
+  "browser_jobs": {
+    "packaged-cpu": {
+      "id": "mist-261e82c2848fc79b234afc4a",
+      "state": "Success",
+      "node": "utmist-z1opa08",
+      "device_count": 0
+    },
+    "tt-two-boards": {
+      "id": "mist-f9a86752969598c182c3d79f",
+      "state": "Success",
+      "node": "utmist-tt",
+      "device_count": 2
+    },
+    "packaged-two-gpus": {
+      "id": "mist-d3756747c2e68bf76ea2e876",
+      "state": "Success",
+      "node": "utmist-z1opa08",
+      "device_count": 2
+    },
+    "failure": {
+      "id": "mist-aa022009f288d22836d04b85",
+      "state": "Failure",
+      "node": "utmist-z1opa08",
+      "device_count": 0
+    },
+    "cancel": {
+      "id": "mist-99d4a51c2f49d394a8796ba3",
+      "state": "Cancelled",
+      "node": "utmist-z1opa08",
+      "device_count": 0
+    }
+  },
+  "allocation_jobs": {
+    "literal-arguments": "mist-2aee9108f5ef651e0b06eccc",
+    "nvidia-holder": "mist-cce552238d50aaf3fc8ab895",
+    "nvidia-queued": "mist-e0d28d07f23bd40653c65de0",
+    "tenstorrent-holder": "mist-5737ba8da7abaccd3a45698d",
+    "tenstorrent-queued": "mist-aa8e4101f47855166dfa4b36"
+  },
+  "image_pull_failure_job": "mist-2e6965771e3330e013df1fc3",
+  "idle_hardware": {
+    "observed_at": "2026-10-09T02:57:05.530844763Z",
+    "machines": [
+      {
+        "name": "utmist-z1opa08",
+        "address": "10.0.0.175",
+        "ready": true,
+        "schedulable": true,
+        "cpu_allocatable": "56",
+        "memory_allocatable": "164912728Ki"
+      },
+      {
+        "name": "utmist-tt",
+        "address": "10.0.0.112",
+        "ready": true,
+        "schedulable": true,
+        "cpu_allocatable": "32",
+        "memory_allocatable": "511127964Ki"
+      }
+    ],
+    "pools": [
+      {
+        "accelerator": "nvidia",
+        "node": "utmist-z1opa08",
+        "unit": "GPU",
+        "total": 2,
+        "allocated": 0,
+        "available": 2,
+        "ready": true
+      },
+      {
+        "accelerator": "tenstorrent",
+        "node": "utmist-tt",
+        "unit": "board",
+        "total": 4,
+        "allocated": 0,
+        "available": 4,
+        "ready": true,
+        "chips_per_device": 2
+      }
+    ]
+  },
+  "job_history_count": 40,
+  "job_history_read_seconds": 0.193,
+  "evidence_directory": "/home/utmist/mist-foundation-results-2026-10-08",
+  "evidence_files": [
+    "browser.json",
+    "foundation-acceptance.json",
+    "image-pull-failure.json",
+    "rbac.json",
+    "jobs-browser.png",
+    "machines-browser.png",
+    "nvidia-training-browser.png",
+    "image-pull-browser.png",
+    "cpu-persisted-files.txt",
+    "nvidia-persisted-files.txt",
+    "tenstorrent-persisted-files.txt"
+  ],
+  "limits": [
+    "Trusted local single-owner pilot; no authenticated tenant isolation",
+    "Node-local output storage; no dataset uploads or browser downloads",
+    "TT uses tested image and host runtime; arbitrary models/autograd/distributed training not validated",
+    "Private registry secret wiring documented; private registry login not exercised",
+    "Jobs/output files retained; no automatic cleanup, storage quota or backup"
+  ]
+}
