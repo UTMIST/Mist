@@ -82,8 +82,9 @@ are checked in under
 - Focused Go suites, CLI suite, nine React tests, TypeScript and changed-file ESLint
   passed. Web/auth npm audits reported zero vulnerabilities at verification time.
 
-The full historical Go integration suite still requires its legacy Redis/Docker
-fixtures; it was not represented as passing. The deployed Kubernetes execution
+At that initial phase, the full historical Go integration suite had not run
+against its legacy Redis/Docker fixtures. The final release run below completed
+those suites successfully. The deployed Kubernetes execution
 path does not use Redis. Accelerator tests are regression training, not proof of
 arbitrary-model portability. External researcher laptop/cloud ACL verification,
 HA, hard per-member storage quotas and deliberately excluded features are not
@@ -92,8 +93,8 @@ claimed.
 Research pilot remains active with the administrator and sample files/results.
 Verification-only accounts are deactivated and verification-only teams disabled;
 files/history are retained. Documentation describes current setup, operational
-limits and redeployment. All changes are on `feat/local-job-foundation`; no merge
-or remote push was performed.
+limits and redeployment. Changes were implemented on `feat/local-job-foundation`. See the publication
+record below for the subsequent archive and pull request.
 
 ## Latest UI and dataset refinement
 
@@ -113,7 +114,8 @@ or remote push was performed.
 - Latest checks: all 11 browser checks, nine React tests, TypeScript, targeted
   ESLint, focused Go/CLI suites, Python parsing and shell syntax passed.
 
-The branch remains `feat/local-job-foundation`; no remote push/merge was performed.
+That refinement was completed on `feat/local-job-foundation`. Publication is
+recorded below.
 
 ## Follow-up: separate large dataset/model pools (requested October 9)
 
@@ -137,3 +139,32 @@ permissions and preserved checkpoints. QuietBox’s unused bulk reservation and
 blocks belonging to the deleted large probe were reclaimed; existing research
 files outside Mist remain untouched. See current [rollout](department-rollout.md)
 for sparse storage capacity and the two-pool API compatibility rules.
+
+## Release verification and publication (October 9)
+
+- Full Go backend: **33 tests passed, zero skips**, including legacy integration
+  tests against a dedicated Redis container with no published ports. Preview
+  Redis data was preserved.
+- Nested Docker module: **10 tests passed, zero skips**, including concurrent
+  container/volume and limit fixtures. Test containers and volumes were removed.
+- Full CLI/logger suites, **10 React tests**, TypeScript, full frontend ESLint
+  and production build passed. All **11 live browser checks** passed again with
+  no browser errors. Both cluster nodes and API/auth deployments are Ready.
+- Visible regular-member **Container** submission trained a real CUDA network
+  using a custom image's own CMD. The walkthrough found and fixed clearing the
+  image field, with a regression test. Image was preloaded, not registry-pushed.
+- Large upload and exhaustion tests were not repeated at the user's request;
+  no 200/500 GiB stress, every-edge-case or arbitrary-model claim is made.
+
+Current documentation covers user/admin operations, image submission, storage,
+deployment, limits, design and verification. The historical `main` tip
+`1050b022e36399f4b3b1dba1a3b3d670fcfca539` is preserved on the remote branch
+[`archive/main-before-k3s-20261009`](https://github.com/UTMIST/Mist/tree/archive/main-before-k3s-20261009).
+The department implementation replaces the active main code through a squash
+pull request. GitHub requires one other reviewer to approve the latest push;
+this account has maintain/push access and cannot bypass that rule. The live
+private portal already runs the verified implementation. Git publication does
+not reset accounts, jobs or files, or switch the live services again.
+
+See [the final release record](../deploy/k3s/evidence/department-2026-10-09/release-validation.json)
+and [testing instructions](testing.md).

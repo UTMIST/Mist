@@ -19,6 +19,7 @@ They create bounded test fixtures and preserve files/history afterward.
 | TT training metrics / actual allocation | [metrics](tenstorrent-results.json), [allocation](tenstorrent-allocation.json), [log](mist-e5c04ea2cc126a786d6fe783.log) |
 | Job writes fill only the bounded test filesystem | [capacity log](mist-1c4a852d366b9d2349e1cf7c.log) |
 | Actual container cannot reach private services/credentials | [isolation log](mist-b46534ddeb9f18852b75f645.log) |
+| Full release suites and final browser rerun | [release-validation.json](release-validation.json) |
 | Dependency audit, zero reported vulnerabilities | [web audit](web-audit.json), [auth audit](auth-audit.json) |
 
 Screenshots: [jobs desktop](final-jobs-desktop.png),
@@ -39,9 +40,12 @@ npm --prefix web-interface test
 npx --prefix web-interface tsc --noEmit -p web-interface/tsconfig.json
 ```
 
-Changed-file ESLint and shell/Python syntax checks also passed. Use the pinned
-Go/Node versions in the deployment script. The full historical Go suite requires
-its legacy Redis/Docker integration fixtures and was not claimed to pass.
+Full frontend ESLint, shell/Python syntax checks and the production frontend
+build passed. Use the pinned Go/Node versions in the deployment script. The final
+release run passed all 33 backend and 10 Docker module tests, with no skips, using
+a dedicated Redis container and the existing CPU Docker fixtures. CLI and logger
+suites, TypeScript and all 10 React tests passed. The final browser rerun passed
+all 11 checks with no browser errors. See [release validation](release-validation.json).
 
 The host firewall test used an isolated synthetic source on the actual installed
 chains, not an external researcher's laptop. Regression training demonstrates
@@ -70,3 +74,17 @@ checks do not demonstrate uploads at 200/500 GiB or every disk-full scenario.
 The initial unused 1.5 TiB bulk reservation was released using filesystem discard,
 preserving data. After reclaiming deleted test blocks, the sparse backing file
 used about 6 GiB physically and QuietBox had about 1.9 TiB free on its host disk.
+
+## Packaged image through the regular-member UI
+
+[Container mode report](container-mode-result.json), [filled form](container-mode-form.png),
+[completed job](container-mode-completed.png). The visible desktop browser selected
+NVIDIA → Container → one GPU and submitted the custom image with blank command
+and argument fields. Actual job manifest inspection confirmed the image startup
+was preserved and no Python script was injected. Real CUDA backpropagation,
+convergence, saved weights/metrics and checkpoint reload passed. The image was
+preloaded locally, so this does not claim a registry push/pull test.
+
+The walkthrough found and fixed an image-field editing bug: clearing an override
+now leaves the field blank while the member types a replacement. A regression
+test covers clearing, intermediate typing and preserving image startup defaults.

@@ -67,7 +67,7 @@ export function JobSubmissionForm({
   const [compute, setCompute] = useState<Compute>('cpu')
   const [devices, setDevices] = useState(1)
   const [mode, setMode] = useState<Mode>('script')
-  const [imageOverride, setImageOverride] = useState('')
+  const [imageOverride, setImageOverride] = useState<string | null>(null)
   const [command, setCommand] = useState('')
   const [args, setArgs] = useState('')
   const [workingDirectory, setWorkingDirectory] = useState('')
@@ -86,7 +86,7 @@ export function JobSubmissionForm({
   const image =
     (mode === 'training-smoke'
       ? profile?.default_image
-      : imageOverride || profile?.default_image) || ''
+      : imageOverride ?? profile?.default_image) || ''
   const images =
     catalog?.images.filter((option) => option.accelerators.includes(compute)) ??
     []
@@ -232,7 +232,7 @@ export function JobSubmissionForm({
                     onChange={() => {
                       setCompute(value)
                       setDevices(1)
-                      setImageOverride('')
+                      setImageOverride(null)
                       setError('')
                       if (value === 'cpu' && mode === 'training-smoke')
                         setMode('script')

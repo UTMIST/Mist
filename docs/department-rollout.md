@@ -241,6 +241,24 @@ and team-managed private registry credentials are excluded from this release.
 Normal public image tags, default entrypoints, explicit commands/arguments,
 environment variables, scripts and working directories are supported.
 
+### Container mode in the portal
+
+1. Select your team, then **Jobs → New job**.
+2. Choose **NVIDIA** and the GPU count, then **Container**.
+3. Enter a tagged image containing your code and dependencies.
+4. Leave **Command executable** and **Arguments** blank to use the image's
+   `ENTRYPOINT`/`CMD`. Enter them only to override the image startup.
+5. Submit, expand the history row, and open **Logs** or **Files**. Save files
+   under `/outputs` to retain/download them after the job finishes.
+
+A regular-member UI demonstration submitted a custom image containing
+`/app/train.py` and `CMD ["python", "/app/train.py"]`. No script or command override
+was injected. Its two-layer PyTorch network trained for 200 steps on one RTX A4000
+using `cuda:0`, reduced loss from 14.088 to 0.004936, saved weights/metrics and
+verified checkpoint reload. [Container mode evidence](../deploy/k3s/evidence/department-2026-10-09/container-mode-result.json).
+The demonstration image was preloaded on the main node; it was not pushed to a
+public registry. Normal team workflows build/push to an allowed registry.
+
 The default NVIDIA image contains CUDA-compatible PyTorch. Tenstorrent can use
 the tested installed runtime with the default pinned image, or **Runtime included
 in my image** for a compatible custom container. Custom containers receive DRA

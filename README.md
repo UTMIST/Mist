@@ -23,7 +23,8 @@ Use **http://100.73.139.66:8088** privately through Tailscale.
 See [the current department operating guide](docs/department-rollout.md),
 [private deployment operations](deploy/private/README.md),
 [completed execution plan and evidence](docs/department-rollout-execution.md), and
-[portal design](docs/design-system.md). The earlier foundation guides record
+[portal design](docs/design-system.md), and
+[release testing](docs/testing.md). The earlier foundation guides record
 historical phases.
 
 Credits, Jupyter, chaining, browser image archives/builds and arbitrary distributed

@@ -1,0 +1,22 @@
+{
+  "job_id": "mist-a939ac7bc458ac8fc6d6dbd6",
+  "name": "My packaged CUDA container",
+  "image": "docker.io/utmist/mist-cuda-student:demo-20261009",
+  "mode": "Container",
+  "submitted_through_ui": true,
+  "regular_member": true,
+  "status": "Success",
+  "node": "utmist-z1opa08",
+  "image_command_overridden": false,
+  "script_injected": false,
+  "gpu": "NVIDIA RTX A4000",
+  "device": "cuda:0",
+  "allocated_gpus": 1,
+  "cuda_version": "12.4",
+  "initial_loss": 14.088242530822754,
+  "final_loss": 0.004935909993946552,
+  "steps": 200,
+  "checkpoint_reload_passed": true,
+  "startup": "image CMD",
+  "script_path": "/app/train.py"
+}

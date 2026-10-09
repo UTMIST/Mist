@@ -261,3 +261,24 @@ test('paginates history and searches across all pages', async () => {
       .hasAttribute('disabled'),
   ).toBe(true)
 })
+
+test('keeps a cleared image blank while editing and uses the image startup defaults', async () => {
+  render(<JobsPage />)
+  fireEvent.click(screen.getByRole('button', { name: 'New job' }))
+  await screen.findByDisplayValue('cpu-runtime')
+  fireEvent.click(screen.getByRole('radio', { name: 'Container' }))
+  const image = screen.getByLabelText<HTMLInputElement>('Container image')
+  fireEvent.change(image, { target: { value: '' } })
+  expect(image.value).toBe('')
+  expect(screen.getByRole('button', { name: 'Submit job' }).hasAttribute('disabled')).toBe(true)
+  fireEvent.change(image, { target: { value: 'cpu' } })
+  expect(image.value).toBe('cpu')
+  fireEvent.change(image, { target: { value: 'cpu-runtime' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Submit job' }))
+  await waitFor(() => expect(jobsAPI.submit).toHaveBeenCalled())
+  const submission = vi.mocked(jobsAPI.submit).mock.calls[0][0]
+  expect(submission.image).toBe('cpu-runtime')
+  expect(submission.command).toBeUndefined()
+  expect(submission.args).toBeUndefined()
+  expect(submission.script).toBeUndefined()
+})
