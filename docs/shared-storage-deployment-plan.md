@@ -120,7 +120,7 @@ explicitly excluded these additions from that rollout:
 
 The remaining proposed priorities are team membership/permissions and workload
 isolation, team resource quotas, fair queuing, representative research workload
-and capacity tests, and a documented container-image submission/approval process.
+and capacity tests, and a documented self-service container-image workflow.
 These are proposed follow-up work, not completed foundation features.
 
 The current access model remains private HTTP over the existing Tailscale
@@ -213,3 +213,34 @@ research work.
 The foundation already supports login, basic member administration and ordinary
 administrator jobs. The team workspace and additional team administration
 controls described here remain follow-up work.
+
+### Rollout review: implementation details still to define
+
+The main workflow is covered by the proposed rollout scope. These details belong
+within that work; they are not completed features or authorization to implement
+every proposed default:
+
+- File permissions: distinguish team-wide read access from write/delete access.
+  Proposed default is members managing their own folders, with explicitly
+  assigned write permissions for the common folder and cross-team grants.
+- Membership and grant revocation: deny subsequent access immediately and define
+  how to handle queued/running jobs that already hold access. Revoking a browser
+  permission does not remove a file mount from an existing running job.
+- Storage quota enforcement: count datasets and generated results, including
+  writes from running containers. Upload-only checks do not enforce a team cap.
+- Failure handling: expose useful reasons for image pull failure, full storage,
+  unavailable devices and offline nodes; define cancellation, runtime limits and
+  retry behavior so jobs release resources and do not silently duplicate work.
+- Rollout capacity and migration: verify representative dataset/model sizes and
+  GPU/TT runtime compatibility, and preserve existing account-owned files/jobs
+  when introducing team ownership. Current pilot limits are 2GiB per upload and
+  100GiB total new shared storage.
+- Private container registries: decide whether launch supports private images;
+  if supported, credentials must be team-scoped and unavailable to other teams
+  and their workloads. Public image references do not need registry credentials.
+
+Account administration should also define an administrator-assisted password
+reset path; self-service email recovery and external email provisioning are not
+implied. Automatic backups, HTTPS, monitoring and cleanup remain excluded as
+requested. Multi-machine distributed training is outside the existing foundation
+and should not be represented as tested by the two separate accelerator smokes.
