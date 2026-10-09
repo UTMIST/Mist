@@ -127,3 +127,23 @@ The current access model remains private HTTP over the existing Tailscale
 network. Existing manual operating procedures are documented in the foundation
 guide. Credits, special job priorities, Jupyter, chaining, and browser image
 upload/build services remain outside the immediate rollout scope.
+
+### Team self-service clarification
+
+The user clarified that administrators assign each team's conditions and limits;
+teams normally do not request administrator permission for individual actions.
+The intended rollout model is:
+
+- Administrators configure membership, permissions and team resource policies.
+- Team members upload datasets, submit compatible container images/references,
+  run jobs and retrieve results independently within their assigned policies.
+- The platform validates those policies and admits/queues requests automatically;
+  ordinary submissions do not require a human approval step.
+- Replace the proposed per-image administrator approval process with a documented
+  self-service image policy. Define allowed image sources and runtime compatibility
+  as platform/team rules rather than approving each new image manually.
+
+Current foundation behavior remains distinct: individual owned jobs are already
+self-service, but image eligibility uses a global exact-reference allowlist and
+Tenstorrent uses the fixed tested runtime profile. Team policies and self-service
+custom image eligibility are follow-up implementation work.
