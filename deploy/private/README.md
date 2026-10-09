@@ -2,6 +2,8 @@
 
 Current user/admin and architecture guide: [department rollout](../../docs/department-rollout.md).
 Execution/evidence: [rollout checklist](../../docs/department-rollout-execution.md).
+Setup: [k3s](../../docs/k3s-setup.md), [Tailscale/SSH](../../docs/tailscale-ssh.md),
+[storage](../../docs/storage.md), and [developer setup](../../docs/development.md).
 
 ## Services and persistent state
 
@@ -21,6 +23,14 @@ run in `mist-team-<id>` namespaces. Historical `mist` workloads/PVCs remain.
 Never scale the current API above one replica: admission requires one controller.
 
 ## Build and redeploy on main
+
+Run from a checkout of the reviewed current main on the NVIDIA host. Required:
+Go 1.25.1, Node 22.16+, working Docker access, the private kubeconfig, existing
+auth Secrets, GPU/TT operators and mounted QuietBox storage. The script is for
+this existing installation; it is not a fresh-cluster/bootstrap installer.
+Checking out/merging Git does not restart or deploy services automatically.
+The API is Kubernetes-only; Redis and the retired Docker supervisor are unnecessary.
+
 
 ```bash
 bash deploy/private/build-and-deploy.sh
@@ -54,7 +64,9 @@ rollback can repoint `/srv/mist-web/current` atomically to a previous complete
 release. Keep its API contract compatible. For a backend regression, rebuild a
 known department version with the same manifests/Secrets/state. The earlier
 account-only API does not enforce team policies and is not a safe ordinary
-rollback for research users.
+rollback for research users. The pre-cleanup department release `3431ffd` contains
+the verified team architecture; rebuild a compatible department version rather
+than restoring the archived pre-platform main for normal users.
 
 ## QuietBox host setup
 
@@ -122,6 +134,28 @@ device. LAN rules and cloud Tailscale ACL/sharing settings are unchanged.
 `verify-portal-firewall.sh` checks the actual installed chains using an isolated
 synthetic untrusted source and removes its temporary namespace/rules afterward.
 It requires root in the main host network namespace.
+
+## Services to restart and inspect
+
+Use a root-capable administrator session for service mutations. Logs are available
+through `journalctl -u <service>` on the owning host and `kubectl logs` for pods.
+Ordinary application redeployment should use the build script; restart k3s/NFS
+only when resolving their own infrastructure problem because workloads depend on them.
+
+| Component | Owner | Status command |
+|---|---|---|
+| Portal | Main | `systemctl status nginx --no-pager` |
+| API/controller | Cluster | `k3s kubectl -n mist-system rollout status deployment/mist-api` |
+| Auth | Cluster | `k3s kubectl -n mist-system rollout status deployment/mist-auth` |
+| Control plane | Main | `systemctl status k3s --no-pager` |
+| Worker | QuietBox | `systemctl status k3s-agent --no-pager` |
+| Shared storage | QuietBox | `systemctl status nfs-server mist-team-storage --no-pager` |
+| Private network | Both | `systemctl status tailscaled --no-pager` |
+| Portal restrictions | Both | `systemctl status mist-portal-firewall --no-pager` |
+
+The `mist-api-forward` and `mist-web` user services are local development helpers,
+not requirements for the production portal. The default-namespace test Nginx and
+k3s's Traefik also do not serve the current portal; it uses host Nginx on 8088.
 
 ## Check after startup
 

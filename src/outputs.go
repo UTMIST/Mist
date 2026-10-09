@@ -7,7 +7,8 @@ import (
 
 // prepareOutputs creates the job's PVC subdirectory before kubelet mounts it
 // into the workload. Both supported root and nonroot images can write results.
-// This is a trusted local pilot; filesystem permissions are not tenant auth.
+// Retained node-local jobs use this initializer. Team jobs prepare their scoped
+// NFS output directory through the API and do not mount the parent checkpoint PVC.
 func prepareOutputs(id string) corev1.Container {
 	return corev1.Container{
 		Name: "prepare-outputs", Image: "busybox:1.36", ImagePullPolicy: corev1.PullIfNotPresent,

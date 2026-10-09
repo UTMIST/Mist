@@ -1,9 +1,9 @@
 # Mist department rollout
 
-Implemented October 9, 2026 on `feat/local-job-foundation`. This guide supersedes
-the account-only workspace instructions in [complete foundation](complete-foundation.md).
-The older `main` preview and original accounts, jobs, datasets and checkpoint PVCs
-are preserved.
+Merged into **main** through [PR #110](https://github.com/UTMIST/Mist/pull/110) on
+October 9, 2026. This is the current operating guide. Original accounts, jobs,
+datasets and checkpoint PVCs are preserved; earlier instructions are in the
+[historical archive](archive/README.md).
 
 ## Use the portal
 
@@ -297,7 +297,7 @@ this service. The portal remains private HTTP; no Serve, Funnel or public hostin
 export MIST_API_URL=http://100.73.139.66:8088/api
 bin/mist-cli auth login --email your-mist-email
 bin/mist-cli team list
-bin/mist-cli team use team-db3933031a6c2437
+bin/mist-cli team use TEAM_ID_FROM_LIST
 bin/mist-cli job submit train.py --compute NVIDIA --devices 1
 bin/mist-cli job list --all
 bin/mist-cli auth logout
@@ -358,8 +358,8 @@ The image must contain `/app/train.py`; inputs mount at `/inputs`, outputs at
 `/outputs`. Submit scripts with `script` and `script_name` instead. NVIDIA/TT
 requests also specify `device_count`; TT counts **boards**, not chips. The request
 and response types are in `web-interface/src/api.ts`, and authority lives in Go,
-not browser validation. The server returns 201 for new teams/datasets, 200 for
-submitted jobs, and JSON errors for rejected requests.
+not browser validation. The server returns 201 for newly created teams, datasets and jobs, and JSON
+errors for rejected requests.
 
 ## Deploy and hand off
 

@@ -1,0 +1,56 @@
+{
+  "recorded_at": "2026-10-09T08:41:50.836023+00:00",
+  "base_main_commit": "3431ffdb713fac72881fc7f61f2750a82fe3f916",
+  "source_branch": "chore/main-cleanup-20261009",
+  "go": {
+    "race_detector": true,
+    "api_tests_passed": 29,
+    "cli_tests_passed": 6,
+    "skipped_tests": 0,
+    "vet": "passed",
+    "api_cli_static_builds": "passed",
+    "retired_executor_fail_fast": "passed",
+    "deadcode_tool": "golang.org/x/tools/cmd/deadcode v0.38.0, with tests",
+    "unreachable_functions_after_cleanup": 0
+  },
+  "frontend": {
+    "react_tests_passed": 10,
+    "typescript": "passed",
+    "lint": "passed",
+    "production_build": "passed",
+    "npm_audit_vulnerabilities": 0
+  },
+  "migration": {
+    "tests_passed": 6,
+    "skipped_tests": 0,
+    "environment": "disposable root container; read-only source, isolated tiny temporary files; no live storage"
+  },
+  "candidate_api_smoke": {
+    "checks": {
+      "compiled_api_startup_real_kubernetes_health": true,
+      "real_auth_gateway_session": true,
+      "anonymous_jobs_denied": true,
+      "sigterm_graceful_shutdown": true
+    },
+    "temporary_listener": "localhost only, removed after test",
+    "team_controller_enabled": false,
+    "cluster_or_account_mutations": false,
+    "production_redeployed": false
+  },
+  "infrastructure_audit": {
+    "nodes_ready": 2,
+    "api_auth_available": true,
+    "operators_ready": true,
+    "ssh_quietbox_connection": "passed",
+    "tailscale_ssh_handler_enabled": false,
+    "live_host_service_enablement_checked": true
+  },
+  "production_redeployed": false,
+  "large_storage_tests_run": false,
+  "fresh_training_or_browser_runs_claimed": false,
+  "notes": [
+    "Prior live training/browser/isolation evidence is for the pre-cleanup department release",
+    "Main still requires independent pull-request review",
+    "Legacy source removal preserves existing Kubernetes jobs/PVCs and host files"
+  ]
+}

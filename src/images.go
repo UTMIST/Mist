@@ -27,7 +27,8 @@ type ImageCatalog struct {
 }
 
 // Accelerator lists describe server policy, not a guarantee that an image's
-// code supports that hardware. The TT pilot requires its host runtime profile.
+// code supports that hardware. Team TT jobs can select a compatible container
+// runtime or the tested read-only host runtime profile.
 func (e *KubernetesExecutor) imageCatalog() ImageCatalog {
 	catalog := ImageCatalog{Images: []ImageOption{}, Profiles: []ComputeProfile{
 		{Accelerator: "cpu", DefaultImage: cpuImage, DeviceUnit: "none", MaxDevices: 0},

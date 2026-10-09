@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -231,15 +230,6 @@ func (s *TeamService) ensureVolume(ctx context.Context, sourceTeam, namespace, c
 		return err
 	}
 }
-func teamHTTPError(w http.ResponseWriter, err error) {
-	var denied *permissionError
-	if errors.As(err, &denied) {
-		writeJSON(w, 403, map[string]string{"error": err.Error()})
-		return
-	}
-	executorError(w, err)
-}
-
 func quantity(value string) *resource.Quantity {
 	if value == "" {
 		value = "0"

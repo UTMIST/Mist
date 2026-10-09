@@ -1,6 +1,10 @@
 # Department verification — October 9, 2026
 
-Evidence from the actual two-node private pilot. Reports contain synthetic
+Evidence from the actual two-node private pilot before repository cleanup.
+The original Go/Docker/logger counts below belong to that earlier release;
+[current cleanup verification](../../../../docs/repository-cleanup.md) records
+the maintained suites after their obsolete implementations were removed.
+Reports contain synthetic
 verification data and job/device IDs; no passwords, cookies or auth secrets.
 Scripts are in `deploy/k3s/verify_department*`. They require existing authorized
 local credentials and recorded machine addresses; inspect them before rerunning.

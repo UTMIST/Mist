@@ -1,71 +1,54 @@
-# Mist job lifecycle
+# Job lifecycle and API
 
-## Kubernetes executor (default)
+Current authenticated team execution. See [the operating guide](../docs/department-rollout.md#developer-api-contract)
+for the complete API and [architecture](../docs/architecture.md) for source layout.
 
-1. The API validates the image, script or command, accelerator count, CPU,
-   memory, and deadline. It accepts Python/shell scripts up to 32 KiB or an
-   explicit command/argument arrays, or an explicitly selected image's default
-   entrypoint. Custom CPU/NVIDIA containers preserve image WORKDIR by default;
-   `working_directory` provides an absolute override. An image allowlist is enforced.
-2. Submission creates a unique `mist-...` Kubernetes Job in `mist`. The Job
-   stores its submission and authenticated member owner in metadata. Scripts use
-   a ConfigMap owned by the Job. Retries are disabled; the deadline is enforced
-   by Kubernetes. Workload pods receive no service account token.
-3. Kubernetes places CPU/NVIDIA jobs on the NVIDIA server and Tenstorrent
-   jobs on QuietBox. NVIDIA requests reserve whole GPUs. Tenstorrent requests
-   reference a board-count ResourceClaimTemplate; each pod gets a separate
-   claim and CDI injects only its allocated board devices. One board contains
-   two chips. Insufficient resources leave the job `Scheduled`.
-4. Mist reads actual Job/Pod state and logs. States are `Scheduled`,
-   `InProgress`, `Success`, `Failure`, and `Cancelled`. Exit status comes from
-   the workload container; a nonzero exit is never reported as success.
-5. Cancellation suspends the Job, stops its pods, and releases reservations.
-   Cancellation time and the last 32 KiB of logs are kept in Job annotations.
-   Repeated cancellation is safe. Finished jobs cannot be cancelled.
-6. The API creates a job directory on shared NFS storage before submission. The
-   workload mounts only its own directory at `/outputs` and
-   `/checkpoints/<job-id>`. A selected owned ready dataset is mounted read-only
-   at `/inputs`. Managed environment variables identify these locations.
-   Legacy jobs retain original local PVCs; copied results remain downloadable.
+## Lifecycle
 
+1. Authenticate the Better Auth session and select an active team. Validate image
+   registry, workload, device count, CPU/memory/runtime and writing authority.
+2. Create a suspended `mist-...` Job in `mist-team-<team-id>` and persist its
+   submission/creator metadata. Scripts use a Job-owned ConfigMap.
+3. A single durable controller applies fair team admission and resource limits.
+   Kubernetes then schedules the pod using whole GPU resources or TT DRA claims.
+4. Read actual Job/pod status, placement, logs and exit code. API states remain
+   `Scheduled`, `InProgress`, `Success`, `Failure` and `Cancelled`. Scheduled
+   includes queued/admitted/pending work; inspect the message/queue metadata.
+5. Cancellation/revocation suspends the Job and removes pods, freeing allocated
+   devices. It preserves outputs/history; explicit cancellation saves recent logs.
+6. Dataset mounts are read-only `/inputs`. Outputs are the job's own model-pool
+   directory at `/outputs` and `/checkpoints/<job-id>`. Finished outputs remain.
 
-There is no Job TTL. Retained Jobs preserve history across API restarts;
-normal logs depend on retained pods and kubelet log retention. Removing Jobs,
-pods, or PVCs can remove history, logs, or checkpoints. External metadata/log
-archival remains future work; shared datasets/results are implemented.
+A team's timeout starts after admission, not while waiting in the Mist queue.
+The controller is single-replica. Jobs have no automatic retry or TTL. Retained
+pods/kubelet retention determine normal log availability; cancellation keeps the
+last 32 KiB. Workloads receive no service-account token or arbitrary host mounts.
 
-## API
+Historical account jobs and original local PVCs remain available through the
+explicit legacy workspace. New deployed submissions/uploads require a team.
+The former Redis/Docker executor and fake supervisor endpoints are retired.
 
-| Endpoint | Action |
-| --- | --- |
-| `POST /jobs` | Submit a validated job; returns `job_id` and initial job state |
-| `GET /jobs` | List this member's managed jobs |
-| `GET /jobs/<id>` | Actual status, placement, resources, exit code and active TT allocation |
-| `GET /jobs/<id>/logs` | JSON containing recent stdout/stderr, up to 64 KiB |
-| `POST /jobs/<id>/cancel` | Cancel a running or waiting job |
-| `DELETE /jobs/<id>` | Alias for cancellation, preserving history |
-| `GET /jobs/status?id=<id>` | Compatibility status endpoint |
-| `GET /healthz` | Verify access to the Kubernetes Jobs API |
-| `GET /hardware` | Live node readiness and whole-device allocations/availability |
-| `GET /images` | Server-approved references and compute profiles |
+## Job endpoints
 
-When `MIST_AUTH_URL` is configured, Better Auth sessions identify each member.
-Go authorizes every data request and rejects anonymous/other-owner access.
-`MIST_PILOT_OWNER` remains for explicitly local development and legacy owner
-migration. Namespaced workload RBAC and the read-only inventory ClusterRole
-limit the API's cluster permissions. Credits, team quotas, priority admission
-and distributed training are subsequent work. See
-[the complete guide](../docs/complete-foundation.md) for login and storage routes.
+Browser/CLI calls use the portal prefix `/api`; Nginx strips it before Go.
+Team work sends `X-Mist-Team` with a real team ID. Go derives identity and authority
+from the session, not request ownership fields.
 
-Full request fields, response semantics, image ENTRYPOINT/CMD behavior,
-resource limits, private registry setup, and output access are documented in
-[the local foundation guide](../docs/local-job-foundation.md#api-contracts).
-Active TT allocation details may disappear once the DRA claim is released;
-saved training allocation files remain on the corresponding PVC.
+| Method/path after `/api` | Action |
+|---|---|
+| `POST /jobs` | Submit; **201** with `job_id` and job metadata |
+| `GET /jobs` | List permitted team jobs, or selected legacy account history |
+| `GET /jobs/{id}` | Actual state, placement, resources, exit and active TT allocation |
+| `GET /jobs/{id}/logs` | Recent stdout/stderr JSON, up to 64 KiB |
+| `POST /jobs/{id}/cancel` | Authorized cancellation |
+| `DELETE /jobs/{id}` | Cancellation alias, preserves history |
+| `GET /jobs/{id}/files` | Output listing; `/files/download?path=...` downloads |
+| `GET /jobs/status?id=...` | Compatibility status route using the same scoped executor |
+| `GET /hardware`, `/images` | Capacity and image/runtime policy profiles |
+| `GET /healthz` | Kubernetes Jobs API availability |
 
-## Legacy Docker/Redis executor
-
-`MIST_EXECUTOR=docker` selects the older Scheduler/Supervisor implementation.
-It stores jobs as Redis hashes and consumes Redis streams. Its execution
-logic is incomplete and does not use the Kubernetes allocation described
-above. Do not use its placeholder success results as proof of training.
+Scripts are limited to 32 KiB; request JSON is bounded and rejects unknown fields
+or multiple objects. An explicit image with no command/arguments preserves its
+ENTRYPOINT/CMD. CPU/NVIDIA preserve image WORKDIR without an override. TT requires
+compatible libraries and an explicit host/container runtime choice when applicable.
+Custom tagged images are self-service within allowed registry rules.
