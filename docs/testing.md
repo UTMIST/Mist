@@ -1,67 +1,82 @@
 # Testing
 
-## Current Kubernetes department path
-
-Use the Go and Node runtimes recorded in `deploy/private/build-and-deploy.sh`.
+Use the pinned Go/Node runtimes in [developer setup](development.md). The root
+workspace joins the API and CLI. From the repository root:
 
 ```bash
-go -C src test ./... -run 'Test(Department|Kubernetes|Shared|Dataset|Auth|Member|Image|Hardware|Result)' -count=1
-go -C cli test ./...
+go test ./src/... ./cli/... -count=1
+go test -race ./src/... ./cli/... -count=1
+go vet ./src/... ./cli/...
+npm --prefix web-interface ci
 npm --prefix web-interface test
 npx --prefix web-interface tsc --noEmit -p web-interface/tsconfig.json
+npm --prefix web-interface run lint
+npm --prefix web-interface run build
+python3 scripts/check-docs.py
 ```
 
-The Go suite uses fake Kubernetes clients for permissions, scoped storage, queued
-admission/restarts and pending TT allocation accounting. React tests cover job
-submission/logs/cancellation/pagination and search/keyboard/focus behavior.
+## Automated scope
 
-The real pilot checks are in `deploy/k3s/verify_department.mjs`,
-`verify_department_browser.mjs`, `verify_department_runtime.py`,
-`verify_department_remote_cli.py`, `verify_department_admission.py`, and
-`verify_large_dataset.py`, and `verify_split_storage.py`. They use protected
-local credentials and synthetic fixtures. API restart, deactivation, quota exhaustion and firewall checks should
-run in an idle maintenance window. They preserve historical user data; the large
-file verifier removes only its own uploaded probe after its Job exits.
+Go tests use fake Kubernetes clients and small temporary filesystem fixtures for
+job state/cancellation/validation, hardware allocation, authentication/isolation,
+team grants/quotas/admission/restarts, scoped storage and uploads/ZIP checks.
+Application tests cover unavailable-cluster startup and the scoped compatibility
+status endpoint. CLI tests exercise real request/response behavior through test
+servers. React tests cover submission, image defaults/editing, pagination,
+logs/cancellation and accessible shared controls. Migration tests use tiny files. They require root to verify ownership; a normal
+user run reports skips. Run them as root in an isolated environment, for example:
 
-The browser verifier reuses its fixtures by default. Optional
-`MIST_VERIFY_NEW_MEMBER=1 MIST_VERIFY_NEW_TEAM=1` exercises fresh creation dialogs,
-deactivating/renaming its old fixtures and retaining their files/history. Each new
-team fixture uses 1 GiB datasets + 1 GiB models; disabling retains both allocations.
+```bash
+sudo python3 -m unittest discover -s deploy/k3s/storage -p test_migration.py -v
+```
 
-[Recorded evidence](../deploy/k3s/evidence/department-2026-10-09/README.md) covers
-actual accelerator training, isolation, hard capacity, grants/revocation, CLI
-submission from TT to NVIDIA, the larger dataset and browser workflows.
+The tests replace the store root with a temporary directory and do not access
+live storage. Docker can provide an isolated root environment when sudo is
+unavailable.
 
-## Legacy Redis/Docker integration fixtures
+Current automated suites do not require Redis or Docker. The old supervisor,
+Docker manager/logger tests and fake CLI-config tests were removed with their
+retired implementations. This is not a test skip: those products are no longer
+part of the application. The earlier full legacy suite results remain as dated
+[pre-cleanup evidence](../deploy/k3s/evidence/department-2026-10-09/release-validation.json).
 
-The full historical Go integration suite needs the original Docker/Redis
-fixtures. The release check compiles the test binaries, runs them against a
-separate Redis container with no published ports, and mounts the host Docker
-socket for the existing CPU container fixtures. It never flushes the preview or
-production Redis data. See the [release validation record](../deploy/k3s/evidence/department-2026-10-09/release-validation.json)
-for the full results.
-The current Kubernetes execution path does not use Redis.
+## Real installation checks
 
-### Setup
+| Verifier | Purpose |
+|---|---|
+| `deploy/k3s/verify_department.mjs` | API, auth, teams, grants, queue/revocation, storage and training |
+| `deploy/k3s/verify_department_browser.mjs` | Real admin/member UI, custom image flow, pagination and responsive layout |
+| `deploy/k3s/verify_department_runtime.py` | Concurrent TT allocations, failure and execution deadline |
+| `deploy/k3s/verify_department_remote_cli.py` | SSH to TT, submit through CLI, execute on NVIDIA |
+| `deploy/k3s/verify_department_admission.py` | Admission denials for unsafe workload specifications |
+| `deploy/k3s/verify_split_storage.py` | Separate dataset/model pools, migration preservation and small-file training |
+| `deploy/k3s/verify_large_dataset.py` | Earlier large-upload fixture; not part of ordinary checks |
+| `deploy/private/verify-portal-firewall.sh` | Installed host chains with a synthetic untrusted source |
 
-For testing, docker engine and docker-compose should be installed - see [here](https://docs.docker.com/engine/install/).
-Additionally, golang should be [installed](https://go.dev/doc/install).
+These require existing protected credentials, node addresses and operators.
+Inspect the script before rerunning: API restart, revocation/deactivation, quota
+exhaustion and firewall tests belong in an idle maintenance window. Verification
+fixtures preserve history/files; new browser teams reserve 1 GiB per pool even
+after being disabled. Do not repeatedly create fixtures without accounting for
+reserved storage.
 
-### Running the historical tests
+The retained `verify_tenstorrent_allocation.py` is an administrator infrastructure
+diagnostic; it bypasses the portal's team admission. Pre-team browser/API
+verifiers have been retired because they no longer reflect current auth/storage.
 
-Start containers by running `docker-compose up` in the main directory (docker must be installed).
+## Evidence and limits
 
-Run tests on the main application by running `go test` in the `src` directory. Note that `TestIntegration` will fail without the containers in [`docker-compose.yml`](../docker-compose.yml) up and running.
+The [October 9 evidence](../deploy/k3s/evidence/department-2026-10-09/README.md)
+records real CUDA/TT training, separate board/GPU reservations, input/output
+mounts, checkpoint reload/download, grants/revocation, queue restart and browser
+flows. The regular-member Container demonstration preserved its own image CMD;
+that image was locally preloaded, not registry-pushed.
 
-## Scope of release verification
+The [cleanup record](repository-cleanup.md) separates new source checks from
+previous live-release evidence. A running service is not silently redeployed by
+checking out a branch or editing documentation.
 
-Full backend, Docker module, CLI and logger tests are checked before publication,
-along with React tests, TypeScript, frontend lint/build, migration tests and the
-real browser flow. Real CUDA and Tenstorrent training checks cover allocated
-accelerators, input/model mounts and checkpoint downloads. The visible regular
-member Container demonstration verifies a packaged image's own startup command.
-
-Large uploads/exhaustion are not repeated at the user's request. The follow-up
-uses a 260,729-byte dataset. This does not claim 200/500 GiB transfer stress,
-every possible edge case, arbitrary research model compatibility, HA, physical
-disk-failure recovery, or the features explicitly excluded from the rollout.
+Large uploads and exhaustion are not repeated at the user's request. The
+separate-pool follow-up used a 260,729-byte dataset. No 200/500 GiB transfer stress,
+every possible edge case, arbitrary research model, HA or disk-failure recovery
+is claimed. Excluded features remain outside the release.

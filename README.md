@@ -1,115 +1,62 @@
 # Mist
 
-UTMIST's compute platform. The Kubernetes pilot runs submitted CPU, NVIDIA,
-and Tenstorrent workloads as real Jobs. The Jobs page and CLI use the same
-API for submission, status, logs, and cancellation. The local foundation adds
-live hardware inventory, self-service container images, team workspaces,
-scoped shared storage and a durable fair job queue.
+UTMIST's research compute platform. Submit Python scripts or tagged container
+images, choose CPU, NVIDIA GPUs or Tenstorrent boards, upload datasets, and
+collect persistent results through the same website or CLI.
 
-## Current pilot
+**Private website:** http://100.73.139.66:8088, accessible through authorized
+Tailscale connectivity. A Mist account and team membership are also required.
 
-- `utmist-z1opa08`: k3s server, CPU workloads, two NVIDIA RTX A4000 GPUs.
-- `utmist-tt`: QuietBox worker, four n300 boards with two Wormhole chips each.
-- Request one or two NVIDIA GPUs, or one to four Tenstorrent boards. Other
-  jobs can use the remaining devices; requests wait when capacity is occupied.
-- Website: http://100.73.139.66:8088. API on that origin: `/api`; auth: `/auth`.
+## Current installation
 
-The department rollout includes admin/member login, team common/member folders,
-explicit cross-team read/use grants, enforced storage/resource limits, durable
-fair admission and revocation. The portal uses interactive compute choices,
-clear feature panels and searchable, paginated job rows that expand for details.
-Use **http://100.73.139.66:8088** privately through Tailscale.
+| Machine | Role | LAN address | Tailscale address |
+|---|---|---|---|
+| `utmist-z1opa08` | k3s server, API/auth, website, CPU and two RTX A4000 GPUs | `10.0.0.175` | `100.73.139.66` |
+| `utmist-tt` | k3s worker, four n300 boards/eight chips, shared storage | `10.0.0.112` | `100.95.175.37` |
 
-See [the current department operating guide](docs/department-rollout.md),
-[private deployment operations](deploy/private/README.md),
-[completed execution plan and evidence](docs/department-rollout-execution.md),
-[portal design](docs/design-system.md), and
-[release testing](docs/testing.md). The earlier foundation guides record
-historical phases.
+The cluster and NFS use the existing LAN. Tailscale provides private portal and
+administrator SSH access. Kubernetes/containerd run workload containers.
 
-Credits, Jupyter, chaining, browser image archives/builds and arbitrary distributed
-training remain outside this release. Custom TT code/images must use compatible
-TT libraries. Automatic backups, HTTPS and monitoring/cleanup products were
-explicitly excluded. Hosting remains private HTTP over Tailscale.
+## Documentation
 
-## Developer preview against this cluster
+Start with the [documentation index](docs/README.md).
 
-**Keep production authentication/team enforcement enabled for research users.**
-The standalone trusted-owner mode below is only for development.
+- [Using the portal, teams and jobs](docs/department-rollout.md)
+- [k3s setup, accelerator allocation and diagnostics](docs/k3s-setup.md)
+- [Tailscale and SSH setup](docs/tailscale-ssh.md)
+- [Architecture and code organization](docs/architecture.md)
+- [Storage and upload limits](docs/storage.md)
+- [Deployment and operations](deploy/private/README.md)
+- [Developer setup](docs/development.md), [CLI](cli/docs/setup.md), [testing](docs/testing.md)
 
-Use Go 1.25.1 and Node.js 22.16.0 or newer. Apply the workload prerequisites
-and claim templates described in the deployment guide first. Kubernetes is
-now the default executor; Redis and Docker supervisors are unnecessary for
-this path. This server has both runtimes under `~/.local/share/mist-runtimes`:
+Main contains the department release merged through
+[PR #110](https://github.com/UTMIST/Mist/pull/110). The earlier main and operating
+snapshots are preserved in the [historical archive](docs/archive/README.md).
+
+## Development and checks
+
+Use Go **1.25.1** and Node.js **22.16.0 or newer**. The Go workspace contains the
+API (`src`) and CLI (`cli`). From the repository root:
 
 ```bash
-export PATH=/home/utmist/.local/share/mist-runtimes/go-1.25.1/bin:/home/utmist/.local/share/mist-runtimes/node-22.16.0/bin:$PATH
+go test ./src/... ./cli/...
+npm --prefix web-interface ci
+npm --prefix web-interface test
+npm --prefix web-interface run lint
+npm --prefix web-interface run build
 ```
 
-```bash
-export KUBECONFIG=/home/utmist/.kube/config
-# Standalone development defaults to a trusted local owner with auth disabled.
-# For the deployed authenticated/shared API, use its existing port-forward.
-export MIST_PILOT_OWNER=local-dev
-cd src
-go run .
-```
+For a local UI against the authenticated deployed API, follow
+[developer setup](docs/development.md). For the existing installation, deploy with
+`bash deploy/private/build-and-deploy.sh`; read its [prerequisites](deploy/private/README.md)
+before running it. Fresh-host provisioning is covered separately by the k3s guide.
 
-If the deployed API's port-forward already occupies port 3000, use that API
-or stop only `mist-api-forward.service` before starting a local backend.
-Standalone `go run` uses the default base-image allowlist. Set
-`MIST_ALLOWED_IMAGES` to the deployment's approved references when developing
-with the packaged example images or other custom images.
+The current API uses Kubernetes only. The unfinished Redis/Docker supervisor,
+fake frontend account/chart and dummy CLI configuration have been retired.
+Docker remains build tooling for images; it does not schedule Mist jobs.
 
-In another terminal:
-
-```bash
-cd web-interface
-npm ci
-npm run dev -- --host 127.0.0.1 --port 3001 --strictPort
-```
-
-The Vite proxy forwards `/api` and `/auth` to the API on port 3000. The installed user
-services already run both endpoints on this machine:
-
-```bash
-systemctl --user status mist-api-forward mist-web
-```
-
-## CLI
-
-From the repository root:
-
-```bash
-go -C cli build -o ../bin/mist .
-printf "print('Hello from a real Mist job')\n" > /tmp/hello.py
-export MIST_API_URL=http://100.73.139.66:8088/api
-bin/mist auth login --email your-member-email@example.org
-bin/mist job submit /tmp/hello.py --compute CPU
-bin/mist job list --all
-bin/mist job status <job-id>
-bin/mist job logs <job-id>
-bin/mist job cancel <active-job-id>
-```
-
-Use `--compute NVIDIA --devices 1` for one GPU, or
-`--compute TT --devices 1` for one two-chip board. The submitted script must
-actually use the chosen accelerator. `--api-url` or `MIST_API_URL` selects an
-API endpoint. See [CLI setup](cli/docs/setup.md) for resource options.
-
-## Tests and legacy development
-
-```bash
-go -C src test -run 'Test(Kubernetes|Hardware|GPURequest|CustomImage|TenstorrentCustom|Shared|Member)' ./...
-go -C cli test ./...
-cd web-interface
-npm test -- --run
-npm run build
-npx tsc --noEmit
-```
-
-The older Docker/Redis executor is available with `MIST_EXECUTOR=docker`.
-Its supervisor execution is incomplete. For its existing tests, start a
-local Redis instance and run `go -C src test ./...`; Docker integration tests
-also need Docker permissions and their test image. This path is retained for
-compatibility and is separate from the validated Kubernetes executor.
+Custom accelerator images need compatible training libraries. Credits, Jupyter,
+chaining, browser image archives/builds, private pull-credential management and
+distributed multi-machine training are outside this release. Automatic backups,
+HTTPS and monitoring/cleanup products were explicitly excluded. This is a private
+HTTP installation with one control plane, one auth instance and one storage host.

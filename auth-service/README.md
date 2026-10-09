@@ -21,5 +21,6 @@ Database-backed rate limiting survives restarts. Upload/storage metadata live
 in Go/NFS, not in this auth database. Member passwords use the library's password
 implementation; Go does not hash passwords or mint authentication tokens.
 
-See [operations and recovery](../deploy/private/README.md) for online backups,
-restoration, private HTTP/HTTPS configuration and deployment.
+See [deployment operations](../deploy/private/README.md) for persistent-state
+handling and private HTTP deployment. Automatic backups/recovery and HTTPS were
+excluded from this release; the existing backup script is a manual utility.

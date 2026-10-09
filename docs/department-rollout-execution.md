@@ -162,9 +162,11 @@ deployment, limits, design and verification. The historical `main` tip
 [`archive/main-before-k3s-20261009`](https://github.com/UTMIST/Mist/tree/archive/main-before-k3s-20261009).
 The department implementation is prepared for main in
 [PR #110](https://github.com/UTMIST/Mist/pull/110), using a squash merge.
-The initial merge attempt was rejected by GitHub branch policy; main has not
-yet been updated. GitHub requires one other reviewer to approve the latest push;
-this account has maintain/push access and cannot bypass that rule. The live
+The initial merge attempt required an independent review. PR #110 was then
+merged on October 9 at 08:06:48 UTC as commit
+`3431ffdb713fac72881fc7f61f2750a82fe3f916`; main now contains the verified release.
+The account used by this agent has maintain/push access, and the repository still
+requires an independent reviewer for subsequent pull requests. The live
 private portal already runs the verified implementation. Git publication does
 not reset accounts, jobs or files, or switch the live services again.
 
