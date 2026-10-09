@@ -1,5 +1,10 @@
 # Kubernetes execution pilot
 
+
+**October 9 update:** Shared datasets/results, member login and private production
+hosting are implemented. Earlier local pilot descriptions below record the
+original phase. Use [the current operating guide](complete-foundation.md) for today's behavior.
+
 ## Implemented on 2026-10-03
 
 Mist uses Kubernetes `batch/v1` Jobs by default. The API submits actual

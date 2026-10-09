@@ -9,14 +9,26 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DatasetsRouteImport } from './routes/datasets'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as MachinesRouteImport } from './routes/machines'
 import { Route as ProfileRouteImport } from './routes/profile'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DatasetsRoute = DatasetsRouteImport.update({
+  id: '/datasets',
+  path: '/datasets',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JobsRoute = JobsRouteImport.update({
@@ -36,34 +48,50 @@ const ProfileRoute = ProfileRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/datasets': typeof DatasetsRoute
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
   '/profile': typeof ProfileRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/datasets': typeof DatasetsRoute
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
   '/profile': typeof ProfileRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/datasets': typeof DatasetsRoute
   '/jobs': typeof JobsRoute
   '/machines': typeof MachinesRoute
   '/profile': typeof ProfileRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/dashboard' | '/jobs' | '/machines' | '/profile'
+  fullPaths:
+    '/' | '/dashboard' | '/datasets' | '/jobs' | '/machines' | '/profile'
   fileRoutesByTo: FileRoutesByTo
-  to: '/dashboard' | '/jobs' | '/machines' | '/profile'
-  id: '__root__' | '/dashboard' | '/jobs' | '/machines' | '/profile'
+  to: '/' | '/dashboard' | '/datasets' | '/jobs' | '/machines' | '/profile'
+  id:
+    | '__root__'
+    | '/'
+    | '/dashboard'
+    | '/datasets'
+    | '/jobs'
+    | '/machines'
+    | '/profile'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
+  DatasetsRoute: typeof DatasetsRoute
   JobsRoute: typeof JobsRoute
   MachinesRoute: typeof MachinesRoute
   ProfileRoute: typeof ProfileRoute
@@ -71,11 +99,25 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/datasets': {
+      id: '/datasets'
+      path: '/datasets'
+      fullPath: '/datasets'
+      preLoaderRoute: typeof DatasetsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/jobs': {
@@ -103,7 +145,9 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
+  DatasetsRoute: DatasetsRoute,
   JobsRoute: JobsRoute,
   MachinesRoute: MachinesRoute,
   ProfileRoute: ProfileRoute,

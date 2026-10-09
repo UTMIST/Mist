@@ -1,5 +1,10 @@
 # Local job foundation
 
+
+**October 9 update:** Shared datasets/results, member login and private production
+hosting are implemented. Earlier local pilot descriptions below record the
+original phase. Use [the current operating guide](complete-foundation.md) for today's behavior.
+
 Implementation branch: `feat/local-job-foundation`. Recorded October 8, 2026
 (America/New_York). The preserved starting point is commit `2f9b178`.
 The [execution plan](foundation-execution-plan.md) records scope and progress.

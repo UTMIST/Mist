@@ -9,10 +9,11 @@ import {
   waitFor,
 } from '@testing-library/react'
 import { JobsPage } from './JobsPage'
-import { jobsAPI } from '../api'
+import { jobsAPI, storageAPI } from '../api'
 import type { Job } from '../api'
 
 vi.mock('../api', () => ({
+  storageAPI: { list: vi.fn(), files: vi.fn() },
   jobsAPI: {
     list: vi.fn(),
     submit: vi.fn(),
@@ -26,6 +27,10 @@ vi.mock('../api', () => ({
 let jobs: Job[]
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.mocked(storageAPI.list).mockResolvedValue({
+    datasets: [],
+    upload_limit_bytes: 2147483648,
+  })
   jobs = [
     {
       id: 'real-job',

@@ -9,7 +9,17 @@ bin/mist --help
 
 The default API URL is `http://127.0.0.1:3000`. Override it using
 `MIST_API_URL`, `--api-url`, or the configuration's `api_base_url` field.
-Start the Kubernetes API or its local port-forward first.
+The production endpoint is `http://100.73.139.66:8088/api`. Use it from a
+Tailnet device or either SSH host, then authenticate:
+
+```bash
+export MIST_API_URL=http://100.73.139.66:8088/api
+bin/mist auth login --email your-member-email@example.org
+```
+
+The password prompt does not echo. Automation can use `--password-stdin`.
+The CLI saves a real session cookie in a mode-0600 config; `--config` selects
+an alternate file. Logout with `bin/mist auth logout` revokes the session.
 
 ```bash
 bin/mist job submit /path/to/train.py --compute NVIDIA --devices 1 \
@@ -25,8 +35,9 @@ bin/mist job cancel <active-job-id>
 
 Submission sends the actual file contents to the API. `.py` and `.sh` files
 are supported, up to 32 KiB. `--image` selects an image allowed by the API;
-otherwise the API chooses a runtime for the compute type. There is no file
-upload for datasets or dependencies in this pilot.
+otherwise the API chooses a runtime for the compute type. Upload datasets through the website, then pass `--dataset dataset-ID` to attach
+one read-only at `/inputs`. Dependencies belong in an approved image.
+Result files are downloadable from the website's job Files panel.
 
 NVIDIA counts are whole GPUs (one or two); TT counts are whole n300 boards
 (one to four, two chips each). Scripts must use the corresponding runtime.
@@ -35,8 +46,8 @@ built-in accelerator training check, use the Jobs page or the API's
 `training-smoke` submission type.
 
 Status, logs, cancellation, and errors come from the real API. Cancellation
-does not ask for confirmation. The local pilot has one configured owner;
-CLI authentication commands remain placeholders and do not secure it.
+does not ask for confirmation. The deployed API authenticates each session and derives job/dataset ownership
+from the member account. Legacy fake-token authentication is removed.
 
 ```bash
 go -C cli test ./...

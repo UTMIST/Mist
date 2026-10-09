@@ -8,7 +8,7 @@
    entrypoint. Custom CPU/NVIDIA containers preserve image WORKDIR by default;
    `working_directory` provides an absolute override. An image allowlist is enforced.
 2. Submission creates a unique `mist-...` Kubernetes Job in `mist`. The Job
-   stores its submission and configured pilot owner in metadata. Scripts use
+   stores its submission and authenticated member owner in metadata. Scripts use
    a ConfigMap owned by the Job. Retries are disabled; the deadline is enforced
    by Kubernetes. Workload pods receive no service account token.
 3. Kubernetes places CPU/NVIDIA jobs on the NVIDIA server and Tenstorrent
@@ -22,24 +22,24 @@
 5. Cancellation suspends the Job, stops its pods, and releases reservations.
    Cancellation time and the last 32 KiB of logs are kept in Job annotations.
    Repeated cancellation is safe. Finished jobs cannot be cancelled.
-6. An init container creates the job's output directory. Workloads receive
-   `MIST_JOB_ID`, `MIST_OUTPUT_DIR=/outputs`, and
-   `MIST_CHECKPOINT_DIR=/checkpoints/<job-id>`. Both paths mount the same
-   job-specific PVC subdirectory. CPU, NVIDIA, and TT use separate node-local
-   PVCs. The workload sees its own directory through these mounts. Shared PVC
-   permissions and single-owner policy do not provide authenticated tenant isolation.
+6. The API creates a job directory on shared NFS storage before submission. The
+   workload mounts only its own directory at `/outputs` and
+   `/checkpoints/<job-id>`. A selected owned ready dataset is mounted read-only
+   at `/inputs`. Managed environment variables identify these locations.
+   Legacy jobs retain original local PVCs; copied results remain downloadable.
+
 
 There is no Job TTL. Retained Jobs preserve history across API restarts;
 normal logs depend on retained pods and kubelet log retention. Removing Jobs,
 pods, or PVCs can remove history, logs, or checkpoints. External metadata/log
-archival and shared dataset storage remain future work.
+archival remains future work; shared datasets/results are implemented.
 
 ## API
 
 | Endpoint | Action |
 | --- | --- |
 | `POST /jobs` | Submit a validated job; returns `job_id` and initial job state |
-| `GET /jobs` | List this pilot owner's managed jobs |
+| `GET /jobs` | List this member's managed jobs |
 | `GET /jobs/<id>` | Actual status, placement, resources, exit code and active TT allocation |
 | `GET /jobs/<id>/logs` | JSON containing recent stdout/stderr, up to 64 KiB |
 | `POST /jobs/<id>/cancel` | Cancel a running or waiting job |
@@ -49,10 +49,13 @@ archival and shared dataset storage remain future work.
 | `GET /hardware` | Live node readiness and whole-device allocations/availability |
 | `GET /images` | Server-approved references and compute profiles |
 
-The owner is configured by `MIST_PILOT_OWNER`, not authenticated per request.
-The API uses namespaced workload RBAC and a read-only inventory ClusterRole
-in the deployed pilot. It does not implement
-login, credits, team quotas, priority admission, or distributed training.
+When `MIST_AUTH_URL` is configured, Better Auth sessions identify each member.
+Go authorizes every data request and rejects anonymous/other-owner access.
+`MIST_PILOT_OWNER` remains for explicitly local development and legacy owner
+migration. Namespaced workload RBAC and the read-only inventory ClusterRole
+limit the API's cluster permissions. Credits, team quotas, priority admission
+and distributed training are subsequent work. See
+[the complete guide](../docs/complete-foundation.md) for login and storage routes.
 
 Full request fields, response semantics, image ENTRYPOINT/CMD behavior,
 resource limits, private registry setup, and output access are documented in

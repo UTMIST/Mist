@@ -49,6 +49,8 @@ type KubernetesExecutor struct {
 	allowedImages   map[string]bool
 	pullSecrets     []corev1.LocalObjectReference
 	cpuNode, ttNode string
+	storage         *SharedStorage
+	sharedPVC       string
 }
 
 func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
@@ -56,6 +58,20 @@ func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
 	a := &App{executor: executor, log: log, httpServer: &http.Server{
 		Addr: envOr("MIST_HTTP_ADDR", "127.0.0.1:3000"), Handler: mux,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}}
+	mux.HandleFunc("/session", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]interface{}{"enabled": false, "user": nil})
+	})
+	mux.HandleFunc("/datasets", a.datasets)
+	mux.HandleFunc("/datasets/", a.dataset)
+	mux.HandleFunc("GET /storage", a.storageInfo)
+	if raw := os.Getenv("MIST_AUTH_URL"); raw != "" {
+		var err error
+		a.auth, err = newAuthGateway(raw)
+		if err != nil {
+			panic(err)
+		}
+		a.httpServer.Handler = a.auth.middleware(mux)
+	}
 	mux.HandleFunc("/jobs", a.kubernetesJobs)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
 	mux.HandleFunc("/jobs/", a.kubernetesJob)
@@ -119,6 +135,13 @@ func NewKubernetesExecutor() (*KubernetesExecutor, error) {
 		}
 		e.pullSecrets = append(e.pullSecrets, corev1.LocalObjectReference{Name: name})
 	}
+	if root := os.Getenv("MIST_STORAGE_ROOT"); root != "" {
+		e.storage, err = NewSharedStorage(root)
+		if err != nil {
+			return nil, err
+		}
+		e.sharedPVC = envOr("MIST_SHARED_PVC", "mist-shared-jobs")
+	}
 	return e, nil
 }
 
@@ -148,6 +171,7 @@ type KubernetesJobStatus struct {
 	OutputDirectory     string            `json:"output_directory"`
 	WorkingDirectory    string            `json:"working_directory,omitempty"`
 	TimeoutSeconds      int64             `json:"timeout_seconds"`
+	DatasetID           string            `json:"dataset_id,omitempty"`
 }
 
 type AllocatedDevice struct {
@@ -266,7 +290,7 @@ func (e *KubernetesExecutor) normalize(req CreateJobRequest) (CreateJobRequest, 
 		if len(validation.IsEnvVarName(key)) != 0 || len(value) > 4096 || strings.ContainsRune(value, 0) {
 			return req, errors.New("invalid environment variable")
 		}
-		if key == "MIST_JOB_ID" || key == "MIST_CHECKPOINT_DIR" || key == "MIST_OUTPUT_DIR" {
+		if key == "MIST_JOB_ID" || key == "MIST_CHECKPOINT_DIR" || key == "MIST_OUTPUT_DIR" || key == "MIST_INPUT_DIR" {
 			return req, fmt.Errorf("%s is managed by Mist", key)
 		}
 		if req.Accelerator == "tenstorrent" && (strings.HasPrefix(key, "TT_METAL_") || key == "PYTHONPATH" || key == "LD_LIBRARY_PATH") {
@@ -363,6 +387,21 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 	}
 	pod.Volumes = append(pod.Volumes, corev1.Volume{Name: "checkpoints", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvc}}})
 	pod.InitContainers = []corev1.Container{prepareOutputs(id)}
+	if e.storage != nil {
+		pod.Volumes[len(pod.Volumes)-1].PersistentVolumeClaim.ClaimName = e.sharedPVC
+		subpath := "jobs/" + id + "/outputs"
+		for i := range container.VolumeMounts {
+			if container.VolumeMounts[i].Name == "checkpoints" {
+				container.VolumeMounts[i].SubPath = subpath
+			}
+		}
+		// The API creates directories before submission. Init is restricted to this job's directory.
+		pod.InitContainers = nil
+		if req.DatasetID != "" {
+			container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "checkpoints", MountPath: "/inputs", SubPath: "datasets/" + req.DatasetID + "/content", ReadOnly: true})
+			container.Env = append(container.Env, corev1.EnvVar{Name: "MIST_INPUT_DIR", Value: "/inputs"})
+		}
+	}
 	if req.Script != "" || req.Type == "training-smoke" {
 		configmap, mount := id+"-script", "/mist-script"
 		python := "python"
@@ -387,15 +426,31 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "script", MountPath: mount, ReadOnly: true})
 	}
 	pod.Containers = []corev1.Container{container}
-	return &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: id, Namespace: e.namespace, Labels: labels, Annotations: map[string]string{requestAnnotation: string(requestJSON)}},
+	annotations := map[string]string{requestAnnotation: string(requestJSON)}
+	if e.storage != nil {
+		annotations["mist.io/storage"] = "shared-v1"
+	}
+	return &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: id, Namespace: e.namespace, Labels: labels, Annotations: annotations},
 		Spec: batchv1.JobSpec{BackoffLimit: ptr(int32(0)), ActiveDeadlineSeconds: ptr(req.TimeoutSeconds),
 			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: pod}}}
 }
 
 func (e *KubernetesExecutor) submit(ctx context.Context, request CreateJobRequest) (*KubernetesJobStatus, error) {
+	if e.storage != nil {
+		e.storage.mu.Lock()
+		defer e.storage.mu.Unlock()
+	}
 	req, err := e.normalize(request)
 	if err != nil {
 		return nil, &submissionError{err}
+	}
+	if req.DatasetID != "" {
+		if e.storage == nil {
+			return nil, &submissionError{errors.New("shared datasets are not configured")}
+		}
+		if _, err := e.storage.dataset(req.DatasetID, e.owner); err != nil {
+			return nil, &submissionError{errors.New("dataset unavailable")}
+		}
 	}
 	if req.Accelerator == "tenstorrent" {
 		if _, err := e.client.ResourceV1().ResourceClaimTemplates(e.namespace).Get(ctx, fmt.Sprintf("mist-tenstorrent-%d-boards", req.DeviceCount), metav1.GetOptions{}); err != nil {
@@ -412,6 +467,17 @@ func (e *KubernetesExecutor) submit(ctx context.Context, request CreateJobReques
 		return nil, err
 	}
 	id := "mist-" + hex.EncodeToString(random)
+	if e.storage != nil {
+		if err := e.storage.prepareJob(id); err != nil {
+			return nil, err
+		}
+	}
+	jobCreated := false
+	defer func() {
+		if e.storage != nil && !jobCreated {
+			_ = os.RemoveAll(filepath.Join(e.storage.root, "jobs", id))
+		}
+	}()
 	var script *corev1.ConfigMap
 	if req.Script != "" {
 		script, err = e.client.CoreV1().ConfigMaps(e.namespace).Create(ctx, &corev1.ConfigMap{
@@ -427,6 +493,7 @@ func (e *KubernetesExecutor) submit(ctx context.Context, request CreateJobReques
 		}
 		return nil, err
 	}
+	jobCreated = true
 	if script != nil {
 		script.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job"))}
 		if _, err := e.client.CoreV1().ConfigMaps(e.namespace).Update(ctx, script, metav1.UpdateOptions{}); err != nil {
@@ -477,7 +544,7 @@ func (e *KubernetesExecutor) baseStatus(job *batchv1.Job) (*KubernetesJobStatus,
 	status := &KubernetesJobStatus{Job: Job{ID: job.Name, Type: req.Type, Created: job.CreationTimestamp.Time,
 		JobState: JobStateScheduled, Payload: map[string]interface{}{"command": req.Command, "args": req.Args}}, Name: req.Name,
 		Image: req.Image, Accelerator: req.Accelerator, DeviceCount: req.DeviceCount, CPU: req.CPU, Memory: req.Memory, Owner: e.owner, CheckpointDirectory: "/checkpoints/" + job.Name,
-		WorkingDirectory: req.WorkingDirectory, TimeoutSeconds: req.TimeoutSeconds}
+		WorkingDirectory: req.WorkingDirectory, TimeoutSeconds: req.TimeoutSeconds, DatasetID: req.DatasetID}
 	// Older pilot jobs mounted the shared checkpoint root, before /outputs existed.
 	for _, container := range job.Spec.Template.Spec.Containers {
 		if container.Name != "workload" {
@@ -783,14 +850,14 @@ func (a *App) kubernetesJobs(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]string{"error": "request must contain one JSON object"})
 			return
 		}
-		status, err := a.executor.submit(r.Context(), req)
+		status, err := a.requestExecutor(r).submit(r.Context(), req)
 		if err != nil {
 			executorError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]interface{}{"job_id": status.ID, "job": status})
 	case http.MethodGet:
-		jobs, err := a.executor.list(r.Context())
+		jobs, err := a.requestExecutor(r).list(r.Context())
 		if err != nil {
 			executorError(w, err)
 			return
@@ -803,6 +870,10 @@ func (a *App) kubernetesJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) kubernetesJob(w http.ResponseWriter, r *http.Request) {
+	if strings.Contains(r.URL.Path, "/files") {
+		a.jobFiles(w, r)
+		return
+	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/jobs/"), "/")
 	if len(parts) == 0 || parts[0] == "" || len(parts) > 2 {
 		http.NotFound(w, r)
@@ -810,7 +881,7 @@ func (a *App) kubernetesJob(w http.ResponseWriter, r *http.Request) {
 	}
 	id := parts[0]
 	if len(parts) == 2 && parts[1] == "logs" && r.Method == http.MethodGet {
-		logs, err := a.executor.logs(r.Context(), id)
+		logs, err := a.requestExecutor(r).logs(r.Context(), id)
 		if err != nil {
 			executorError(w, err)
 			return
@@ -819,7 +890,7 @@ func (a *App) kubernetesJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if (len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost) || (len(parts) == 1 && r.Method == http.MethodDelete) {
-		status, err := a.executor.cancel(r.Context(), id)
+		status, err := a.requestExecutor(r).cancel(r.Context(), id)
 		if err != nil {
 			executorError(w, err)
 			return
@@ -828,7 +899,7 @@ func (a *App) kubernetesJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) == 1 && r.Method == http.MethodGet {
-		status, err := a.executor.get(r.Context(), id)
+		status, err := a.requestExecutor(r).get(r.Context(), id)
 		if err != nil {
 			executorError(w, err)
 			return

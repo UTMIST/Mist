@@ -14,13 +14,7 @@ func (ctx *AppContext) api(method, path string, body, out interface{}) error {
 	if ctx == nil {
 		return fmt.Errorf("missing application context")
 	}
-	base := ctx.APIBaseURL
-	if base == "" && ctx.Config != nil {
-		base = ctx.Config.APIBaseURL
-	}
-	if base == "" {
-		base = "http://127.0.0.1:3000"
-	}
+	base := ctx.baseURL()
 	var data []byte
 	var err error
 	if body != nil {
@@ -34,8 +28,8 @@ func (ctx *AppContext) api(method, path string, body, out interface{}) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if ctx.Config != nil && ctx.Config.AccessToken != "" {
-		req.Header.Set("Authorization", "Bearer "+ctx.Config.AccessToken)
+	if ctx.Config != nil && ctx.Config.SessionCookie != "" {
+		req.Header.Set("Cookie", ctx.Config.SessionCookie)
 	}
 	client := ctx.HTTPClient
 	if client == nil {
@@ -60,4 +54,14 @@ func (ctx *AppContext) api(method, path string, body, out interface{}) error {
 		return json.NewDecoder(response.Body).Decode(out)
 	}
 	return nil
+}
+
+func (ctx *AppContext) baseURL() string {
+	if ctx.APIBaseURL != "" {
+		return strings.TrimRight(ctx.APIBaseURL, "/")
+	}
+	if ctx.Config != nil && ctx.Config.APIBaseURL != "" {
+		return strings.TrimRight(ctx.Config.APIBaseURL, "/")
+	}
+	return "http://127.0.0.1:3000"
 }

@@ -10,8 +10,9 @@ import (
 )
 
 type Config struct {
-	AccessToken string `json:"access_token"`
-	APIBaseURL  string `json:"api_base_url,omitempty"`
+	AccessToken   string `json:"access_token,omitempty"`
+	SessionCookie string `json:"session_cookie,omitempty"`
+	APIBaseURL    string `json:"api_base_url,omitempty"`
 	// maybe APIBaseURL, etc.
 }
 
@@ -19,6 +20,7 @@ type AppContext struct {
 	Config     *Config
 	HTTPClient *http.Client
 	APIBaseURL string
+	ConfigPath string
 }
 
 type Globals struct {
@@ -75,6 +77,7 @@ func Main() {
 	}
 
 	appCtx.APIBaseURL = cli.APIURL
+	appCtx.ConfigPath = cli.ConfigPath
 	err := kctx.Run()
 	kctx.FatalIfErrorf(err)
 }

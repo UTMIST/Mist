@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { jobsAPI } from '#/api.ts'
+import { jobsAPI, storageAPI } from '#/api.ts'
 import type { Submission } from '#/api.ts'
 import { HardwarePanel } from '#/components/HardwarePanel.tsx'
 import { JobSubmissionForm } from '#/components/jobs/JobSubmissionForm.tsx'
@@ -10,6 +10,7 @@ import { errorMessage, usePolling } from '#/hooks/usePolling.ts'
 export function JobsPage() {
   const jobs = usePolling(jobsAPI.list, 3000)
   const hardware = usePolling(jobsAPI.hardware)
+  const datasets = usePolling(storageAPI.list, 15000)
   const images = usePolling(jobsAPI.images, 15000)
   const [selectedLogs, setSelectedLogs] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<string | null>(null)
@@ -53,6 +54,8 @@ export function JobsPage() {
       <JobSubmissionForm
         catalog={images.error ? null : images.data}
         hardware={hardware.error ? null : hardware.data}
+        datasets={datasets.data?.datasets ?? []}
+        datasetError={datasets.error}
         onSubmit={submit}
       />
       {submitted && (

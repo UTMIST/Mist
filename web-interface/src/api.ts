@@ -1,3 +1,5 @@
+import type { Member } from '#/auth.tsx'
+
 export type Compute = 'cpu' | 'nvidia' | 'tenstorrent'
 
 export type Job = {
@@ -21,6 +23,7 @@ export type Job = {
 
 export type Submission = {
   name?: string
+  dataset_id?: string
   type: 'command' | 'training-smoke'
   accelerator: Compute
   device_count?: number
@@ -95,6 +98,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const jobsAPI = {
+  session: (signal?: AbortSignal) =>
+    request<{ enabled: boolean; user: Member | null }>('/session', { signal }),
   list: (signal?: AbortSignal) =>
     request<{ jobs: Job[]; count: number }>('/jobs', { signal }),
   hardware: (signal?: AbortSignal) =>
@@ -111,5 +116,67 @@ export const jobsAPI = {
   logs: (id: string, signal?: AbortSignal) =>
     request<{ logs: string }>(`/jobs/${encodeURIComponent(id)}/logs`, {
       signal,
+    }),
+}
+
+export type Dataset = {
+  id: string
+  name: string
+  filename: string
+  size: number
+  files: number
+  sha256: string
+  created: string
+  state: string
+}
+export type ResultFile = { path: string; size: number; modified: string }
+export const storageAPI = {
+  list: (signal?: AbortSignal) =>
+    request<{ datasets: Dataset[]; upload_limit_bytes: number }>('/datasets', {
+      signal,
+    }),
+  info: (signal?: AbortSignal) =>
+    request<{
+      enabled: boolean
+      capacity_bytes: number
+      available_bytes: number
+      upload_limit_bytes: number
+    }>('/storage', { signal }),
+  remove: (id: string) =>
+    request(`/datasets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  files: (id: string, signal?: AbortSignal) =>
+    request<{ files: ResultFile[] }>(`/jobs/${encodeURIComponent(id)}/files`, {
+      signal,
+    }),
+  downloadURL: (id: string, path: string) =>
+    `${base}/jobs/${encodeURIComponent(id)}/files/download?${new URLSearchParams({ path })}`,
+  upload: (
+    file: File,
+    name: string,
+    zip: boolean,
+    progress: (value: number) => void,
+  ) =>
+    new Promise<Dataset>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open(
+        'POST',
+        `${base}/datasets?${new URLSearchParams({ filename: file.name, name, ...(zip ? { format: 'zip' } : {}) })}`,
+      )
+      xhr.timeout = 30 * 60 * 1000
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) progress(Math.round((100 * e.loaded) / e.total))
+      }
+      xhr.onerror = () => reject(new Error('Upload connection failed'))
+      xhr.ontimeout = () => reject(new Error('Upload timed out'))
+      xhr.onload = () => {
+        try {
+          const body = JSON.parse(xhr.responseText)
+          if (xhr.status >= 200 && xhr.status < 300) resolve(body)
+          else reject(new Error(body.error ?? `Upload failed (${xhr.status})`))
+        } catch {
+          reject(new Error('Invalid upload response'))
+        }
+      }
+      xhr.send(file)
     }),
 }

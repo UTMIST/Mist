@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { JobFiles } from '#/components/jobs/JobFiles.tsx'
 import Card, { CardHeader, CardInfoField } from '#/components/Card.tsx'
 import { Button } from '#/components/Buttons.tsx'
 import type { Job } from '#/api.ts'
@@ -21,9 +23,17 @@ export function JobCard({
   onLogs: () => void
   onCancel: () => void
 }) {
+  const [showFiles, setShowFiles] = useState(false)
   return (
     <Card>
       <CardHeader header={job.name}>
+        <Button
+          onClick={() => setShowFiles(!showFiles)}
+          variant="normal"
+          fontSize="xs"
+        >
+          Files
+        </Button>
         <Button onClick={onLogs} variant="normal" fontSize="xs">
           Logs
         </Button>
@@ -73,6 +83,7 @@ export function JobCard({
         )}
       </div>
       {job.message && <p className="mt-3 text-sm break-words">{job.message}</p>}
+      {showFiles && <JobFiles id={job.id} />}
     </Card>
   )
 }

@@ -29,6 +29,7 @@ type App struct {
 	log            *slog.Logger
 	statusRegistry *StatusRegistry
 	executor       *KubernetesExecutor
+	auth           *AuthGateway
 }
 
 func NewApp(redisAddr, gpuType string, log *slog.Logger) *App {
@@ -214,6 +215,7 @@ func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 
 type CreateJobRequest struct {
 	Type             string                 `json:"type"`
+	DatasetID        string                 `json:"dataset_id,omitempty"`
 	Payload          map[string]interface{} `json:"payload"`
 	RequiredGPU      string                 `json:"gpu,omitempty"`
 	Name             string                 `json:"name,omitempty"`
@@ -296,7 +298,7 @@ func (a *App) getJobStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.executor != nil {
-		status, err := a.executor.get(r.Context(), jobID)
+		status, err := a.requestExecutor(r).get(r.Context(), jobID)
 		if err != nil {
 			executorError(w, err)
 			return

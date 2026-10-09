@@ -1,8 +1,8 @@
 package cmd
 
 type AuthCmd struct {
-	Login LoginCmd `cmd:"" help:"Log in to your account"`
-	// Logout LogoutCmd     `cmd:"" help:"Log out of your account"`
+	Login  LoginCmd  `cmd:"" help:"Log in to your account"`
+	Logout LogoutCmd `cmd:"" help:"Sign out and revoke your session"`
 	// Status AuthStatusCmd `cmd:"" help:"Check your authentication status" default:1`
 }
 

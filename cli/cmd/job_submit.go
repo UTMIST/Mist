@@ -11,6 +11,7 @@ type JobSubmitCmd struct {
 	Script  string `arg:"" help:"Path to a Python or shell script"`
 	Compute string `help:"CPU, NVIDIA, or TT" default:"CPU"`
 	Devices int    `help:"NVIDIA GPU count or Tenstorrent board count" default:"1"`
+	Dataset string `help:"Owned ready dataset ID to mount at /inputs (optional)"`
 	Image   string `help:"Approved container image (optional; defaults by compute type)"`
 	CPU     string `help:"Requested CPU quantity, e.g. 2 or 500m"`
 	Memory  string `help:"Requested memory, e.g. 4Gi"`
@@ -48,7 +49,7 @@ func (j *JobSubmitCmd) Run(ctx *AppContext) error {
 	}
 	request := map[string]interface{}{"type": "command", "name": name, "accelerator": accelerator,
 		"device_count": devices, "script": string(data), "script_name": filepath.Base(j.Script),
-		"image": j.Image, "cpu": j.CPU, "memory": j.Memory, "timeout_seconds": j.Timeout}
+		"dataset_id": j.Dataset, "image": j.Image, "cpu": j.CPU, "memory": j.Memory, "timeout_seconds": j.Timeout}
 	var response struct {
 		JobID string `json:"job_id"`
 	}

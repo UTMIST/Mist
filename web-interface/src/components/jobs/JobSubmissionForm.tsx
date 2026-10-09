@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Card from '#/components/Card.tsx'
 import type {
   Compute,
+  Dataset,
   HardwareSnapshot,
   ImageCatalog,
   Submission,
@@ -32,11 +33,16 @@ export function JobSubmissionForm({
   catalog,
   hardware,
   onSubmit,
+  datasets = [],
+  datasetError,
 }: {
+  datasets?: Dataset[]
+  datasetError?: string
   catalog: ImageCatalog | null
   hardware: HardwareSnapshot | null
   onSubmit: (submission: Submission) => Promise<void>
 }) {
+  const [datasetID, setDatasetID] = useState('')
   const [name, setName] = useState('')
   const [compute, setCompute] = useState<Compute>('cpu')
   const [devices, setDevices] = useState(1)
@@ -90,6 +96,7 @@ export function JobSubmissionForm({
     try {
       const submission: Submission = {
         name,
+        ...(datasetID ? { dataset_id: datasetID } : {}),
         type: mode === 'training-smoke' ? mode : 'command',
         accelerator: compute,
         device_count: compute === 'cpu' ? 0 : devices,
@@ -227,6 +234,29 @@ export function JobSubmissionForm({
             </p>
           )}
         </div>
+        <div className="text-sm">
+          <label htmlFor="job-dataset">Dataset (optional)</label>
+          <select
+            id="job-dataset"
+            className={fieldClass}
+            value={datasetID}
+            onChange={(e) => setDatasetID(e.target.value)}
+          >
+            <option value="">No dataset</option>
+            {datasets.map((ds) => (
+              <option key={ds.id} value={ds.id}>
+                {ds.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs">
+            Upload datasets on the Datasets page. Selected files appear
+            read-only at /inputs.
+          </p>
+          {datasetError && (
+            <p role="alert">Dataset list unavailable: {datasetError}</p>
+          )}
+        </div>
         {profile?.note && <p className="text-sm">{profile.note}</p>}
         {mode === 'script' && (
           <div className="text-sm">
@@ -355,7 +385,8 @@ export function JobSubmissionForm({
         </details>
         <p className="text-sm">
           Save results under <code>/outputs</code>. Files there remain on the
-          assigned machine after the job exits.
+          shared storage after the job exits. Use the job’s Files button to
+          download them.
         </p>
         {error && (
           <p role="alert" className="text-red-700">
