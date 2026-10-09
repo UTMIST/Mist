@@ -1,7 +1,8 @@
 # Repository cleanup — October 9, 2026
 
 Based on main commit `3431ffd`, the department release merged through PR #110.
-Changes are prepared on `chore/main-cleanup-20261009`. The main ruleset still
+Changes are published in [PR #111](https://github.com/UTMIST/Mist/pull/111)
+on `chore/main-cleanup-20261009`. The main ruleset still
 requires a pull request and an independent review; Git publication is separate
 from deploying services.
 
