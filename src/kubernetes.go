@@ -47,6 +47,7 @@ type KubernetesExecutor struct {
 	namespace       string
 	owner           string
 	allowedImages   map[string]bool
+	pullSecrets     []corev1.LocalObjectReference
 	cpuNode, ttNode string
 }
 
@@ -58,6 +59,8 @@ func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
 	mux.HandleFunc("/jobs", a.kubernetesJobs)
 	mux.HandleFunc("/jobs/status", a.getJobStatus)
 	mux.HandleFunc("/jobs/", a.kubernetesJob)
+	mux.HandleFunc("GET /hardware", a.hardware)
+	mux.HandleFunc("GET /images", a.images)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, 405, map[string]string{"error": "method not allowed"})
@@ -106,6 +109,16 @@ func NewKubernetesExecutor() (*KubernetesExecutor, error) {
 	if len(validation.IsValidLabelValue(e.owner)) != 0 {
 		return nil, errors.New("MIST_PILOT_OWNER must be a valid label value")
 	}
+	for _, name := range strings.Split(os.Getenv("MIST_IMAGE_PULL_SECRETS"), ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if len(validation.IsDNS1123Subdomain(name)) != 0 {
+			return nil, errors.New("invalid MIST_IMAGE_PULL_SECRETS name")
+		}
+		e.pullSecrets = append(e.pullSecrets, corev1.LocalObjectReference{Name: name})
+	}
 	return e, nil
 }
 
@@ -132,6 +145,9 @@ type KubernetesJobStatus struct {
 	Message             string            `json:"message,omitempty"`
 	Devices             []AllocatedDevice `json:"devices,omitempty"`
 	CheckpointDirectory string            `json:"checkpoint_directory"`
+	OutputDirectory     string            `json:"output_directory"`
+	WorkingDirectory    string            `json:"working_directory,omitempty"`
+	TimeoutSeconds      int64             `json:"timeout_seconds"`
 }
 
 type AllocatedDevice struct {
@@ -141,6 +157,7 @@ type AllocatedDevice struct {
 }
 
 func (e *KubernetesExecutor) normalize(req CreateJobRequest) (CreateJobRequest, error) {
+	explicitImage := req.Image != ""
 	if len(req.Payload) != 0 {
 		return req, errors.New("use image/command/args or script instead of the legacy payload")
 	}
@@ -225,8 +242,14 @@ func (e *KubernetesExecutor) normalize(req CreateJobRequest) (CreateJobRequest, 
 			(filepath.Ext(req.ScriptName) != ".py" && filepath.Ext(req.ScriptName) != ".sh") {
 			return req, errors.New("script_name must be a .py or .sh filename without directories")
 		}
-	} else if req.Type == "command" && (len(req.Command) == 0 || req.Command[0] == "") {
-		return req, errors.New("command or script is required")
+	} else if req.Type == "command" && len(req.Command) == 0 && !explicitImage {
+		return req, errors.New("provide an image to run its default entrypoint, a command, or a script")
+	}
+	if len(req.Command) != 0 && req.Command[0] == "" {
+		return req, errors.New("command executable cannot be empty")
+	}
+	if req.WorkingDirectory != "" && (!filepath.IsAbs(req.WorkingDirectory) || len(req.WorkingDirectory) > 1024 || strings.ContainsRune(req.WorkingDirectory, 0)) {
+		return req, errors.New("working_directory must be an absolute container path")
 	}
 	if len(req.Command)+len(req.Args) > 64 {
 		return req, errors.New("too many command arguments")
@@ -243,7 +266,7 @@ func (e *KubernetesExecutor) normalize(req CreateJobRequest) (CreateJobRequest, 
 		if len(validation.IsEnvVarName(key)) != 0 || len(value) > 4096 || strings.ContainsRune(value, 0) {
 			return req, errors.New("invalid environment variable")
 		}
-		if key == "MIST_JOB_ID" || key == "MIST_CHECKPOINT_DIR" {
+		if key == "MIST_JOB_ID" || key == "MIST_CHECKPOINT_DIR" || key == "MIST_OUTPUT_DIR" {
 			return req, fmt.Errorf("%s is managed by Mist", key)
 		}
 		if req.Accelerator == "tenstorrent" && (strings.HasPrefix(key, "TT_METAL_") || key == "PYTHONPATH" || key == "LD_LIBRARY_PATH") {
@@ -295,12 +318,16 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 	requestJSON, _ := json.Marshal(req)
 	labels := map[string]string{managedLabel: "mist", "mist.io/owner": e.owner}
 	resources := corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(req.CPU), corev1.ResourceMemory: resource.MustParse(req.Memory)}
+	workingDir := req.WorkingDirectory
+	if workingDir == "" && (req.Script != "" || req.Type == "training-smoke" || req.Accelerator == "tenstorrent") {
+		workingDir = "/tmp"
+	}
 	container := corev1.Container{Name: "workload", Image: req.Image, ImagePullPolicy: corev1.PullIfNotPresent,
-		Command: req.Command, Args: req.Args, WorkingDir: "/tmp",
+		Command: req.Command, Args: req.Args, WorkingDir: workingDir,
 		SecurityContext: &corev1.SecurityContext{Privileged: ptr(false), AllowPrivilegeEscalation: ptr(false), Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}},
 		Resources:       corev1.ResourceRequirements{Requests: resources.DeepCopy(), Limits: resources.DeepCopy()},
-		VolumeMounts:    []corev1.VolumeMount{{Name: "checkpoints", MountPath: "/checkpoints"}},
-		Env:             []corev1.EnvVar{{Name: "MIST_JOB_ID", Value: id}, {Name: "MIST_CHECKPOINT_DIR", Value: "/checkpoints/" + id}}}
+		VolumeMounts:    []corev1.VolumeMount{{Name: "checkpoints", MountPath: "/checkpoints/" + id, SubPath: id}, {Name: "checkpoints", MountPath: "/outputs", SubPath: id}},
+		Env:             []corev1.EnvVar{{Name: "MIST_JOB_ID", Value: id}, {Name: "MIST_CHECKPOINT_DIR", Value: "/checkpoints/" + id}, {Name: "MIST_OUTPUT_DIR", Value: "/outputs"}}}
 	keys := []string{}
 	for key := range req.Env {
 		keys = append(keys, key)
@@ -311,6 +338,7 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 	}
 	pvc := "mist-cpu-checkpoints"
 	pod := corev1.PodSpec{RestartPolicy: corev1.RestartPolicyNever, AutomountServiceAccountToken: ptr(false),
+		ImagePullSecrets:              e.pullSecrets,
 		TerminationGracePeriodSeconds: ptr(int64(5)), NodeSelector: map[string]string{"kubernetes.io/hostname": e.cpuNode}}
 	if req.Accelerator == "nvidia" {
 		pvc = "training-nvidia-checkpoints"
@@ -334,6 +362,7 @@ func (e *KubernetesExecutor) buildJob(id string, req CreateJobRequest) *batchv1.
 		}
 	}
 	pod.Volumes = append(pod.Volumes, corev1.Volume{Name: "checkpoints", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvc}}})
+	pod.InitContainers = []corev1.Container{prepareOutputs(id)}
 	if req.Script != "" || req.Type == "training-smoke" {
 		configmap, mount := id+"-script", "/mist-script"
 		python := "python"
@@ -447,7 +476,19 @@ func (e *KubernetesExecutor) baseStatus(job *batchv1.Job) (*KubernetesJobStatus,
 	}
 	status := &KubernetesJobStatus{Job: Job{ID: job.Name, Type: req.Type, Created: job.CreationTimestamp.Time,
 		JobState: JobStateScheduled, Payload: map[string]interface{}{"command": req.Command, "args": req.Args}}, Name: req.Name,
-		Image: req.Image, Accelerator: req.Accelerator, DeviceCount: req.DeviceCount, CPU: req.CPU, Memory: req.Memory, Owner: e.owner, CheckpointDirectory: "/checkpoints/" + job.Name}
+		Image: req.Image, Accelerator: req.Accelerator, DeviceCount: req.DeviceCount, CPU: req.CPU, Memory: req.Memory, Owner: e.owner, CheckpointDirectory: "/checkpoints/" + job.Name,
+		WorkingDirectory: req.WorkingDirectory, TimeoutSeconds: req.TimeoutSeconds}
+	// Older pilot jobs mounted the shared checkpoint root, before /outputs existed.
+	for _, container := range job.Spec.Template.Spec.Containers {
+		if container.Name != "workload" {
+			continue
+		}
+		for _, mount := range container.VolumeMounts {
+			if mount.MountPath == "/outputs" {
+				status.OutputDirectory = "/outputs"
+			}
+		}
+	}
 	if status.Name == "" {
 		status.Name = job.Name
 	}
@@ -458,6 +499,10 @@ func (e *KubernetesExecutor) baseStatus(job *batchv1.Job) (*KubernetesJobStatus,
 }
 
 func (e *KubernetesExecutor) statusFor(ctx context.Context, job *batchv1.Job) (*KubernetesJobStatus, error) {
+	return e.statusWithData(ctx, job, nil)
+}
+
+func (e *KubernetesExecutor) statusWithData(ctx context.Context, job *batchv1.Job, data *jobStateData) (*KubernetesJobStatus, error) {
 	status, err := e.baseStatus(job)
 	if err != nil {
 		return nil, err
@@ -482,9 +527,14 @@ func (e *KubernetesExecutor) statusFor(ctx context.Context, job *batchv1.Job) (*
 			status.TimeCompleted = &condition.LastTransitionTime.Time
 		}
 	}
-	pods, err := e.client.CoreV1().Pods(e.namespace).List(ctx, metav1.ListOptions{LabelSelector: "batch.kubernetes.io/job-name=" + job.Name})
-	if err != nil {
-		return nil, err
+	pods := &corev1.PodList{}
+	if data != nil {
+		pods.Items = data.pods[job.Name]
+	} else {
+		pods, err = e.client.CoreV1().Pods(e.namespace).List(ctx, metav1.ListOptions{LabelSelector: "batch.kubernetes.io/job-name=" + job.Name})
+		if err != nil {
+			return nil, err
+		}
 	}
 	sort.Slice(pods.Items, func(i, j int) bool { return pods.Items[i].CreationTimestamp.Before(&pods.Items[j].CreationTimestamp) })
 	if len(pods.Items) != 0 {
@@ -492,6 +542,17 @@ func (e *KubernetesExecutor) statusFor(ctx context.Context, job *batchv1.Job) (*
 		status.Node, status.Pod = pod.Spec.NodeName, pod.Name
 		if pod.Status.Phase == corev1.PodRunning && !terminal(job) {
 			status.JobState = JobStateInProgress
+		}
+		for _, init := range pod.Status.InitContainerStatuses {
+			if init.State.Waiting != nil && !terminal(job) {
+				status.Message = init.Name + ": " + init.State.Waiting.Reason + ": " + init.State.Waiting.Message
+			}
+			if exit := init.State.Terminated; exit != nil && exit.ExitCode != 0 {
+				status.JobState = JobStateFailure
+				status.ExitCode = &exit.ExitCode
+				status.Message = init.Name + " failed: " + exit.Reason
+				status.Error = ptr(status.Message)
+			}
 		}
 		for _, container := range pod.Status.ContainerStatuses {
 			if container.Name != "workload" {
@@ -513,17 +574,22 @@ func (e *KubernetesExecutor) statusFor(ctx context.Context, job *batchv1.Job) (*
 					status.Error = ptr(status.Message)
 				}
 			}
-			if container.State.Waiting != nil {
+			if container.State.Waiting != nil && container.State.Waiting.Reason != "PodInitializing" && !terminal(job) {
 				status.Message = container.State.Waiting.Reason + ": " + container.State.Waiting.Message
 			}
 		}
-		if pod.Status.Phase == corev1.PodPending {
-			events, err := e.client.CoreV1().Events(e.namespace).List(ctx, metav1.ListOptions{FieldSelector: "involvedObject.uid=" + string(pod.UID)})
-			if err != nil {
-				return nil, err
+		if pod.Status.Phase == corev1.PodPending && pod.Spec.NodeName == "" && !terminal(job) {
+			events := &corev1.EventList{}
+			if data != nil {
+				events.Items = data.events
+			} else {
+				events, err = e.client.CoreV1().Events(e.namespace).List(ctx, metav1.ListOptions{FieldSelector: "involvedObject.uid=" + string(pod.UID)})
+				if err != nil {
+					return nil, err
+				}
 			}
 			for _, event := range events.Items {
-				if event.Reason == "FailedScheduling" {
+				if event.InvolvedObject.UID == pod.UID && event.Reason == "FailedScheduling" {
 					status.Message = event.Message
 				}
 			}
@@ -532,18 +598,29 @@ func (e *KubernetesExecutor) statusFor(ctx context.Context, job *batchv1.Job) (*
 			if claimStatus.ResourceClaimName == nil {
 				continue
 			}
-			claim, err := e.client.ResourceV1().ResourceClaims(e.namespace).Get(ctx, *claimStatus.ResourceClaimName, metav1.GetOptions{})
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			if claim.Status.Allocation != nil {
-				for _, result := range claim.Status.Allocation.Devices.Results {
-					status.Devices = append(status.Devices, AllocatedDevice{result.Driver, result.Pool, result.Device})
+			var allocation []AllocatedDevice
+			if data != nil {
+				claim := data.claims[*claimStatus.ResourceClaimName]
+				if claim.Status.Allocation != nil {
+					for _, result := range claim.Status.Allocation.Devices.Results {
+						allocation = append(allocation, AllocatedDevice{result.Driver, result.Pool, result.Device})
+					}
+				}
+			} else {
+				claim, err := e.client.ResourceV1().ResourceClaims(e.namespace).Get(ctx, *claimStatus.ResourceClaimName, metav1.GetOptions{})
+				if apierrors.IsNotFound(err) {
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
+				if claim.Status.Allocation != nil {
+					for _, result := range claim.Status.Allocation.Devices.Results {
+						allocation = append(allocation, AllocatedDevice{result.Driver, result.Pool, result.Device})
+					}
 				}
 			}
+			status.Devices = append(status.Devices, allocation...)
 		}
 	}
 	if cancelled := job.Annotations[cancelAnnotation]; cancelled != "" {
@@ -562,8 +639,12 @@ func (e *KubernetesExecutor) list(ctx context.Context) ([]KubernetesJobStatus, e
 		return nil, err
 	}
 	result := make([]KubernetesJobStatus, 0, len(jobs.Items))
+	data, err := e.loadJobState(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for i := range jobs.Items {
-		status, err := e.statusFor(ctx, &jobs.Items[i])
+		status, err := e.statusWithData(ctx, &jobs.Items[i], data)
 		if err != nil {
 			return nil, err
 		}

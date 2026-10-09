@@ -113,27 +113,27 @@ verification. Being on the same tailnet or k3s cluster does not share disks.
 
 ### A. Establish the branch and API contracts
 
-- [ ] Create a new foundation branch from the current working checkout.
-- [ ] Preserve existing pilot changes and inspect main for useful components.
-- [ ] Separate inventory and submission validation from HTTP/UI presentation.
-- [ ] Document new response/request shapes before connecting UI controls.
-- [ ] Keep changes reviewable and avoid unrelated rewrites.
+- [x] Create a new foundation branch from the current working checkout.
+- [x] Preserve existing pilot changes and inspect main for useful components.
+- [x] Separate inventory and submission validation from HTTP/UI presentation.
+- [x] Document new response/request shapes before connecting UI controls.
+- [x] Keep changes reviewable and avoid unrelated rewrites.
 
 ### B. Task 2: hardware discovery and availability
 
 Proposed endpoint: `GET /hardware`. Publish the final contract with the code.
 
-- [ ] Report node readiness, accelerator type, allocation unit, total,
+- [x] Report node readiness, accelerator type, allocation unit, total,
   allocated, and currently available counts.
-- [ ] Count NVIDIA allocations from scheduled, nonterminal Kubernetes pods,
+- [x] Count NVIDIA allocations from scheduled, nonterminal Kubernetes pods,
   including workloads outside Mist. Do not subtract every submitted job.
-- [ ] Count Tenstorrent devices from ResourceSlices and actual DRA claim
+- [x] Count Tenstorrent devices from ResourceSlices and actual DRA claim
   allocations. Account for reservations while a workload starts.
-- [ ] Label TT counts as boards and show two chips per n300 board.
-- [ ] Treat machine/inventory failures explicitly; do not present unknown
+- [x] Label TT counts as boards and show two chips per n300 board.
+- [x] Treat machine/inventory failures explicitly; do not present unknown
   resources as confidently available.
-- [ ] Give the API only the additional read permissions required for inventory.
-- [ ] Keep k3s responsible for actual allocation. UI availability is a snapshot;
+- [x] Give the API only the additional read permissions required for inventory.
+- [x] Keep k3s responsible for actual allocation. UI availability is a snapshot;
   a submitted job may wait even if devices looked free moments earlier.
 
 TT's current vendor ResourceSlice memory capacity is incorrect. Do not use that
@@ -142,38 +142,38 @@ has neither GPU fractions nor arbitrary TT chip sharing.
 
 ### C. Task 3: container image execution
 
-- [ ] Expose approved image choices and explicit image references, command,
+- [x] Expose approved image choices and explicit image references, command,
   arguments, and CPU/memory/deadline controls through typed API/UI code.
-- [ ] Keep image approval on the server. An approved image can still fail to
+- [x] Keep image approval on the server. An approved image can still fail to
   pull or be incompatible; report the actual error.
-- [ ] Preserve the image's working directory. The current executor overrides
+- [x] Preserve the image's working directory. The current executor overrides
   every workload with `/tmp`, which can break `python train.py` in an image
   whose code lives in `/app`.
-- [ ] Define command/argument behavior, including whether the image's default
+- [x] Define command/argument behavior, including whether the image's default
   ENTRYPOINT/CMD may run. Kubernetes command/args are arrays; do not silently
   treat every string as a shell program.
-- [ ] Retain script and training-check modes with their tested runtime profiles.
-- [ ] Support approved custom CPU/NVIDIA images. Keep the tested TT image/profile
+- [x] Retain script and training-check modes with their tested runtime profiles.
+- [x] Support approved custom CPU/NVIDIA images. Keep the tested TT image/profile
   restriction visible instead of promising arbitrary TT image compatibility.
-- [ ] Configure/document image pull credentials where needed; do not ask users
+- [x] Configure/document image pull credentials where needed; do not ask users
   to paste registry credentials into a job form.
-- [ ] Verify an actual custom image with packaged code, rather than testing
+- [x] Verify an actual custom image with packaged code, rather than testing
   only scripts injected into existing base images. A local fixture image may
   be imported into containerd for the initial test.
-- [ ] Document resource limits and deadlines. Current Job deadline includes
+- [x] Document resource limits and deadlines. Current Job deadline includes
   waiting time as well as execution; make any change to this behavior explicit.
 
 ### D. Persistent output folders
 
-- [ ] Provide a predictable, writable per-job directory backed by the existing
+- [x] Provide a predictable, writable per-job directory backed by the existing
   checkpoint PVC on the selected machine.
-- [ ] Create the directory reliably and verify permissions for the supported
+- [x] Create the directory reliably and verify permissions for the supported
   image profiles.
-- [ ] Preserve/document `MIST_CHECKPOINT_DIR` and `checkpoint_directory` so
+- [x] Preserve/document `MIST_CHECKPOINT_DIR` and `checkpoint_directory` so
   workloads know where to save their results.
-- [ ] Verify a real output file remains after the container exits.
-- [ ] Describe how to retrieve files during local testing and where they live.
-- [ ] Keep job identifiers/storage references independent of physical disk
+- [x] Verify a real output file remains after the container exits.
+- [x] Describe how to retrieve files during local testing and where they live.
+- [x] Keep job identifiers/storage references independent of physical disk
   paths so shared storage can be added later.
 
 Files written only into the container's writable layer are not persistent
@@ -182,14 +182,14 @@ isolation boundary; do not represent this pilot as ready for untrusted users.
 
 ### E. Task 1: finish website job controls
 
-- [ ] Connect the website to the new hardware and image contracts.
-- [ ] Keep real job submission, polling, logs, assigned node, failure reasons,
+- [x] Connect the website to the new hardware and image contracts.
+- [x] Keep real job submission, polling, logs, assigned node, failure reasons,
   exit codes, and cancellation.
-- [ ] Show requested resources and the persistent output location.
-- [ ] Make waiting-for-resources, machine unavailable, and image pull failures
+- [x] Show requested resources and the persistent output location.
+- [x] Make waiting-for-resources, machine unavailable, and image pull failures
   understandable.
-- [ ] Preserve connection recovery and protect against duplicate submissions.
-- [ ] Use existing UI conventions and accessible labels. Keep frontend concerns
+- [x] Preserve connection recovery and protect against duplicate submissions.
+- [x] Use existing UI conventions and accessible labels. Keep frontend concerns
   separate from the executor and typed API client.
 
 The prototype Dashboard/Machines/auth pages are not proof of working metrics or
@@ -197,21 +197,21 @@ authentication. Surface real hardware information in the relevant workflow.
 
 ### F. Verify and hand off
 
-- [ ] Run focused backend tests for execution semantics, inventory accounting,
+- [x] Run focused backend tests for execution semantics, inventory accounting,
   validation, and cancellation where changed.
-- [ ] Run frontend type checking, production build, and meaningful interaction
+- [x] Run frontend type checking, production build, and meaningful interaction
   checks for new behavior.
-- [ ] Run a real custom CPU image job through the website.
-- [ ] Run fresh NVIDIA and TT training checks through the website.
-- [ ] Verify occupied/free counts during execution and after completion.
-- [ ] Verify waiting/reuse and cancellation release for both allocation paths.
-- [ ] Verify failed commands and image pulls produce useful states/errors.
-- [ ] Verify saved outputs persist after pod completion.
-- [ ] Update the deployed API image if necessary; editing Go source does not
+- [x] Run a real custom CPU image job through the website.
+- [x] Run fresh NVIDIA and TT training checks through the website.
+- [x] Verify occupied/free counts during execution and after completion.
+- [x] Verify waiting/reuse and cancellation release for both allocation paths.
+- [x] Verify failed commands and image pulls produce useful states/errors.
+- [x] Verify saved outputs persist after pod completion.
+- [x] Update the deployed API image if necessary; editing Go source does not
   update the binary currently running in k3s.
-- [ ] Record actual results and date them. Older October 3 acceptance evidence
+- [x] Record actual results and date them. Older October 3 acceptance evidence
   does not substitute for tests of today's changes.
-- [ ] Document startup, API contracts, image preparation, output access, tests,
+- [x] Document startup, API contracts, image preparation, output access, tests,
   and remaining work for the team.
 
 Avoid unrelated operator upgrades or repeat full infrastructure acceptance tests
@@ -324,9 +324,56 @@ were Max/Fast at the time of planning. Exact quota consumption cannot be predict
 ## Progress log
 
 - Planning: agreed scope recorded; existing API health and both Ready nodes checked.
-- Implementation: pending at initial creation of this file.
-- New branch, code changes, verification evidence, and final handoff: update here
-  as execution proceeds.
+- Branch: `feat/local-job-foundation`. Commit `2f9b178` preserves the prior working
+  pilot and this plan. Commit identity uses the connected GitHub account's public
+  noreply address for this commit only; global Git settings were not changed.
+- Backend additions: `hardware.go`, `images.go`, `outputs.go`, and `job_states.go`.
+  Inventory reads node/pod/claim/slice state; image defaults are preserved;
+  outputs have per-job mounts and an initialization step; history reads are batched.
+- Frontend: typed inventory/catalog clients, a shared polling hook, separate
+  submission/card/log components, and live Machines information.
+- Focused backend tests pass. Frontend interaction tests (5), type checking, and
+  production build pass. A test initially submitted before the catalog loaded;
+  it was corrected to wait for the form's actual readiness. Final lint also
+  passed after removing unnecessary test casts and shadowed callback names.
+- Example images `mist-training:cpu-v1` and `mist-training:nvidia-v1` were built
+  and imported on the NVIDIA node. API image `mist-api:foundation-20261008`
+  is deployed; the final binary image ID is recorded in `foundation-results.json`.
+- Fresh browser checks passed: packaged CPU training with image ENTRYPOINT/CMD
+  and `/app` WORKDIR, both NVIDIA GPUs, TT two-board/four-chip training, exit 17,
+  cancellation, real states/logs, and the live Machines page.
+- Fresh allocation checks passed for NVIDIA and TT: whole-machine occupied/free
+  counts, queued follower, cancellation with retained logs, automatic device
+  reuse, and return to 2 GPUs / 4 boards available.
+- Persistent output checks used new read-only containers after training exited.
+  CPU model/results, both NVIDIA checkpoints, and four TT chip checkpoints and
+  metrics were readable on the proper nodes. SHA256/file evidence was saved.
+- A deliberately missing approved image exposed its real pull reason in the API
+  and browser, then failed with DeadlineExceeded. Temporary image approval was
+  removed, and prior job/cancellation history survived API restarts.
+- Final focused backend tests: 12 passed. Frontend interaction tests: 5 passed;
+  type checking, production build, and lint of changed frontend files passed.
+  CLI tests passed. The full src suite passed in 33.325 seconds with isolated
+  Redis and the existing Docker test image. Its initial 15-second legacy CPU
+  test timed out during large-image disk activity; the suite passed after the
+  imports finished. No legacy executor behavior was changed.
+- The first browser verifier expected a completed TT claim to retain allocations.
+  Kubernetes had correctly released them. The verifier now checks completed
+  request/log evidence and checks actual DRA devices during live reservations.
+- Fresh RBAC checks passed: required inventory lists allowed; Secrets, node
+  writes, pod exec, and Jobs in other namespaces denied. Private registry
+  Secret wiring is implemented/documented; no private registry login was tested.
+- Detailed evidence: `/home/utmist/mist-foundation-results-2026-10-08`.
+  Compact checked-in summary: `deploy/k3s/foundation-results.json`.
+  Final idle snapshot: both nodes Ready, 0 allocated / 2 available NVIDIA GPUs,
+  0 allocated / 4 available TT boards. All 40 retained Mist Jobs were terminal.
+  Job history read measured 0.193 seconds, compared with the 3.586-second baseline.
+- Today's agreed implementation and verification are complete: parts 1–3 plus
+  persistent local outputs. The percentage updates referred to today's scope.
+  The complete platform still needs part 4 (shared datasets/downloads) and
+  part 5 (deployment/login). The team handoff is `docs/local-job-foundation.md`.
+- Screen question checked: automatic suspend on AC has timeout 0 (disabled),
+  so the display may turn off while work continues. Power settings were not changed.
 
 ## References
 

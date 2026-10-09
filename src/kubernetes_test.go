@@ -70,6 +70,43 @@ func TestKubernetesReportsActualExitBeforeControllerCompletion(t *testing.T) {
 	}
 }
 
+func TestKubernetesReportsCurrentWaitingReasonAfterPlacement(t *testing.T) {
+	e := testExecutor()
+	ctx := context.Background()
+	job, err := e.submit(ctx, CreateJobRequest{Accelerator: "nvidia", Command: []string{"true"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.client.CoreV1().Pods("mist").Create(ctx, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "waiting-pod", UID: "waiting-uid", Labels: map[string]string{
+			"batch.kubernetes.io/job-name": job.ID, managedLabel: "mist", "mist.io/owner": e.owner}},
+		Spec: corev1.PodSpec{NodeName: e.cpuNode},
+		Status: corev1.PodStatus{Phase: corev1.PodPending, ContainerStatuses: []corev1.ContainerStatus{{Name: "workload",
+			State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ImagePullBackOff", Message: "image unavailable"}}}}},
+	}, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.client.CoreV1().Events("mist").Create(ctx, &corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Name: "old-scheduling-failure"},
+		InvolvedObject: corev1.ObjectReference{UID: "waiting-uid"}, Reason: "FailedScheduling", Message: "Insufficient nvidia.com/gpu",
+	}, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual, err := e.get(ctx, job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := e.list(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(actual.Message, "ImagePullBackOff") || len(listed) != 1 || !strings.Contains(listed[0].Message, "ImagePullBackOff") {
+		t.Fatalf("old queue event replaced current pull failure: single=%+v list=%+v", actual, listed)
+	}
+}
+
 func TestKubernetesCancellationPersistsAcrossExecutorRestart(t *testing.T) {
 	e := testExecutor()
 	ctx := context.Background()

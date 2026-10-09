@@ -83,8 +83,10 @@ See [recorded results](../deploy/k3s/mist-api-results.json) for evidence paths.
 ## Access and retention
 
 The API runs in `mist-system` with a dedicated service account and a Role
-restricted to workloads in `mist`. Live RBAC checks denied secrets, nodes,
-pod exec, and creating jobs in the GPU Operator namespace. Workload pods
+restricted to workloads in `mist`. The October 8 foundation adds a read-only
+inventory ClusterRole for listing nodes, pods, ResourceClaims and ResourceSlices.
+Secrets, node writes, pod exec, and creating jobs in other namespaces remain
+outside its permissions. The October 3 checks predate this inventory role. Workload pods
 receive no Kubernetes API token. The `mist` admission policy disallows
 privileged execution and broad host device mounts.
 
@@ -101,6 +103,13 @@ on retained pods and kubelet retention, and checkpoint PVCs are node-local.
 Deleting those resources can remove history or artifacts.
 
 ## Next milestones
+
+The October 8 local foundation implements approved custom CPU/NVIDIA container
+execution, live Jobs/Machines inventory, and persistent per-job `/outputs`
+mounts. See [the current guide and developer handoff](local-job-foundation.md)
+and [execution plan](foundation-execution-plan.md) for fresh checks and the
+agreed next foundation task: shared datasets and result downloads, followed
+by team deployment/login. The milestones below cover the wider platform.
 
 1. Implement authentication and per-user/team authorization before remote
    access; define quotas, concurrency limits, credits and priority policy.

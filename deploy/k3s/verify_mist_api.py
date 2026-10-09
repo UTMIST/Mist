@@ -122,7 +122,9 @@ print('CPU_API_PASSED',flush=True)
     print("CPU execution, failure, cancellation, retained logs, and deadline passed", flush=True)
 
     def training_group(accelerator, parallel):
-        barrier = "/checkpoints/" + run + "-" + accelerator + "-start"
+        # Each workload now mounts only its own output directory. Release each
+        # initialized pod's barrier individually, rather than sharing a PVC root.
+        barrier = "/outputs/start"
         group = [submit(f"{accelerator}-{i}", type="training-smoke", accelerator=accelerator,
                         device_count=1, args=["--steps", "500", "--start-file", barrier]) for i in range(parallel)]
         for job in group:
@@ -139,7 +141,7 @@ print('CPU_API_PASSED',flush=True)
             devices = [s["devices"][0]["device"] for s in snapshots]
             assert len(set(devices)) == 4
         fifth = submit(accelerator + "-queued", type="training-smoke", accelerator=accelerator,
-                       device_count=1, args=["--steps", "500", "--start-file", barrier])
+                       device_count=1, args=["--steps", "500"])
         def queued():
             snapshot = status(fifth)
             if snapshot["job_state"] == "Scheduled" and snapshot.get("message"):
@@ -148,7 +150,8 @@ print('CPU_API_PASSED',flush=True)
                 assert reason in snapshot["message"], snapshot
                 return snapshot
         queue = wait(queued, accelerator + " job queued", timeout=60)
-        kubectl("-n", "mist", "exec", snapshots[0]["pod"], "--", "touch", barrier)
+        for snapshot in snapshots:
+            kubectl("-n", "mist", "exec", snapshot["pod"], "--", "touch", barrier)
         for job in group + [fifth]:
             snapshot, text = finished(job)
             chips = 2 if accelerator == "tenstorrent" else 1

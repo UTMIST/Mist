@@ -222,6 +222,9 @@ The API now uses Kubernetes by default and runs in `mist-system`. Its service
 account manages Jobs and script ConfigMaps in `mist`, reads Pod logs/events
 and TT claims, and has no cluster administrator credentials. The configured
 pilot owner is `utmist`. No authentication or public ingress is configured.
+The foundation also lists node/pod/claim/slice state for live hardware inventory.
+See [the foundation guide](../../docs/local-job-foundation.md) for contracts,
+website instructions, persistent outputs, and the developer handoff.
 
 ### Build and install on the current server
 
@@ -233,8 +236,15 @@ means that it must be present on the selected server before deployment.
 ```bash
 export KUBECONFIG=/home/utmist/.kube/config
 CGO_ENABLED=0 go -C src build -o ../bin/mist-api .
-docker build -f deploy/k3s/Dockerfile.api -t mist-api:k3s-pilot-20261003 .
-docker save mist-api:k3s-pilot-20261003 | sudo k3s ctr -n k8s.io images import -
+docker build -f deploy/k3s/Dockerfile.api -t mist-api:foundation-20261008 .
+docker build -f deploy/k3s/examples/Dockerfile.training \
+  -t mist-training:cpu-v1 deploy/k3s/examples
+docker build -f deploy/k3s/examples/Dockerfile.training \
+  --build-arg BASE_IMAGE=pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime \
+  -t mist-training:nvidia-v1 deploy/k3s/examples
+docker save -o /tmp/mist-foundation-images.tar \
+  mist-api:foundation-20261008 mist-training:cpu-v1 mist-training:nvidia-v1
+sudo k3s ctr -n k8s.io images import --platform linux/amd64 /tmp/mist-foundation-images.tar
 k3s kubectl apply -f deploy/k3s/mist-api.yaml
 k3s kubectl apply -f deploy/k3s/mist-tenstorrent-claims.yaml
 k3s kubectl apply -f deploy/k3s/tenstorrent-workload-policy.yaml
@@ -267,8 +277,10 @@ npm run dev -- --host 127.0.0.1 --port 3001 --strictPort
 ```
 
 Open http://127.0.0.1:3001/jobs. Choose CPU, NVIDIA GPUs or Tenstorrent boards;
-submit a Python script or choose **Small training check** for an accelerator.
+submit a Python script, select an approved **Container image** with its own
+entrypoint/arguments, or choose **Small training check** for an accelerator.
 The page displays actual placement, queue messages, exit status and logs.
+Hardware availability is live; the Machines route uses the same inventory.
 Cancel stops a waiting/running workload and retains cancellation history.
 CLI commands are in [the CLI guide](../../cli/docs/setup.md).
 
@@ -305,14 +317,63 @@ are 250m CPU/256Mi RAM for CPU jobs, 2 CPU/2Gi for NVIDIA, and 2 CPU/4Gi plus
 accepts CPU up to 8, memory 64Mi to 32Gi (TT minimum 2Gi), and deadlines from
 10 seconds to 24 hours, default 600 seconds. Deadlines include queue time.
 Images must be approved by the API's allowlist; submissions cannot specify
-privileged access or host mounts. Environment variables `MIST_JOB_ID` and
-`MIST_CHECKPOINT_DIR` provide the unique output directory.
+privileged access or host mounts. Environment variables `MIST_JOB_ID`,
+`MIST_OUTPUT_DIR=/outputs`, and `MIST_CHECKPOINT_DIR=/checkpoints/<job-id>`
+provide the job identity and two aliases for its persistent directory.
 
-Storage remains node-local and shared per compute profile. Retained Jobs
+Storage remains node-local with a shared backing PVC per compute profile.
+New workloads mount only their job-specific subdirectory. Retained Jobs
 provide history across API restarts, without TTL. Normal logs remain in pod
 logs; cancellation preserves their last 32KiB in the Job metadata. Keep the
 Pods/PVCs or archive them before cleanup. This is a local single-owner pilot,
 not an authenticated multi-user deployment.
+
+### Custom images and private registries
+
+The deployment's `MIST_ALLOWED_IMAGES` approves exact image references;
+`GET /images` exposes them to the website. For real workloads, build/push an
+image containing code/dependencies, approve its immutable tag/digest, and let
+the selected node pull it. Local example tags must be imported on the NVIDIA
+server. An approved image is not guaranteed to be pullable or CUDA compatible.
+The TT profile still requires its tested image and read-only host runtime.
+
+CPU/NVIDIA container jobs preserve image ENTRYPOINT/CMD and WORKDIR when no
+override is supplied. Arguments are array entries, not a parsed shell command.
+Scripts and training checks retain their tested runtime profiles. Write results
+to `/outputs`; files elsewhere in the container are not persistent outputs.
+
+For private images, an administrator creates a `kubernetes.io/dockerconfigjson`
+Secret in workload namespace `mist`, then adds `MIST_IMAGE_PULL_SECRETS` to
+the API Deployment environment with the Secret name(s), comma-separated.
+Jobs receive those names as `imagePullSecrets`. Mist does not read Secret
+contents or accept registry passwords in the submission form. Keep Secret
+manifests/credentials outside Git. K3s node registry configuration is another
+option: [private registries](https://docs.k3s.io/installation/private-registry).
+
+### Foundation acceptance
+
+With both accelerators free and the example images imported, run the browser
+story, then the allocation/output checks using the same artifact directory:
+
+```bash
+export KUBECONFIG=/home/utmist/.kube/config
+export MIST_PLAYWRIGHT_MODULE=/tmp/mist-browser-check/node_modules/playwright/index.mjs
+node deploy/k3s/verify_foundation_browser.mjs /home/utmist/mist-foundation-results-new-run
+python3 deploy/k3s/verify_foundation.py --artifacts /home/utmist/mist-foundation-results-new-run
+```
+
+Playwright and Chromium are test tooling, separate from the web application.
+Set `MIST_PLAYWRIGHT_MODULE` to its installed `index.mjs`, or install Playwright
+where Node can resolve it. `MIST_WEB_URL` changes the browser endpoint;
+`--url` changes the API endpoint for the Python tool.
+Checks cover packaged CPU/NVIDIA images, both GPUs, TT training, real UI
+states/logs/cancellation, occupied/free counts, queues, reuse, and saved files
+read by fresh containers on both nodes. Temporary read-only output probes are
+removed; test Jobs and result directories remain. The final markers are
+`FOUNDATION_BROWSER_PASSED` and `FOUNDATION_ALLOCATION_OUTPUTS_PASSED`.
+October 8 evidence is under `/home/utmist/mist-foundation-results-2026-10-08`.
+See [the checked-in summary](foundation-results.json) for actual job IDs,
+deployed image ID, and completed checks.
 
 ### API acceptance test
 

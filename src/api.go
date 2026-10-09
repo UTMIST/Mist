@@ -213,21 +213,22 @@ func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateJobRequest struct {
-	Type           string                 `json:"type"`
-	Payload        map[string]interface{} `json:"payload"`
-	RequiredGPU    string                 `json:"gpu,omitempty"`
-	Name           string                 `json:"name,omitempty"`
-	Image          string                 `json:"image,omitempty"`
-	Command        []string               `json:"command,omitempty"`
-	Args           []string               `json:"args,omitempty"`
-	Script         string                 `json:"script,omitempty"`
-	ScriptName     string                 `json:"script_name,omitempty"`
-	Env            map[string]string      `json:"env,omitempty"`
-	CPU            string                 `json:"cpu,omitempty"`
-	Memory         string                 `json:"memory,omitempty"`
-	Accelerator    string                 `json:"accelerator,omitempty"`
-	DeviceCount    int                    `json:"device_count,omitempty"`
-	TimeoutSeconds int64                  `json:"timeout_seconds,omitempty"`
+	Type             string                 `json:"type"`
+	Payload          map[string]interface{} `json:"payload"`
+	RequiredGPU      string                 `json:"gpu,omitempty"`
+	Name             string                 `json:"name,omitempty"`
+	Image            string                 `json:"image,omitempty"`
+	Command          []string               `json:"command,omitempty"`
+	Args             []string               `json:"args,omitempty"`
+	WorkingDirectory string                 `json:"working_directory,omitempty"`
+	Script           string                 `json:"script,omitempty"`
+	ScriptName       string                 `json:"script_name,omitempty"`
+	Env              map[string]string      `json:"env,omitempty"`
+	CPU              string                 `json:"cpu,omitempty"`
+	Memory           string                 `json:"memory,omitempty"`
+	Accelerator      string                 `json:"accelerator,omitempty"`
+	DeviceCount      int                    `json:"device_count,omitempty"`
+	TimeoutSeconds   int64                  `json:"timeout_seconds,omitempty"`
 }
 
 type CreateJobResponse struct {

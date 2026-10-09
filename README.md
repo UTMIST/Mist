@@ -2,7 +2,9 @@
 
 UTMIST's compute platform. The Kubernetes pilot runs submitted CPU, NVIDIA,
 and Tenstorrent workloads as real Jobs. The Jobs page and CLI use the same
-API for submission, status, logs, and cancellation.
+API for submission, status, logs, and cancellation. The local foundation adds
+live hardware inventory, approved container image execution, and persistent
+per-job output directories.
 
 ## Current pilot
 
@@ -16,7 +18,9 @@ The local pilot uses one configured owner, without user authentication,
 credits, or team quotas. Keep access local. Tenstorrent scripts need compatible
 TT-NN code; distributed training and arbitrary models have not been validated.
 
-See [installation and live checks](deploy/k3s/README.md#mist-api-cli-and-jobs-page)
+See [the foundation guide and developer handoff](docs/local-job-foundation.md),
+[the execution plan](docs/foundation-execution-plan.md),
+[installation and live checks](deploy/k3s/README.md#mist-api-cli-and-jobs-page)
 and [architecture and remaining work](docs/kubernetes-pilot.md).
 
 ## Run locally against this cluster
@@ -39,6 +43,9 @@ go run .
 
 If the deployed API's port-forward already occupies port 3000, use that API
 or stop only `mist-api-forward.service` before starting a local backend.
+Standalone `go run` uses the default base-image allowlist. Set
+`MIST_ALLOWED_IMAGES` to the deployment's approved references when developing
+with the packaged example images or other custom images.
 
 In another terminal:
 
@@ -77,7 +84,7 @@ API endpoint. See [CLI setup](cli/docs/setup.md) for resource options.
 ## Tests and legacy development
 
 ```bash
-go -C src test -run TestKubernetes ./...
+go -C src test -run 'Test(Kubernetes|Hardware|GPURequest|CustomImage|TenstorrentCustom)' ./...
 go -C cli test ./...
 cd web-interface
 npm test -- --run
