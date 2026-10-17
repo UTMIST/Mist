@@ -121,24 +121,6 @@ function Members() {
     setPassword('')
     setError('')
   }
-  async function access(id: string, banned: boolean) {
-    setError('')
-    setBusy(true)
-    try {
-      const result = banned
-        ? await authClient.admin.unbanUser({ userId: id })
-        : await authClient.admin.banUser({
-            userId: id,
-            banReason: 'Deactivated by Mist administrator',
-          })
-      if (result.error) throw new Error(result.error.message)
-      members.refresh()
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setBusy(false)
-    }
-  }
   return (
     <section className="mist-card mist-members-panel border rounded p-6 space-y-4">
       <PanelHeading
@@ -261,11 +243,7 @@ function Members() {
               <span>{member.email}</span>
             </div>
             <span className="mist-badge">
-              {member.banned
-                ? 'Deactivated'
-                : member.role === 'admin'
-                  ? 'Admin'
-                  : 'Member'}
+              {member.role === 'admin' ? 'Admin' : 'Member'}
             </span>
             <div className="mist-member-actions">
               <button
@@ -276,15 +254,6 @@ function Members() {
               >
                 <KeyRound size={15} aria-hidden="true" />
               </button>
-              {member.id !== current?.id && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void access(member.id, !!member.banned)}
-                >
-                  {member.banned ? 'Reactivate' : 'Deactivate'}
-                </button>
-              )}
             </div>
           </li>
         ))}

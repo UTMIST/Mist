@@ -181,15 +181,16 @@ func (s *TeamService) revoked(ctx context.Context, t *Team, job *batchv1.Job, ac
 	if t.member(id) == nil {
 		return "Team membership revoked", nil
 	}
-	if !active[id].Active {
-		return "Account deactivated", nil
+	status, ok := active[id]
+	if !ok {
+		return "Account unavailable", nil
 	}
 	var err error
 	var req CreateJobRequest
 	if err = json.Unmarshal([]byte(job.Annotations[requestAnnotation]), &req); err != nil {
 		return "Invalid stored submission", nil
 	}
-	m := &Member{ID: id, Role: active[id].Role}
+	m := &Member{ID: id, Role: status.Role}
 	if err = validateTeamRequest(t, m, &req); err != nil {
 		return "Team policy changed: " + err.Error(), nil
 	}

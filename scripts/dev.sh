@@ -26,7 +26,7 @@ usage() {
 ${BOLD}Options:${NC}
   --frontend-only       Run only the web interface dev server (Vite)
   --port-forward        Forward Kubernetes mist-api service to localhost:3000 and run frontend
-  --full-stack          Start local Auth service, Backend API, and Frontend dev server
+  --full-stack          Start Backend API (with built-in auth) and Frontend dev server
   --k3s                 Start a local k3s server instance
   --port <port>         Frontend dev server port (default: 3001)
   --api-proxy <url>     Set backend API proxy URL (default: http://127.0.0.1:3000)
@@ -208,33 +208,21 @@ case "$MODE" in
     ;;
 
   full-stack)
-    # 1. Start auth-service if dependencies are present
-    if [ ! -d "auth-service/node_modules" ]; then
-      log_info "Installing auth-service dependencies..."
-      npm --prefix auth-service ci
-    fi
-
-    log_info "Starting Auth service on 127.0.0.1:3002..."
-    export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-mist-local-dev-secret-key-32-chars-long}"
-    export MIST_ADMIN_EMAIL="${MIST_ADMIN_EMAIL:-admin@mist.local}"
-    export MIST_ADMIN_PASSWORD="${MIST_ADMIN_PASSWORD:-mistadmin12345}"
-    export PORT=3002
-    export HOST=127.0.0.1
-    node auth-service/server.mjs &
-    PIDS+=($!)
-    sleep 2
-
-    # 2. Build and start API
+    # 1. Build and start API with built-in auth
     log_info "Building mist-api..."
     go -C src build -o ../bin/mist-api .
     log_info "Starting mist-api on 127.0.0.1:3000..."
+    export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-mist-local-dev-secret-key-32-chars-long}"
+    export MIST_ADMIN_EMAIL="${MIST_ADMIN_EMAIL:-admin@mist.local}"
+    export MIST_ADMIN_PASSWORD="${MIST_ADMIN_PASSWORD:-mistadmin12345}"
+    export MIST_AUTH_DATABASE="${MIST_AUTH_DATABASE:-./data/auth.sqlite}"
     export MIST_HTTP_ADDR="127.0.0.1:3000"
-    export MIST_AUTH_URL="http://127.0.0.1:3002"
+    export MIST_SITE_ORIGIN="http://127.0.0.1:${FRONTEND_PORT}"
     bin/mist-api &
     PIDS+=($!)
     sleep 2
 
-    # 3. Start Frontend
+    # 2. Start Frontend
     log_info "Starting Vite frontend at http://127.0.0.1:${FRONTEND_PORT}..."
     export MIST_API_PROXY="http://127.0.0.1:3000"
     npm --prefix web-interface run dev -- --host 127.0.0.1 --port "$FRONTEND_PORT" --strictPort

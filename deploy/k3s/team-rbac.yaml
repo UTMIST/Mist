@@ -37,22 +37,3 @@ subjects:
   - kind: ServiceAccount
     name: mist-api
     namespace: mist-system
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: auth-api-only
-  namespace: mist-system
-spec:
-  podSelector:
-    matchLabels:
-      app: mist-auth
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app: mist-api
-      ports:
-        - protocol: TCP
-          port: 3002

@@ -36,9 +36,20 @@ func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
 	mux.HandleFunc("GET /storage", a.storageInfo)
 	mux.HandleFunc("GET /storage/folders", a.storageFolders)
 	mux.HandleFunc("GET /storage/files", a.storageFolderFiles)
-	if raw := os.Getenv("MIST_AUTH_URL"); raw != "" {
+	authDisabled := os.Getenv("MIST_AUTH_DISABLED") == "true"
+	authDB := os.Getenv("MIST_AUTH_DATABASE")
+	authRequired := os.Getenv("MIST_AUTH_ENABLED") == "true" ||
+		os.Getenv("MIST_TEAMS_ENABLED") == "true" ||
+		os.Getenv("BETTER_AUTH_SECRET") != "" ||
+		authDB != "" ||
+		os.Getenv("MIST_AUTH_URL") != ""
+
+	if !authDisabled && authRequired {
+		if authDB == "" {
+			authDB = "./data/auth.sqlite"
+		}
 		var err error
-		a.auth, err = newAuthGateway(raw)
+		a.auth, err = newAuthService(authDB, log)
 		if err != nil {
 			panic(err)
 		}
@@ -103,6 +114,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.wg.Wait()
 	if a.teams != nil {
 		a.teams.shutdown()
+	}
+	if a.auth != nil {
+		_ = a.auth.Close()
 	}
 	return err
 }

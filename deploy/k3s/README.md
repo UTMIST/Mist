@@ -8,7 +8,7 @@ and [deployment operations](../private/README.md).
 
 | Assets | Purpose |
 |---|---|
-| `mist-api.yaml`, `mist-auth.yaml` | Single API/controller and Better Auth deployment |
+| `mist-api.yaml` | Single API, built-in auth, and controller deployment |
 | `team-rbac.yaml`, `team-workload-policy.yaml` | Team provisioning authority and workload admission |
 | `nvidia-gpu-operator-values.yaml` | Pinned host-driver/CDI configuration |
 | `tenstorrent-operator-values.yaml`, `mist-tenstorrent-claims.yaml` | TT operator configuration and retained legacy claims |

@@ -20,6 +20,9 @@ func main() {
 		log.Error("Kubernetes configuration failed", "error", err)
 		os.Exit(1)
 	}
+	if os.Getenv("MIST_AUTH_DISABLED") != "true" && os.Getenv("MIST_AUTH_ENABLED") == "" {
+		_ = os.Setenv("MIST_AUTH_ENABLED", "true")
+	}
 	app := NewKubernetesApp(executor, log)
 	if err := app.Start(); err != nil {
 		log.Error("API startup failed", "error", err)

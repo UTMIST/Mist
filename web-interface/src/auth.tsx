@@ -14,7 +14,6 @@ export type Member = {
   name: string
   email: string
   role: string
-  banned?: boolean
 }
 const AccountContext = createContext<{
   user: Member | null

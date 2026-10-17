@@ -269,9 +269,6 @@ try {
       state[key] = { id: result.user.id, name, email, password };
       save();
     }
-    await call(admin, "/auth/admin/unban-user", "POST", {
-      userId: state[key].id,
-    });
     await call(admin, `/api/teams/${key === "bob" ? B : A}/members`, "POST", {
       user_id: state[key].id,
       common_writer: false,
@@ -490,22 +487,6 @@ try {
     report.jobs.find((e) => e.id === id).node = j.node;
     passed(backend + "_real_training_uploaded_data_and_downloaded_weights");
   }
-  // Deactivation is authoritative for jobs, rather than waiting for sessions to expire.
-  const banJob = await submit(bob, B, "Account deactivation releases job", {
-    command: ["python", "-c", "import time; time.sleep(180)"],
-  });
-  await waitJob(bob, B, banJob, "InProgress", 90);
-  await call(admin, "/auth/admin/ban-user", "POST", {
-    userId: state.bob.id,
-    banReason: "Verification complete",
-  });
-  await call(bob, "/api/jobs", "GET", undefined, B, 401);
-  await call(admin, `/api/teams/${B}/members`, "POST", {
-    user_id: account.id,
-    common_writer: true,
-  });
-  await waitJob(admin, B, banJob, "Cancelled", 60);
-  passed("account_deactivation_stops_running_jobs");
   const page = await admin.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/teams");
@@ -561,14 +542,6 @@ try {
     400,
   );
   await call(admin, `/api/teams/${B}`, "PATCH", { disabled: true });
-  await call(admin, "/auth/admin/ban-user", "POST", {
-    userId: state.alice.id,
-    banReason: "Verification complete",
-  });
-  await call(admin, "/auth/admin/ban-user", "POST", {
-    userId: state.mate.id,
-    banReason: "Verification complete",
-  });
   for (const member of [state.alice, state.mate])
     await call(admin, `/api/teams/${A}/members/${member.id}`, "DELETE");
   const legacyAfter = await call(admin, "/api/jobs");

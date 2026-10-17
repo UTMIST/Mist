@@ -10,16 +10,14 @@ Setup: [k3s](../../docs/k3s-setup.md), [Tailscale/SSH](../../docs/tailscale-ssh.
 | Component | Location | Persistent state |
 |---|---|---|
 | Nginx production portal | Main, localhost and `100.73.139.66:8088` | `/srv/mist-web/releases`, atomic `current` symlink |
-| Go API and admission controller | `mist-system`, main, one Recreate replica | Team/queue ConfigMaps; Kubernetes Jobs |
-| Better Auth | `mist-system`, main, one Recreate replica | Local `mist-auth-data` SQLite WAL PVC |
+| Go API, auth, and admission controller | `mist-system`, main, one Recreate replica | Team/queue ConfigMaps; Kubernetes Jobs; Local `mist-auth-data` SQLite WAL PVC |
 | k3s server / agent | Main / QuietBox | Existing cluster and device operators |
 | NFSv4 storage | QuietBox | 1,600 GiB sparse image; separate bounded dataset/model filesystems |
 | Team provisioning agent | QuietBox `mist-team-storage.service` | Validated manifests, fstab mounts and NFS exports |
 | Portal host firewall | Both `mist-portal-firewall.service` | Owned INPUT/FORWARD chains and host config |
 
-API/auth image tags are `mist-api:departments-20261009` and
-`mist-auth:departments-20261009`, imported into main's k3s containerd. New jobs
-run in `mist-team-<id>` namespaces. Historical `mist` workloads/PVCs remain.
+API image tag is `mist-api:departments-20261009`, imported into main's k3s containerd.
+New jobs run in `mist-team-<id>` namespaces. Historical `mist` workloads/PVCs remain.
 Never scale the current API above one replica: admission requires one controller.
 
 ## Build and redeploy on main
@@ -36,8 +34,8 @@ The API is Kubernetes-only; Redis and the retired Docker supervisor are unnecess
 bash deploy/private/build-and-deploy.sh
 ```
 
-The script builds API/CLI and both container images, imports them, applies
-RBAC/admission/network manifests, waits for auth/API rollout, installs web
+The script builds API/CLI and the API container image, imports it, applies
+RBAC/admission/network manifests, waits for API rollout, installs web
 packages, type-checks/builds the SPA and atomically installs its production
 release. It requires the existing Docker and Kubernetes access. Host imports
 and web installation use authorized Docker bind/chroot/nsenter access; the
@@ -145,8 +143,7 @@ only when resolving their own infrastructure problem because workloads depend on
 | Component | Owner | Status command |
 |---|---|---|
 | Portal | Main | `systemctl status nginx --no-pager` |
-| API/controller | Cluster | `k3s kubectl -n mist-system rollout status deployment/mist-api` |
-| Auth | Cluster | `k3s kubectl -n mist-system rollout status deployment/mist-auth` |
+| API, auth, and controller | Cluster | `k3s kubectl -n mist-system rollout status deployment/mist-api` |
 | Control plane | Main | `systemctl status k3s --no-pager` |
 | Worker | QuietBox | `systemctl status k3s-agent --no-pager` |
 | Shared storage | QuietBox | `systemctl status nfs-server mist-team-storage --no-pager` |

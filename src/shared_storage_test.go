@@ -6,12 +6,12 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func uploadTest(t *testing.T, s *SharedStorage, path string, data []byte) (*Dataset, error) {
@@ -151,20 +151,21 @@ func TestSharedJobMountAndEscapingOutput(t *testing.T) {
 	}
 }
 func TestMemberAuthIsolationAndFailureClosed(t *testing.T) {
-	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Header.Get("Cookie") {
-		case "member=alice":
-			io.WriteString(w, `{"user":{"id":"alice","email":"alice@example.org","name":"Alice","role":"user"}}`)
-		case "member=bob":
-			io.WriteString(w, `{"user":{"id":"bob","email":"bob@example.org","name":"Bob","role":"user"}}`)
-		default:
-			io.WriteString(w, "null")
-		}
-	}))
-	defer auth.Close()
-	t.Setenv("MIST_AUTH_URL", auth.URL)
+	t.Setenv("MIST_AUTH_DATABASE", filepath.Join(t.TempDir(), "auth.sqlite"))
 	t.Setenv("MIST_ALLOWED_ORIGINS", "http://mist.test")
 	app := NewKubernetesApp(testExecutor(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, m := range []Member{
+		{ID: "alice", Name: "Alice", Email: "alice@example.org", Role: "user"},
+		{ID: "bob", Name: "Bob", Email: "bob@example.org", Role: "user"},
+	} {
+		if _, err := app.auth.db.Exec(`
+			INSERT INTO user (id, name, email, role, createdAt, updatedAt)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, m.ID, m.Name, m.Email, m.Role, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
 	request := func(method, path, cookie, origin, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Cookie", cookie)
@@ -186,7 +187,7 @@ func TestMemberAuthIsolationAndFailureClosed(t *testing.T) {
 	if response := request("GET", "/jobs", "member=bob", "", ""); response.Code != 200 || !strings.Contains(response.Body.String(), `"count":0`) {
 		t.Fatalf("another member sees jobs: %s", response.Body.String())
 	}
-	auth.Close()
+	app.auth.Close()
 	if response := request("GET", "/jobs", "member=alice", "", ""); response.Code != 503 {
 		t.Fatal("auth failure did not close access")
 	}

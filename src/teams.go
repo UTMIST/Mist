@@ -594,34 +594,6 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, t)
 }
-func (g *AuthGateway) lookupMember(r *http.Request, id string) (*Member, error) {
-	u := *g.upstream
-	u.Path = "/auth/admin/get-user"
-	q := u.Query()
-	q.Set("id", id)
-	u.RawQuery = q.Encode()
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Cookie", r.Header.Get("Cookie"))
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, errors.New("account unavailable")
-	}
-	var member Member
-	if err = json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&member); err != nil {
-		return nil, err
-	}
-	if member.ID != id || member.Banned {
-		return nil, errors.New("account unavailable")
-	}
-	return &member, nil
-}
 func sortedTeams(teams []Team) {
 	sort.Slice(teams, func(i, j int) bool { return teams[i].ID < teams[j].ID })
 }
