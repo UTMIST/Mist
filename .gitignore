@@ -4,3 +4,4 @@ __pycache__/
 *.py[cod]
 data/
 .direnv/
+.fake-backend-config.json

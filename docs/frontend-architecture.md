@@ -96,3 +96,30 @@ npm --prefix web-interface run dev -- --host 127.0.0.1 --port 3001 --strictPort
 ```
 
 Open http://127.0.0.1:3001 in your browser. Pre-seeded users include `ada@utmist.gitlab.io` (admin), `alan@utmist.gitlab.io`, and `grace@utmist.gitlab.io`.
+
+### Configuring hypothetical scenarios and fake information
+
+A companion configure tool is provided at `scripts/configure-fake-backend.mjs` to set up hypothetical cluster topologies, error conditions, and user setups:
+
+```bash
+# Interactive menu (choose scenarios, add fake nodes, switch active user)
+npm --prefix web-interface run configure-fake-backend
+
+# Switch to a preset scenario directly
+node scripts/configure-fake-backend.mjs --scenario high-load
+node scripts/configure-fake-backend.mjs --scenario unhealthy
+node scripts/configure-fake-backend.mjs --scenario empty-slate
+node scripts/configure-fake-backend.mjs --scenario large-cluster
+node scripts/configure-fake-backend.mjs --scenario default
+
+# Inspect current cluster topology & status
+node scripts/configure-fake-backend.mjs --status
+
+# Add custom fake machines, users, or teams
+node scripts/configure-fake-backend.mjs --add-machine name=dgx-custom,ip=10.99.1.5,cpu=64,ram=256Gi,gpu=8
+node scripts/configure-fake-backend.mjs --add-user name="Marie Curie",email=curie@rad.edu,role=admin
+node scripts/configure-fake-backend.mjs --set-user curie@rad.edu
+```
+
+If the fake backend is running, `configure-fake-backend.mjs` updates the live server immediately without requiring a restart, while also saving to `.fake-backend-config.json` for persistence.
+

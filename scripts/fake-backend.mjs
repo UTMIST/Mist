@@ -8,282 +8,181 @@
  *
  * Usage:
  *   node scripts/fake-backend.mjs
+ *   node scripts/fake-backend.mjs --scenario high-load
+ *   node scripts/fake-backend.mjs --config ./custom-config.json
  *   PORT=3000 node scripts/fake-backend.mjs
  *   npm --prefix web-interface run fake-backend
  */
 
 import http from 'node:http'
+import fs from 'node:fs'
+import path from 'node:path'
 import { URL } from 'node:url'
 import crypto from 'node:crypto'
+import {
+  getScenario,
+  SCENARIO_DESCRIPTIONS,
+  SCENARIO_FACTORIES,
+} from './fake-backend-scenarios.mjs'
 
-const PORT = Number(process.env.PORT || process.env.MIST_FAKE_PORT || 3000)
-const HOST = process.env.HOST || '127.0.0.1'
-
-// --- In-Memory State & Seed Data ---
-
-const state = {
-  users: [
-    {
-      id: 'usr_ada',
-      name: 'Ada Lovelace',
-      email: 'ada@utmist.gitlab.io',
-      role: 'admin',
-      banned: false,
-    },
-    {
-      id: 'usr_alan',
-      name: 'Alan Turing',
-      email: 'alan@utmist.gitlab.io',
-      role: 'user',
-      banned: false,
-    },
-    {
-      id: 'usr_grace',
-      name: 'Grace Hopper',
-      email: 'grace@utmist.gitlab.io',
-      role: 'user',
-      banned: false,
-    },
-  ],
-  currentUserIndex: 0, // Ada Lovelace by default
-  teams: [
-    {
-      id: 'team-vision',
-      name: 'Computer Vision',
-      disabled: false,
-      policy: {
-        cpu: '16',
-        memory: '64Gi',
-        nvidia: 2,
-        tenstorrent: 4,
-        concurrent: 4,
-        queued: 20,
-        storage_gib: 300,
-        model_storage_gib: 600,
-        runtime_seconds: 86400,
-        registries: ['docker.io', 'ghcr.io', 'quay.io'],
-      },
-      members: [
-        {
-          id: 'usr_ada',
-          name: 'Ada Lovelace',
-          email: 'ada@utmist.gitlab.io',
-          common_writer: true,
-        },
-        {
-          id: 'usr_alan',
-          name: 'Alan Turing',
-          email: 'alan@utmist.gitlab.io',
-          common_writer: false,
-        },
-      ],
-      grants: [
-        {
-          id: 'grant-nlp-share',
-          target_team: 'team-nlp',
-          scope: 'common',
-        },
-      ],
-    },
-    {
-      id: 'team-nlp',
-      name: 'Natural Language Processing',
-      disabled: false,
-      policy: {
-        cpu: '8',
-        memory: '32Gi',
-        nvidia: 1,
-        tenstorrent: 2,
-        concurrent: 2,
-        queued: 10,
-        storage_gib: 200,
-        model_storage_gib: 400,
-        runtime_seconds: 43200,
-        registries: ['docker.io', 'ghcr.io'],
-      },
-      members: [
-        {
-          id: 'usr_ada',
-          name: 'Ada Lovelace',
-          email: 'ada@utmist.gitlab.io',
-          common_writer: true,
-        },
-        {
-          id: 'usr_grace',
-          name: 'Grace Hopper',
-          email: 'grace@utmist.gitlab.io',
-          common_writer: false,
-        },
-      ],
-      grants: [],
-    },
-  ],
-  storageBudgetGiB: 2000,
-  jobs: [
-    {
-      id: 'job-seed-001',
-      name: 'ResNet50 Vision Benchmark',
-      created: new Date(Date.now() - 3600000).toISOString(),
-      job_state: 'Success',
-      accelerator: 'nvidia',
-      device_count: 2,
-      image: 'ghcr.io/utmist/pytorch-cuda:latest',
-      cpu: '8',
-      memory: '32Gi',
-      node: 'mist-gpu-node-01',
-      exit_code: 0,
-      message: 'Job completed successfully in 1420s',
-      checkpoint_directory: '/outputs/checkpoints/job-seed-001',
-      output_directory: '/outputs/runs/job-seed-001',
-      timeout_seconds: 7200,
-      team_id: 'team-vision',
-      creator_id: 'usr_ada',
-      creator_name: 'Ada Lovelace',
-      storage_scope: 'common',
-      can_cancel: false,
-    },
-    {
-      id: 'job-seed-002',
-      name: 'BERT Fine-tuning Test',
-      created: new Date(Date.now() - 1800000).toISOString(),
-      job_state: 'InProgress',
-      accelerator: 'nvidia',
-      device_count: 1,
-      image: 'ghcr.io/utmist/pytorch-cuda:latest',
-      cpu: '4',
-      memory: '16Gi',
-      node: 'mist-gpu-node-01',
-      checkpoint_directory: '/outputs/checkpoints/job-seed-002',
-      output_directory: '/outputs/runs/job-seed-002',
-      timeout_seconds: 3600,
-      team_id: 'team-nlp',
-      creator_id: 'usr_grace',
-      creator_name: 'Grace Hopper',
-      storage_scope: 'usr_grace',
-      can_cancel: true,
-    },
-    {
-      id: 'job-seed-003',
-      name: 'Tenstorrent Wormhole Matrix Multiplication',
-      created: new Date(Date.now() - 600000).toISOString(),
-      job_state: 'Scheduled',
-      accelerator: 'tenstorrent',
-      device_count: 2,
-      image: 'ghcr.io/utmist/tt-metal-runtime:latest',
-      cpu: '4',
-      memory: '16Gi',
-      message: 'Queued; waiting for 2 Tenstorrent n300 board allocations',
-      checkpoint_directory: '/outputs/checkpoints/job-seed-003',
-      output_directory: '/outputs/runs/job-seed-003',
-      timeout_seconds: 1800,
-      team_id: 'team-vision',
-      creator_id: 'usr_alan',
-      creator_name: 'Alan Turing',
-      storage_scope: 'usr_alan',
-      can_cancel: true,
-    },
-  ],
-  datasets: [
-    {
-      id: 'ds-cifar100',
-      name: 'CIFAR-100 Benchmark Dataset',
-      filename: 'cifar100.zip',
-      size: 169000000,
-      files: 100,
-      sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-      created: new Date(Date.now() - 86400000).toISOString(),
-      state: 'ready',
-      team_id: 'team-vision',
-      team_name: 'Computer Vision',
-      scope: 'common',
-      member_name: 'Ada Lovelace',
-      shared: false,
-    },
-    {
-      id: 'ds-wikitext',
-      name: 'Wikitext-103 Subset',
-      filename: 'wikitext.tar.gz',
-      size: 512000000,
-      files: 1,
-      sha256: 'ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb',
-      created: new Date(Date.now() - 43200000).toISOString(),
-      state: 'ready',
-      team_id: 'team-nlp',
-      team_name: 'Natural Language Processing',
-      scope: 'common',
-      member_name: 'Grace Hopper',
-      shared: true,
-    },
-  ],
-  jobLogs: new Map([
-    [
-      'job-seed-001',
-      `[2026-10-16 20:00:01] [INFO] Initializing PyTorch runtime on NVIDIA node 'mist-gpu-node-01'
-[2026-10-16 20:00:03] [INFO] Allocated 2x NVIDIA RTX A6000 GPUs (CUDA devices 0, 1)
-[2026-10-16 20:00:05] [INFO] Loading CIFAR-100 dataset from /inputs/cifar100
-[2026-10-16 20:00:12] [INFO] Epoch 1/10: train_loss=2.31, val_acc=68.4%
-[2026-10-16 20:10:45] [INFO] Epoch 10/10: train_loss=0.42, val_acc=84.2%
-[2026-10-16 20:23:41] [INFO] Checkpoint saved to /outputs/runs/job-seed-001/checkpoint_final.pt
-[2026-10-16 20:23:42] [INFO] Training complete. Process exited with code 0.`,
-    ],
-    [
-      'job-seed-002',
-      `[2026-10-16 20:30:00] [INFO] BERT fine-tuning initialized.
-[2026-10-16 20:30:02] [INFO] Using GPU 0 (Allocated 1x GPU)
-[2026-10-16 20:30:15] [INFO] Warmup steps complete. Training batch 450/2000...
-[2026-10-16 20:30:30] [INFO] Current loss: 1.284`,
-    ],
-    [
-      'job-seed-003',
-      `[2026-10-16 20:50:00] [INFO] Job queued in team 'team-vision'. Awaiting Tenstorrent admission controller.`,
-    ],
-  ]),
-  jobFiles: new Map([
-    [
-      'job-seed-001',
-      [
-        {
-          path: 'checkpoint_final.pt',
-          size: 104857600,
-          modified: new Date(Date.now() - 3600000).toISOString(),
-        },
-        {
-          path: 'training_metrics.json',
-          size: 4096,
-          modified: new Date(Date.now() - 3600000).toISOString(),
-        },
-        {
-          path: 'run_summary.txt',
-          size: 512,
-          modified: new Date(Date.now() - 3600000).toISOString(),
-        },
-      ],
-    ],
-  ]),
+// Parse command line arguments
+const args = process.argv.slice(2)
+function getArg(flag) {
+  const idx = args.indexOf(flag)
+  return idx !== -1 && args[idx + 1] ? args[idx + 1] : null
 }
 
-// Automatically progress queued jobs to running and completed
+const PORT = Number(
+  getArg('--port') || process.env.PORT || process.env.MIST_FAKE_PORT || 3000,
+)
+const HOST = process.env.HOST || '127.0.0.1'
+const DEFAULT_CONFIG_FILE = path.resolve(process.cwd(), '.fake-backend-config.json')
+
+// --- Initial State Management ---
+
+let state = {
+  activeScenario: 'default',
+  users: [],
+  currentUserIndex: 0,
+  machines: [],
+  pools: [],
+  storageBudgetGiB: 2000,
+  storage: {},
+  teams: [],
+  jobs: [],
+  datasets: [],
+  images: {
+    self_service: true,
+    teams_enabled: true,
+    registries: ['docker.io', 'ghcr.io', 'quay.io', 'localhost:5000'],
+    images: [
+      { reference: 'docker.io/library/python:3.11-slim', accelerators: ['cpu'] },
+      { reference: 'docker.io/library/pytorch-cpu:2.2.0', accelerators: ['cpu'] },
+      { reference: 'ghcr.io/utmist/pytorch-cuda:latest', accelerators: ['nvidia'] },
+      { reference: 'ghcr.io/utmist/tt-metal-runtime:latest', accelerators: ['tenstorrent'] },
+    ],
+    profiles: [
+      {
+        accelerator: 'cpu',
+        default_image: 'docker.io/library/python:3.11-slim',
+        device_unit: 'core',
+        max_devices: 16,
+        note: 'Standard CPU runtime',
+      },
+      {
+        accelerator: 'nvidia',
+        default_image: 'ghcr.io/utmist/pytorch-cuda:latest',
+        device_unit: 'GPU',
+        max_devices: 4,
+        note: 'NVIDIA CUDA 12.4 + PyTorch runtime',
+      },
+      {
+        accelerator: 'tenstorrent',
+        default_image: 'ghcr.io/utmist/tt-metal-runtime:latest',
+        device_unit: 'board',
+        max_devices: 4,
+        note: 'Tenstorrent Wormhole n300 PCIe runtime',
+      },
+    ],
+  },
+  jobLogs: new Map(),
+  jobFiles: new Map(),
+}
+
+export function applyConfiguration(config) {
+  if (config.users) state.users = JSON.parse(JSON.stringify(config.users))
+  if (config.currentUserIndex !== undefined) state.currentUserIndex = config.currentUserIndex
+  if (config.activeUserId) {
+    const idx = state.users.findIndex(
+      (u) => u.id === config.activeUserId || u.email.toLowerCase() === config.activeUserId.toLowerCase(),
+    )
+    if (idx >= 0) state.currentUserIndex = idx
+  }
+  if (config.machines) state.machines = JSON.parse(JSON.stringify(config.machines))
+  if (config.pools) state.pools = JSON.parse(JSON.stringify(config.pools))
+  if (config.storage) state.storage = JSON.parse(JSON.stringify(config.storage))
+  if (config.storageBudgetGiB !== undefined) state.storageBudgetGiB = config.storageBudgetGiB
+  if (config.teams) state.teams = JSON.parse(JSON.stringify(config.teams))
+  if (config.jobs) {
+    state.jobs = JSON.parse(JSON.stringify(config.jobs))
+    for (const job of state.jobs) {
+      if (!state.jobLogs.has(job.id)) {
+        state.jobLogs.set(
+          job.id,
+          `[${job.created}] Job ${job.name} initialized in state ${job.job_state}\n`,
+        )
+      }
+    }
+  }
+  if (config.datasets) state.datasets = JSON.parse(JSON.stringify(config.datasets))
+  if (config.images) state.images = JSON.parse(JSON.stringify(config.images))
+  if (config.name) state.activeScenario = config.name
+}
+
+// Determine initial scenario / config
+function initializeState() {
+  const cliScenario = getArg('--scenario') || process.env.MIST_FAKE_SCENARIO
+  const cliConfig = getArg('--config') || process.env.MIST_FAKE_CONFIG
+
+  if (cliScenario) {
+    try {
+      console.log(`[Config] Loading requested scenario: '${cliScenario}'`)
+      applyConfiguration(getScenario(cliScenario))
+      return
+    } catch (err) {
+      console.warn(`[Config] Warning: ${err.message}. Falling back to default.`)
+    }
+  }
+
+  if (cliConfig && fs.existsSync(cliConfig)) {
+    try {
+      console.log(`[Config] Loading configuration from: ${cliConfig}`)
+      const raw = fs.readFileSync(cliConfig, 'utf-8')
+      applyConfiguration(JSON.parse(raw))
+      return
+    } catch (err) {
+      console.warn(`[Config] Failed to load config from ${cliConfig}: ${err.message}`)
+    }
+  }
+
+  if (fs.existsSync(DEFAULT_CONFIG_FILE)) {
+    try {
+      console.log(`[Config] Found local ${DEFAULT_CONFIG_FILE}, loading...`)
+      const raw = fs.readFileSync(DEFAULT_CONFIG_FILE, 'utf-8')
+      applyConfiguration(JSON.parse(raw))
+      return
+    } catch (err) {
+      console.warn(`[Config] Failed to parse ${DEFAULT_CONFIG_FILE}: ${err.message}`)
+    }
+  }
+
+  // Fallback to default scenario
+  applyConfiguration(getScenario('default'))
+}
+
+initializeState()
+
+// Automatically progress queued jobs over time
 setInterval(() => {
   for (const job of state.jobs) {
     if (job.job_state === 'Scheduled') {
-      job.job_state = 'InProgress'
-      job.node =
-        job.accelerator === 'tenstorrent'
-          ? 'mist-tt-worker-01'
-          : 'mist-gpu-node-01'
-      job.message = 'Pod running on ' + job.node
-      const logs =
-        state.jobLogs.get(job.id) ||
-        `[${new Date().toISOString()}] Job submitted.\n`
-      state.jobLogs.set(
-        job.id,
-        logs +
-          `[${new Date().toISOString()}] Admitted to cluster. Initializing pod on ${job.node}...\n`,
+      // Find suitable node if available
+      const pool = state.pools.find(
+        (p) => p.accelerator === job.accelerator && p.ready && (p.available === null || p.available > 0),
       )
+      if (pool) {
+        job.job_state = 'InProgress'
+        job.node = pool.node
+        job.message = `Pod running on ${job.node}`
+        const logs = state.jobLogs.get(job.id) || `[${new Date().toISOString()}] Job submitted.\n`
+        state.jobLogs.set(
+          job.id,
+          logs + `[${new Date().toISOString()}] Admitted to cluster. Initializing pod on ${job.node}...\n`,
+        )
+      }
     } else if (job.job_state === 'InProgress') {
       const elapsed = Date.now() - new Date(job.created).getTime()
-      if (elapsed > 20000) {
-        // Complete job after 20s
+      if (elapsed > 20000 && !job.id.startsWith('job-hl-run')) {
         job.job_state = 'Success'
         job.exit_code = 0
         job.message = 'Job completed successfully'
@@ -291,21 +190,12 @@ setInterval(() => {
         const logs = state.jobLogs.get(job.id) || ''
         state.jobLogs.set(
           job.id,
-          logs +
-            `[${new Date().toISOString()}] Execution finished with code 0.\nOutputs written to /outputs.\n`,
+          logs + `[${new Date().toISOString()}] Execution finished with code 0.\nOutputs saved.\n`,
         )
         if (!state.jobFiles.has(job.id)) {
           state.jobFiles.set(job.id, [
-            {
-              path: 'output.log',
-              size: 2048,
-              modified: new Date().toISOString(),
-            },
-            {
-              path: 'model_weights.bin',
-              size: 52428800,
-              modified: new Date().toISOString(),
-            },
+            { path: 'output.log', size: 2048, modified: new Date().toISOString() },
+            { path: 'model_weights.bin', size: 52428800, modified: new Date().toISOString() },
           ])
         }
       }
@@ -361,8 +251,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers':
-        'Content-Type, X-Mist-Team, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Mist-Team, Authorization',
       'Access-Control-Max-Age': '86400',
     })
     res.end()
@@ -374,7 +263,7 @@ const server = http.createServer(async (req, res) => {
   const query = Object.fromEntries(parsedUrl.searchParams.entries())
   const activeTeam = req.headers['x-mist-team'] || query.team_id || ''
 
-  // Normalize path by stripping optional '/api' prefix (Vite proxy rewrites /api, direct hits do not)
+  // Normalize path by stripping optional '/api' prefix
   if (pathname.startsWith('/api/')) {
     pathname = pathname.slice(4)
   } else if (pathname === '/api') {
@@ -385,10 +274,76 @@ const server = http.createServer(async (req, res) => {
 
   try {
     // ----------------------------------------------------
+    // FAKE BACKEND DYNAMIC CONFIGURATION & SCENARIO CONTROL
+    // ----------------------------------------------------
+
+    if (pathname === '/_fake/state' && req.method === 'GET') {
+      sendJSON(res, 200, {
+        activeScenario: state.activeScenario,
+        currentUserIndex: state.currentUserIndex,
+        currentUser,
+        users: state.users,
+        machines: state.machines,
+        pools: state.pools,
+        storage: state.storage,
+        storageBudgetGiB: state.storageBudgetGiB,
+        teams: state.teams,
+        jobs: state.jobs,
+        datasets: state.datasets,
+      })
+      return
+    }
+
+    if ((pathname === '/_fake/state' || pathname === '/_fake/configure') && req.method === 'POST') {
+      const body = await parseJSONBody(req)
+      applyConfiguration(body)
+      sendJSON(res, 200, {
+        success: true,
+        message: 'Configuration applied successfully',
+        activeScenario: state.activeScenario,
+      })
+      return
+    }
+
+    if (pathname === '/_fake/scenarios' && req.method === 'GET') {
+      sendJSON(res, 200, {
+        scenarios: Object.entries(SCENARIO_DESCRIPTIONS).map(([name, description]) => ({
+          name,
+          description,
+          active: state.activeScenario === name,
+        })),
+      })
+      return
+    }
+
+    const scenarioMatch = pathname.match(/^\/_fake\/scenario\/([^/]+)$/)
+    if (scenarioMatch && req.method === 'POST') {
+      const name = scenarioMatch[1]
+      try {
+        const scenarioData = getScenario(name)
+        applyConfiguration(scenarioData)
+        sendJSON(res, 200, {
+          success: true,
+          scenario: name,
+          message: `Switched to hypothetical scenario: '${name}'`,
+        })
+      } catch (err) {
+        sendError(res, 400, err.message)
+      }
+      return
+    }
+
+    if (pathname === '/_fake/reset' && req.method === 'POST') {
+      const defaultData = getScenario('default')
+      applyConfiguration(defaultData)
+      sendJSON(res, 200, { success: true, message: 'Reset to default scenario' })
+      return
+    }
+
+    // ----------------------------------------------------
     // AUTH & SESSION ENDPOINTS
     // ----------------------------------------------------
 
-    // Session check used by AccountGate
     if (pathname === '/session' && req.method === 'GET') {
       sendJSON(res, 200, {
         enabled: true,
@@ -397,7 +352,6 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // Better Auth: Session retrieval
     if (pathname === '/auth/get-session' && req.method === 'GET') {
       if (!currentUser) {
         sendJSON(res, 200, null)
@@ -414,7 +368,6 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // Better Auth: Email Sign-in
     if (pathname === '/auth/sign-in/email' && req.method === 'POST') {
       const body = await parseJSONBody(req)
       const user = state.users.find(
@@ -444,24 +397,20 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // Better Auth: Sign-out
     if (pathname === '/auth/sign-out' && req.method === 'POST') {
       state.currentUserIndex = -1 // signed out
       sendJSON(res, 200, { success: true })
       return
     }
 
-    // Better Auth: Change Password
     if (pathname === '/auth/change-password' && req.method === 'POST') {
       await parseJSONBody(req)
       sendJSON(res, 200, { success: true })
       return
     }
 
-    // Better Auth Admin: List Users
     if (
-      (pathname === '/auth/admin/list-users' ||
-        pathname === '/auth/admin/listUsers') &&
+      (pathname === '/auth/admin/list-users' || pathname === '/auth/admin/listUsers') &&
       (req.method === 'GET' || req.method === 'POST')
     ) {
       sendJSON(res, 200, {
@@ -471,7 +420,6 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // Better Auth Admin: Create User
     if (pathname === '/auth/admin/create-user' && req.method === 'POST') {
       const body = await parseJSONBody(req)
       if (!body.name || !body.email) {
@@ -490,24 +438,18 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // Better Auth Admin: Set User Password
     if (pathname === '/auth/admin/set-user-password' && req.method === 'POST') {
       await parseJSONBody(req)
       sendJSON(res, 200, { success: true })
       return
     }
 
-    // Better Auth Admin: Revoke User Sessions
-    if (
-      pathname === '/auth/admin/revoke-user-sessions' &&
-      req.method === 'POST'
-    ) {
+    if (pathname === '/auth/admin/revoke-user-sessions' && req.method === 'POST') {
       await parseJSONBody(req)
       sendJSON(res, 200, { success: true })
       return
     }
 
-    // Better Auth Admin: Ban / Unban User
     if (pathname === '/auth/admin/ban-user' && req.method === 'POST') {
       const body = await parseJSONBody(req)
       const target = state.users.find((u) => u.id === body.userId)
@@ -515,6 +457,7 @@ const server = http.createServer(async (req, res) => {
       sendJSON(res, 200, { success: true })
       return
     }
+
     if (pathname === '/auth/admin/unban-user' && req.method === 'POST') {
       const body = await parseJSONBody(req)
       const target = state.users.find((u) => u.id === body.userId)
@@ -530,127 +473,14 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/hardware' && req.method === 'GET') {
       sendJSON(res, 200, {
         observed_at: new Date().toISOString(),
-        machines: [
-          {
-            name: 'mist-gpu-node-01',
-            address: '10.0.1.10',
-            ready: true,
-            schedulable: true,
-            cpu_allocatable: '32',
-            memory_allocatable: '128Gi',
-          },
-          {
-            name: 'mist-tt-worker-01',
-            address: '10.0.1.11',
-            ready: true,
-            schedulable: true,
-            cpu_allocatable: '16',
-            memory_allocatable: '64Gi',
-          },
-        ],
-        pools: [
-          {
-            accelerator: 'nvidia',
-            node: 'mist-gpu-node-01',
-            unit: 'GPU',
-            total: 4,
-            allocated: state.jobs
-              .filter(
-                (j) =>
-                  j.accelerator === 'nvidia' && j.job_state === 'InProgress',
-              )
-              .reduce((sum, j) => sum + (j.device_count || 1), 0),
-            available: Math.max(
-              0,
-              4 -
-                state.jobs
-                  .filter(
-                    (j) =>
-                      j.accelerator === 'nvidia' &&
-                      j.job_state === 'InProgress',
-                  )
-                  .reduce((sum, j) => sum + (j.device_count || 1), 0),
-            ),
-            ready: true,
-          },
-          {
-            accelerator: 'tenstorrent',
-            node: 'mist-tt-worker-01',
-            unit: 'board',
-            total: 4,
-            allocated: state.jobs
-              .filter(
-                (j) =>
-                  j.accelerator === 'tenstorrent' &&
-                  j.job_state === 'InProgress',
-              )
-              .reduce((sum, j) => sum + (j.device_count || 1), 0),
-            available: Math.max(
-              0,
-              4 -
-                state.jobs
-                  .filter(
-                    (j) =>
-                      j.accelerator === 'tenstorrent' &&
-                      j.job_state === 'InProgress',
-                  )
-                  .reduce((sum, j) => sum + (j.device_count || 1), 0),
-            ),
-            ready: true,
-            chips_per_device: 2,
-          },
-        ],
+        machines: state.machines,
+        pools: state.pools,
       })
       return
     }
 
     if (pathname === '/images' && req.method === 'GET') {
-      sendJSON(res, 200, {
-        self_service: true,
-        teams_enabled: true,
-        registries: ['docker.io', 'ghcr.io', 'quay.io', 'localhost:5000'],
-        images: [
-          {
-            reference: 'docker.io/library/python:3.11-slim',
-            accelerators: ['cpu'],
-          },
-          {
-            reference: 'docker.io/library/pytorch-cpu:2.2.0',
-            accelerators: ['cpu'],
-          },
-          {
-            reference: 'ghcr.io/utmist/pytorch-cuda:latest',
-            accelerators: ['nvidia'],
-          },
-          {
-            reference: 'ghcr.io/utmist/tt-metal-runtime:latest',
-            accelerators: ['tenstorrent'],
-          },
-        ],
-        profiles: [
-          {
-            accelerator: 'cpu',
-            default_image: 'docker.io/library/python:3.11-slim',
-            device_unit: 'core',
-            max_devices: 16,
-            note: 'Standard CPU runtime',
-          },
-          {
-            accelerator: 'nvidia',
-            default_image: 'ghcr.io/utmist/pytorch-cuda:latest',
-            device_unit: 'GPU',
-            max_devices: 4,
-            note: 'NVIDIA CUDA 12.4 + PyTorch runtime',
-          },
-          {
-            accelerator: 'tenstorrent',
-            default_image: 'ghcr.io/utmist/tt-metal-runtime:latest',
-            device_unit: 'board',
-            max_devices: 4,
-            note: 'Tenstorrent Wormhole n300 PCIe runtime',
-          },
-        ],
-      })
+      sendJSON(res, 200, state.images)
       return
     }
 
@@ -877,16 +707,7 @@ const server = http.createServer(async (req, res) => {
     // ----------------------------------------------------
 
     if (pathname === '/storage' && req.method === 'GET') {
-      sendJSON(res, 200, {
-        enabled: true,
-        capacity_bytes: 1099511627776, // 1 TiB
-        available_bytes: 879609302220, // 800 GiB
-        model_capacity_bytes: 2199023255552, // 2 TiB
-        model_available_bytes: 1759218604441, // 1.6 TiB
-        dataset_allocation_gib: 500,
-        model_allocation_gib: 1000,
-        upload_limit_bytes: 5368709120, // 5 GiB
-      })
+      sendJSON(res, 200, state.storage)
       return
     }
 
@@ -951,12 +772,11 @@ const server = http.createServer(async (req, res) => {
       }
       sendJSON(res, 200, {
         datasets: filtered,
-        upload_limit_bytes: 5368709120,
+        upload_limit_bytes: state.storage.upload_limit_bytes || 5368709120,
       })
       return
     }
 
-    // Dataset upload (streaming / raw binary or multipart)
     if (pathname === '/datasets' && req.method === 'POST') {
       const filename = query.filename || 'dataset.bin'
       const name = query.name || filename
@@ -1029,13 +849,11 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // Health check
     if (pathname === '/healthz' && req.method === 'GET') {
       sendJSON(res, 200, { status: 'ok', executor: 'fake-backend' })
       return
     }
 
-    // 404 Fallback
     sendError(res, 404, `Endpoint not found: ${req.method} ${pathname}`)
   } catch (err) {
     console.error('[Fake Backend Error]', err)
@@ -1046,10 +864,12 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`======================================================`)
   console.log(`Mist Fake Backend running at http://${HOST}:${PORT}`)
-  console.log(`Ready for web-interface testing!`)
-  console.log(`- Simulated User: ${state.users[state.currentUserIndex]?.name} (${state.users[state.currentUserIndex]?.role})`)
-  console.log(`- Teams: ${state.teams.map((t) => t.name).join(', ')}`)
-  console.log(`- Jobs: ${state.jobs.length} pre-populated`)
+  console.log(`Active Scenario: '${state.activeScenario}'`)
+  console.log(`Simulated User:  ${state.users[state.currentUserIndex]?.name} (${state.users[state.currentUserIndex]?.role})`)
+  console.log(`Machines:        ${state.machines.map((m) => m.name).join(', ')}`)
+  console.log(`Teams:           ${state.teams.map((t) => t.name).join(', ')}`)
+  console.log(`Jobs:            ${state.jobs.length} in history`)
+  console.log(`Run 'node scripts/configure-fake-backend.mjs' to modify`)
   console.log(`======================================================`)
 })
 
