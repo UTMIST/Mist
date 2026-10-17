@@ -7,8 +7,8 @@ its operating contracts.
 ```mermaid
 flowchart LR
     Client[Browser or authenticated CLI] --> Portal[Nginx private Tailscale portal :8088]
-    Portal --> API[Go API and single admission controller]
-    API --> Auth[Better Auth and local SQLite PVC]
+    Portal --> API[Go API, built-in auth and single admission controller]
+    API --> Auth[Local SQLite PVC]
     API --> State[Team policy ConfigMaps and suspended Jobs]
     State --> K8s[k3s scheduler and device operators]
     K8s --> Main[CPU and NVIDIA node]
@@ -20,7 +20,7 @@ flowchart LR
 ## Job flow
 
 1. Nginx serves the built SPA and forwards `/api` and `/auth` to Go.
-2. Better Auth verifies the account. Go checks current team membership, image
+2. Go verifies the account via its built-in authentication service. Go checks current team membership, image
    registry rules, storage scope and resource/runtime/queue policy.
 3. The API persists a suspended Job in the team's namespace and prepares its
    scoped output directory. A single controller admits queued jobs fairly.
@@ -43,10 +43,9 @@ submitted model into distributed training across both accelerator types.
 | `src/main.go`, `app.go` | Process lifecycle, HTTP routes and controller ownership |
 | `src/jobs_http.go`, `http.go`, `job_types.go` | Job endpoints, shared responses and wire types |
 | `src/kubernetes.go`, `job_states.go`, `outputs.go` | Container specification, execution/state and retained local-output initialization |
-| `src/member_auth.go` | Session proxy, identity and authoritative authorization |
+| `src/auth.go`, `member_auth.go` | In-process SQLite authentication, session management, identity and authoritative authorization |
 | `src/teams.go`, `team_queue.go`, `team_runtime.go`, `team_storage.go` | Membership/policy, fair admission, isolation and scoped storage |
 | `src/shared_storage.go`, `hardware.go`, `images.go` | Uploads/results, inventory and image/runtime profiles |
-| `auth-service/` | Better Auth and local SQLite persistence |
 | `cli/` | Authenticated terminal client; no execution logic |
 | `web-interface/` | React portal, typed API client, account/team state and UI components |
 | `deploy/k3s/` | Manifests, accelerator diagnostics, live verifiers and evidence |

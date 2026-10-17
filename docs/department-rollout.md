@@ -36,7 +36,7 @@ password changes. Never share or commit its auth secret.
 ## Administration
 
 On **Account → Members**, use **New member** to create accounts. Search the
-compact list to deactivate/reactivate a member or open their password reset
+compact list to open their password reset
 dialog. **My account** contains your own password settings. A reset revokes existing sessions. There is no email delivery
 service; hand the temporary password to its owner privately. Members can change
 their own password. Public signup remains disabled.
@@ -45,7 +45,7 @@ On **Teams**:
 
 - Use **New team** to create a team and choose its initial storage allocation. The portal enrolls
   the creating administrator as a common-folder writer.
-- Open **Manage → Teammates** to add existing active accounts. Members may belong to several teams. Update
+- Open **Manage → Teammates** to add existing accounts. Members may belong to several teams. Update
   **Can write common folder** independently of membership.
 - Open **Manage → Limits** to set team CPU, RAM, NVIDIA GPUs, TT boards, concurrency, queued-job capacity,
   maximum runtime, storage and allowed registry hosts.
@@ -54,8 +54,8 @@ On **Teams**:
   source team's data.
 - Remove membership, revoke a grant or disable a team. Subsequent requests lose
   access immediately. Affected queued/running jobs are suspended and their pods
-  are removed; saved data remains. The controller checks account deactivation
-  and current admin roles every reconciliation.
+  are removed; saved data remains. The controller checks team memberships and
+  current admin roles every reconciliation.
 
 Administrators can manage team settings but must explicitly belong to a team to
 use its workspace. Admin status does not silently grant access to all files.

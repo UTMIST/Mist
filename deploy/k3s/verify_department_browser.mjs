@@ -91,10 +91,6 @@ try {
     save();
   }
   if (state.member && process.env.MIST_VERIFY_NEW_MEMBER === "1") {
-    await api(ctx, "/auth/admin/ban-user", "POST", {
-      userId: state.member.id,
-      banReason: "Replaced browser verification fixture",
-    });
     delete state.member;
     save();
   }
@@ -120,7 +116,6 @@ try {
     state.member = m;
     save();
   }
-  await api(ctx, "/auth/admin/unban-user", "POST", { userId: state.member.id });
   pass("browser_account_creation");
   if (!state.team) {
     await page.goto("/teams");
@@ -409,10 +404,6 @@ try {
   await page.screenshot({ path: out + "/final-overview.png", fullPage: true });
   pass("desktop_mobile_layout_no_overflow_or_browser_errors");
   await api(ctx, `/api/teams/${team}`, "PATCH", { disabled: true });
-  await api(ctx, "/auth/admin/ban-user", "POST", {
-    userId: state.member.id,
-    banReason: "Browser verification complete",
-  });
   const pilot = JSON.parse(readFileSync(out + "/private-state.json")).a.id;
   await pick(page, "Workspace", { exact: true }, pilot);
   check(report.browser_errors.length === 0, report.browser_errors.join("; "));

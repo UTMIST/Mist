@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -46,28 +45,24 @@ func departmentTestApp(t *testing.T) (*App, *fake.Clientset, []Team) {
 			t.Fatal(err)
 		}
 	}
-	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/internal/members" {
-			writeJSON(w, 200, map[string]any{"members": []map[string]any{{"id": "alice", "active": true}, {"id": "bob", "active": true}, {"id": "admin", "active": true, "role": "admin"}}})
-			return
-		}
-		id := strings.TrimPrefix(r.Header.Get("Cookie"), "identity=")
-		if id != "alice" && id != "bob" && id != "admin" {
-			writeJSON(w, 200, map[string]any{"user": nil})
-			return
-		}
-		m := Member{ID: id, Name: id, Role: "user"}
-		if id == "admin" {
-			m.Role = "admin"
-		}
-		writeJSON(w, 200, map[string]any{"user": m})
-	}))
-	t.Cleanup(auth.Close)
 	t.Setenv("MIST_REQUIRE_TEAM_FILESYSTEM", "false")
-	t.Setenv("MIST_AUTH_URL", auth.URL)
 	t.Setenv("MIST_TEAMS_ENABLED", "true")
+	t.Setenv("MIST_AUTH_DATABASE", filepath.Join(t.TempDir(), "auth.sqlite"))
 	e := &KubernetesExecutor{client: c, namespace: "mist", owner: "legacy", storage: store, cpuNode: "main", ttNode: "tt", allowedImages: map[string]bool{cpuImage: true, ttImage: true, nvidiaImage: true}}
 	app := NewKubernetesApp(e, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, m := range []Member{
+		{ID: "alice", Name: "Alice", Email: "alice@mist.local", Role: "user"},
+		{ID: "bob", Name: "Bob", Email: "bob@mist.local", Role: "user"},
+		{ID: "admin", Name: "Admin", Email: "admin@mist.local", Role: "admin"},
+	} {
+		if _, err = app.auth.db.Exec(`
+			INSERT INTO user (id, name, email, role, createdAt, updatedAt)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, m.ID, m.Name, m.Email, m.Role, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, team := range teams {
 		if err = atomicJSON(filepath.Join(root, "metadata/provision-status", team.ID+".json"), map[string]any{"state": "Ready", "storage_gib": team.Policy.StorageGiB, "model_storage_gib": team.Policy.ModelStorageGiB}); err != nil {
 			t.Fatal(err)
@@ -299,7 +294,7 @@ func TestDepartmentDemotionRevokesAdministratorWritePrivilege(t *testing.T) {
 		t.Fatal(err)
 	}
 	job := e.buildJob("mist-dddddddddddddddddddddddd", req)
-	reason, err := a.teams.revoked(context.Background(), &team, job, map[string]AccountStatus{"alice": {Active: true, Role: "user"}})
+	reason, err := a.teams.revoked(context.Background(), &team, job, map[string]AccountStatus{"alice": {Role: "user"}})
 	if err != nil || reason == "" {
 		t.Fatalf("historical admin flag bypassed current role: %s %v", reason, err)
 	}

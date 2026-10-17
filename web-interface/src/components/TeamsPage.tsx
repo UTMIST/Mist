@@ -242,13 +242,11 @@ function TeamAdministration({
               onChange={(e) => setUserID(e.target.value)}
             >
               <option value="">Select account</option>
-              {accounts.data
-                ?.filter((m) => !m.banned)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} · {m.email}
-                  </option>
-                ))}
+              {accounts.data?.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} · {m.email}
+                </option>
+              ))}
             </Picker>
           </div>
           <label className="flex gap-2">
