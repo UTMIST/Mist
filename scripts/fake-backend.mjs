@@ -17,7 +17,7 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
-import { URL } from 'node:url'
+import { URL, fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
 import {
   getScenario,
@@ -36,7 +36,8 @@ const PORT = Number(
   getArg('--port') || process.env.PORT || process.env.MIST_FAKE_PORT || 3000,
 )
 const HOST = process.env.HOST || '127.0.0.1'
-const DEFAULT_CONFIG_FILE = path.resolve(process.cwd(), '.fake-backend-config.json')
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const DEFAULT_CONFIG_FILE = path.resolve(ROOT_DIR, '.fake-backend-config.json')
 
 // --- Initial State Management ---
 

@@ -18,13 +18,15 @@ import path from 'node:path'
 import http from 'node:http'
 import readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
+import { fileURLToPath } from 'node:url'
 import {
   getScenario,
   SCENARIO_DESCRIPTIONS,
   SCENARIO_FACTORIES,
 } from './fake-backend-scenarios.mjs'
 
-const CONFIG_FILE = path.resolve(process.cwd(), '.fake-backend-config.json')
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const CONFIG_FILE = path.resolve(ROOT_DIR, '.fake-backend-config.json')
 
 // Parse CLI flags
 const argv = process.argv.slice(2)
