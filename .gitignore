@@ -4,3 +4,4 @@ __pycache__/
 *.py[cod]
 auth-service/node_modules/
 auth-service/data/
+.direnv/
