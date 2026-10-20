@@ -5,3 +5,6 @@ __pycache__/
 data/
 .direnv/
 .fake-backend-config.json
+
+# OS files
+.DS_Store

@@ -63,6 +63,12 @@ distributed multi-machine training are outside this release. Automatic backups,
 HTTPS and monitoring/cleanup products were explicitly excluded. This is a private
 HTTP installation with one control plane, one auth instance and one storage host.
 
+### Documentation
+
+Humans are responsible for editing the human facing docs. This is because the human facing docs will be read by humans, and it is rude to give them untested instructions to follow.
+
+Documentation should include explanations of design decisions for later platform maintainers.
+
 ## Frontend Testing
 
 how to use fake backend for testing frontend.
