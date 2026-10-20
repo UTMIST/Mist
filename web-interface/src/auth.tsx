@@ -15,12 +15,21 @@ export type Member = {
   name: string
   email: string
   role: string
+  is_admin?: boolean
 }
+
+export function isUserAdmin(user: Member | null): boolean {
+  if (!user) return false
+  if (user.is_admin === true) return true
+  return Boolean(user.role.split(',').includes('admin'))
+}
+
 const AccountContext = createContext<{
   user: Member | null
+  isAdmin: boolean
   enabled: boolean
   refresh: () => void
-}>({ user: null, enabled: false, refresh: () => {} })
+}>({ user: null, isAdmin: false, enabled: false, refresh: () => {} })
 export const useAccount = () => useContext(AccountContext)
 
 function Login({ refresh }: { refresh: () => void }) {
@@ -120,6 +129,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
     <AccountContext
       value={{
         user: session.data?.user ?? null,
+        isAdmin: isUserAdmin(session.data?.user ?? null),
         enabled: session.data?.enabled ?? false,
         refresh: session.refresh,
       }}

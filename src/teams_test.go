@@ -441,7 +441,7 @@ func TestDepartmentMissingModelMountCannotBorrowDatasetCapacity(t *testing.T) {
 	if err := syscall.Statfs(a.executor.storage.root, &fs); err != nil {
 		t.Fatal(err)
 	}
-	gib := (int64(fs.Blocks)*fs.Bsize + 1024*1024*1024 - 1) / (1024 * 1024 * 1024)
+	gib := (int64(fs.Blocks)*int64(fs.Bsize) + 1024*1024*1024 - 1) / (1024 * 1024 * 1024)
 	team.Policy.StorageGiB, team.Policy.ModelStorageGiB = gib, gib
 	if err := atomicJSON(filepath.Join(a.executor.storage.root, "metadata/provision-status", team.ID+".json"), map[string]any{"state": "Ready", "storage_gib": gib, "model_storage_gib": gib}); err != nil {
 		t.Fatal(err)
@@ -490,5 +490,108 @@ func TestDepartmentDefaultPoolsAndLegacyPolicy(t *testing.T) {
 	p.ModelStorageGiB = -1
 	if err := validateTeam(&Team{Name: "Invalid", Policy: p}); err == nil {
 		t.Fatal("negative model pool accepted")
+	}
+}
+
+func TestWorkspacesAndClusterJobListing(t *testing.T) {
+	a, _, teams := departmentTestApp(t)
+	alice := teams[0]
+
+	// 1. Non-admin cannot create a workspace
+	r := departmentRequest(a, "POST", "/workspaces", "alice", "", `{"name":"Personal Workspace","type":"personal"}`)
+	if r.Code != 403 {
+		t.Fatalf("expected 403 for non-admin workspace creation, got %d", r.Code)
+	}
+
+	// Shrink existing teams to make budget for new workspaces
+	if err := a.teams.mutate(context.Background(), func(list *[]Team) error {
+		for i := range *list {
+			(*list)[i].Policy.StorageGiB = 10
+			(*list)[i].Policy.ModelStorageGiB = 10
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Admin creates a personal workspace for alice with type "personal"
+	r = departmentRequest(a, "POST", "/workspaces", "admin", "", `{"name":"Alice Personal","type":"personal","description":"Alice quota","storage_gib":20,"model_storage_gib":20,"user_id":"alice"}`)
+	if r.Code != 201 {
+		t.Fatalf("admin personal workspace creation failed: %d %s", r.Code, r.Body.String())
+	}
+	var createdWs Workspace
+	if err := json.Unmarshal(r.Body.Bytes(), &createdWs); err != nil {
+		t.Fatal(err)
+	}
+	if createdWs.Type != WorkspaceTypePersonal {
+		t.Fatalf("expected type personal, got %s", createdWs.Type)
+	}
+	if createdWs.Description != "Alice quota" {
+		t.Fatalf("expected description 'Alice quota', got %s", createdWs.Description)
+	}
+	if len(createdWs.Members) != 1 || createdWs.Members[0].ID != "alice" {
+		t.Fatalf("expected alice enrolled in personal workspace, got %+v", createdWs.Members)
+	}
+
+	// 3. User lists workspaces via /workspaces
+	r = departmentRequest(a, "GET", "/workspaces", "alice", "", "")
+	if r.Code != 200 {
+		t.Fatalf("list workspaces failed: %d %s", r.Code, r.Body.String())
+	}
+	var wsList struct {
+		Workspaces []Workspace `json:"workspaces"`
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &wsList); err != nil {
+		t.Fatal(err)
+	}
+	// Alice should see team A and her personal workspace
+	hasPersonal := false
+	for _, ws := range wsList.Workspaces {
+		if ws.ID == createdWs.ID {
+			hasPersonal = true
+		}
+	}
+	if !hasPersonal {
+		t.Fatal("alice did not see her personal workspace")
+	}
+
+	// 4. Submit a job in alice's team
+	r = departmentRequest(a, "POST", "/jobs", "alice", alice.ID, `{"command":["echo","hello"]}`)
+	if r.Code != 201 {
+		t.Fatalf("job submission failed: %d %s", r.Code, r.Body.String())
+	}
+	var jobResp struct {
+		JobID string              `json:"job_id"`
+		Job   KubernetesJobStatus `json:"job"`
+	}
+	_ = json.Unmarshal(r.Body.Bytes(), &jobResp)
+
+	// 5. Query cluster jobs via /jobs?cluster=true
+	r = departmentRequest(a, "GET", "/jobs?cluster=true", "alice", "", "")
+	if r.Code != 200 {
+		t.Fatalf("get cluster jobs failed: %d %s", r.Code, r.Body.String())
+	}
+	var clusterJobs struct {
+		Jobs []KubernetesJobStatus `json:"jobs"`
+	}
+	_ = json.Unmarshal(r.Body.Bytes(), &clusterJobs)
+	if len(clusterJobs.Jobs) == 0 {
+		t.Fatal("cluster jobs list was empty")
+	}
+
+	// 6. Test cancel protection: Enroll Bob in Alice's team, but Bob is not the creator or admin
+	r = departmentRequest(a, "POST", "/workspaces/"+alice.ID+"/members", "admin", "", `{"user_id":"bob","common_writer":false}`)
+	if r.Code != 200 {
+		t.Fatalf("failed to add bob to alice's team: %d %s", r.Code, r.Body.String())
+	}
+	r = departmentRequest(a, "POST", "/jobs/"+jobResp.JobID+"/cancel", "bob", alice.ID, "")
+	if r.Code != 403 {
+		t.Fatalf("expected 403 when non-owner/non-admin bob cancels job, got %d %s", r.Code, r.Body.String())
+	}
+
+	// 7. Alice can cancel her own job
+	r = departmentRequest(a, "POST", "/jobs/"+jobResp.JobID+"/cancel", "alice", alice.ID, "")
+	if r.Code != 200 {
+		t.Fatalf("expected 200 when owner alice cancels job, got %d %s", r.Code, r.Body.String())
 	}
 }

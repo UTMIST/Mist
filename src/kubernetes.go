@@ -714,6 +714,30 @@ func (e *KubernetesExecutor) list(ctx context.Context) ([]KubernetesJobStatus, e
 	return result, nil
 }
 
+func (e *KubernetesExecutor) listCluster(ctx context.Context, currentMember *Member) ([]KubernetesJobStatus, error) {
+	jobs, err := e.client.BatchV1().Jobs("").List(ctx, metav1.ListOptions{LabelSelector: managedLabel + "=mist"})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]KubernetesJobStatus, 0, len(jobs.Items))
+	data, err := e.loadJobState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range jobs.Items {
+		status, err := e.statusWithData(ctx, &jobs.Items[i], data)
+		if err != nil {
+			continue
+		}
+		if currentMember != nil {
+			status.CanCancel = ptr(isAdmin(currentMember) || status.CreatorID == currentMember.ID)
+		}
+		result = append(result, *status)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Created.After(result[j].Created) })
+	return result, nil
+}
+
 func (e *KubernetesExecutor) logs(ctx context.Context, id string) (string, error) {
 	job, err := e.managedJob(ctx, id)
 	if err != nil {
@@ -758,7 +782,11 @@ func (e *KubernetesExecutor) cancel(ctx context.Context, id string) (*Kubernetes
 	if err != nil {
 		return nil, err
 	}
-	if e.team != nil && !isAdmin(e.team.Member) && job.Annotations["mist.io/creator-id"] != e.team.Member.ID {
+	if e.team != nil {
+		if !isAdmin(e.team.Member) && job.Annotations["mist.io/creator-id"] != e.team.Member.ID {
+			return nil, &permissionError{errors.New("Only the job owner or an administrator can cancel this job")}
+		}
+	} else if job.Labels["mist.io/owner"] != "" && job.Labels["mist.io/owner"] != e.owner {
 		return nil, &permissionError{errors.New("Only the job owner or an administrator can cancel this job")}
 	}
 	if job.Annotations[cancelAnnotation] != "" {

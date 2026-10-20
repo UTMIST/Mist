@@ -17,10 +17,11 @@ func hashID(id string) string {
 }
 
 type Member struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Role  string `json:"role"`
+	ID      string `json:"id"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	Role    string `json:"role"`
+	IsAdmin bool   `json:"is_admin"`
 }
 
 type AccountStatus struct {

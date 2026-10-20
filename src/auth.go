@@ -290,6 +290,7 @@ func (s *AuthService) session(r *http.Request) (*Member, error) {
 		WHERE s.token = ? AND s.expiresAt > ?
 	`, token, now).Scan(&m.ID, &m.Name, &m.Email, &m.Role)
 	if err == nil {
+		m.IsAdmin = isAdmin(&m)
 		return &m, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -301,6 +302,7 @@ func (s *AuthService) session(r *http.Request) (*Member, error) {
 		WHERE id = ?
 	`, token).Scan(&m.ID, &m.Name, &m.Email, &m.Role)
 	if err == nil {
+		m.IsAdmin = isAdmin(&m)
 		return &m, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -333,6 +335,7 @@ func (s *AuthService) LookupMember(ctx context.Context, id string) (*Member, err
 	if err != nil {
 		return nil, errors.New("account unavailable")
 	}
+	m.IsAdmin = isAdmin(&m)
 	return &m, nil
 }
 

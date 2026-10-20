@@ -102,7 +102,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(requestTeam ? { 'X-Mist-Team': requestTeam } : {}),
+      ...(requestTeam ? { 'X-Mist-Team': requestTeam, 'X-Mist-Workspace': requestTeam } : {}),
       ...options?.headers,
     },
   })
@@ -112,7 +112,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     response.status === 403 &&
     requestTeam &&
     (!options?.method || options.method === 'GET') &&
-    !path.startsWith('/teams')
+    !path.startsWith('/teams') &&
+    !path.startsWith('/workspaces')
   )
     window.dispatchEvent(
       new CustomEvent('mist:workspace-access-revoked', { detail: requestTeam }),
@@ -133,8 +134,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const jobsAPI = {
   session: (signal?: AbortSignal) =>
     request<{ enabled: boolean; user: Member | null }>('/session', { signal }),
-  list: (signal?: AbortSignal) =>
-    request<{ jobs: Job[]; count: number }>('/jobs', { signal }),
+  list: (signal?: AbortSignal, options?: { cluster?: boolean }) =>
+    request<{ jobs: Job[]; count: number }>(
+      options?.cluster ? '/jobs?cluster=true' : '/jobs',
+      { signal },
+    ),
+  listCluster: (signal?: AbortSignal) =>
+    request<{ jobs: Job[]; count: number }>('/jobs?cluster=true', { signal }),
   hardware: (signal?: AbortSignal) =>
     request<HardwareSnapshot>('/hardware', { signal }),
   images: (signal?: AbortSignal) =>
@@ -231,7 +237,10 @@ export const storageAPI = {
         `${base}/datasets?${new URLSearchParams({ filename: file.name, name, ...(scope ? { scope } : {}), ...(zip ? { format: 'zip' } : {}) })}`,
       )
       xhr.timeout = 24 * 60 * 60 * 1000
-      if (activeTeam) xhr.setRequestHeader('X-Mist-Team', activeTeam)
+      if (activeTeam) {
+        xhr.setRequestHeader('X-Mist-Team', activeTeam)
+        xhr.setRequestHeader('X-Mist-Workspace', activeTeam)
+      }
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) progress(Math.round((100 * e.loaded) / e.total))
       }
@@ -271,14 +280,20 @@ export type TeamMember = {
   common_writer: boolean
 }
 export type StorageGrant = { id: string; target_team: string; scope: string }
+export type WorkspaceType = 'team' | 'personal' | 'collaboration' | 'admin'
+
 export type Team = {
   id: string
   name: string
+  type?: WorkspaceType
+  description?: string
   disabled: boolean
   policy: TeamPolicy
   members: TeamMember[]
   grants: StorageGrant[]
 }
+export type Workspace = Team
+
 export type StorageFolder = {
   team_id: string
   team_name: string
@@ -289,36 +304,62 @@ export type StorageFolder = {
 }
 export const teamsAPI = {
   list: (signal?: AbortSignal) =>
-    request<{ teams: Team[]; storage_budget_gib: number }>('/teams', {
+    request<{ teams: Team[]; workspaces?: Workspace[]; storage_budget_gib: number }>('/workspaces', {
       signal,
-    }),
-  create: (name: string, storage_gib = 200, model_storage_gib = 500) =>
-    request<Team>('/teams', {
+    }).catch(() =>
+      request<{ teams: Team[]; storage_budget_gib: number }>('/teams', { signal }),
+    ),
+  create: (
+    name: string,
+    type: WorkspaceType = 'team',
+    description = '',
+    storage_gib = 200,
+    model_storage_gib = 500,
+    policy?: TeamPolicy,
+    user_id?: string,
+  ) =>
+    request<Team>('/workspaces', {
       method: 'POST',
-      body: JSON.stringify({ name, storage_gib, model_storage_gib }),
+      body: JSON.stringify({
+        name,
+        type,
+        description,
+        storage_gib,
+        model_storage_gib,
+        policy,
+        user_id,
+      }),
     }),
   update: (
     id: string,
-    change: { name?: string; disabled?: boolean; policy?: TeamPolicy },
+    change: {
+      name?: string
+      type?: WorkspaceType
+      description?: string
+      disabled?: boolean
+      policy?: TeamPolicy
+    },
   ) =>
-    request<Team>(`/teams/${id}`, {
+    request<Team>(`/workspaces/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(change),
     }),
   enroll: (id: string, user_id: string, common_writer: boolean) =>
-    request<Team>(`/teams/${id}/members`, {
+    request<Team>(`/workspaces/${id}/members`, {
       method: 'POST',
       body: JSON.stringify({ user_id, common_writer }),
     }),
   removeMember: (id: string, user: string) =>
-    request<Team>(`/teams/${id}/members/${encodeURIComponent(user)}`, {
+    request<Team>(`/workspaces/${id}/members/${encodeURIComponent(user)}`, {
       method: 'DELETE',
     }),
   grant: (id: string, target_team: string, scope: string) =>
-    request<Team>(`/teams/${id}/grants`, {
+    request<Team>(`/workspaces/${id}/grants`, {
       method: 'POST',
       body: JSON.stringify({ target_team, scope }),
     }),
   revoke: (id: string, grant: string) =>
-    request<Team>(`/teams/${id}/grants/${grant}`, { method: 'DELETE' }),
+    request<Team>(`/workspaces/${id}/grants/${grant}`, { method: 'DELETE' }),
 }
+
+export const workspacesAPI = teamsAPI
