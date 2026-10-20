@@ -1,6 +1,8 @@
 ---
 title: "Historical Records"
 weight: 200
+sidebar:
+  open: false
 ---
 
 # Historical records

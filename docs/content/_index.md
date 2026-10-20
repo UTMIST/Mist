@@ -1,4 +1,7 @@
 ---
+type: docs
+cascade:
+  type: docs
 title: "Documentation Overview"
 weight: 1
 ---

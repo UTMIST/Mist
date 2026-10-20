@@ -1,6 +1,7 @@
 baseURL: "/docs/"
 title: "Mist Documentation"
 defaultContentLanguage: "en"
+enableRobotsTXT: true
 
 module:
   imports:
@@ -13,35 +14,79 @@ markup:
   goldmark:
     renderer:
       unsafe: true
+    extensions:
+      passthrough:
+        delimiters:
+          block: [['\[', '\]'], ['$$', '$$']]
+          inline: [['\(', '\)']]
+        enable: true
 
 menu:
   main:
     - name: "Overview"
       pageRef: "/"
       weight: 1
-    - name: "Portal"
+    - name: "Web Portal"
       url: "/"
       weight: 2
+    - name: "Search"
+      weight: 5
+      params:
+        type: search
     - name: "GitHub"
       url: "https://github.com/UTMIST/Mist"
-      weight: 3
+      weight: 10
       params:
         icon: "github"
 
 params:
   description: "Documentation and operational guides for UTMIST's research compute platform."
+
+  externalLinkDecoration: true
+
   navbar:
+    displayTitle: true
     displayLogo: true
     logo:
       text: "Mist Docs"
-    width: "max-w-7xl"
-  footer:
-    displayCopyright: true
-    displayPoweredBy: false
-  editURL:
-    enable: false
-  search:
-    enable: true
+    width: wide
+
   theme:
     default: "system"
     displayToggle: true
+
+  footer:
+    enable: true
+    displayCopyright: true
+    displayPoweredBy: false
+    width: normal
+
+  displayUpdatedDate: true
+  dateFormat: "January 2, 2006"
+
+  search:
+    enable: true
+    type: flexsearch
+    flexsearch:
+      index: content
+      tokenize: forward
+
+  editURL:
+    enable: true
+    base: "https://github.com/UTMIST/Mist/edit/main/docs/content"
+
+  highlight:
+    copy:
+      enable: true
+      display: hover
+
+  toc:
+    enable: true
+    displayTags: true
+
+  page:
+    width: normal
+    displayPagination: true
+
+  imageZoom:
+    enable: true
