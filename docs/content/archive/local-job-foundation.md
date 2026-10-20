@@ -1,6 +1,6 @@
 > **Historical record — superseded.** This text describes an earlier phase.
 > Commands and claims below are retained as history, not current setup instructions.
-> Start with the [current documentation index](../README.md) and
+> Start with the [current documentation index](../_index.md) and
 > [department operating guide](../department-rollout.md).
 
 # Local job foundation
@@ -87,7 +87,7 @@ autograd compatibility. Cross-machine/distributed training is separate work.
 
 ## API contracts
 
-The [job lifecycle reference](../../src/jobs.md) describes state and retention.
+The [job lifecycle reference](../../../src/jobs.md) describes state and retention.
 The browser uses `/api`; Vite proxies it to the API. The API itself has these
 unprefixed routes:
 
@@ -306,7 +306,7 @@ Their final markers are `FOUNDATION_BROWSER_PASSED` and
 
 Today's detailed evidence is saved under
 `/home/utmist/mist-foundation-results-2026-10-08`. The checked-in
-[verification summary](../../deploy/k3s/foundation-results.json) records actual
+[verification summary](../../../deploy/k3s/foundation-results.json) records actual
 job IDs, the deployed image ID, and completed checks. Browser and allocation/
 persistence checks passed on October 8 EDT (October 9 UTC). A separate live
 check verified image-pull error reporting, deadline failure, and retained

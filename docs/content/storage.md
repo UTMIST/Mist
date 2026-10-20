@@ -1,3 +1,8 @@
+---
+title: "Storage & Upload Limits"
+weight: 50
+---
+
 # Storage and upload limits
 
 Current department storage on **QuietBox**, verified October 9, 2026. Both
@@ -91,7 +96,7 @@ findmnt -t ext4,nfs,nfs4
 
 With root access, inspect `exportfs -v`, per-team mounts and the storage-agent
 journal when readiness fails. Migration/expansion and service installation are
-in [deployment operations](../deploy/private/README.md). Never truncate or unlink
+in [deployment operations](../../deploy/private/README.md). Never truncate or unlink
 mounted image files, recreate populated filesystems or treat team removal as cleanup.
 
 Small-file migration, quota bounds and real accelerator input/output paths passed.

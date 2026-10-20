@@ -1,6 +1,6 @@
 > **Historical record — superseded.** This text describes an earlier phase.
 > Commands and claims below are retained as history, not current setup instructions.
-> Start with the [current documentation index](../README.md) and
+> Start with the [current documentation index](../_index.md) and
 > [department operating guide](../department-rollout.md).
 
 # Accelerator jobs on k3s
@@ -16,7 +16,7 @@ join on 2026-10-03.
 
 The NVIDIA server runs Ubuntu 22.04, k3s 1.36, and two RTX A4000 GPUs. The host
 driver is pre-installed. NVIDIA GPU Operator v26.7.1 is configured with
-[`nvidia-gpu-operator-values.yaml`](../../deploy/k3s/nvidia-gpu-operator-values.yaml). Pin the
+[`nvidia-gpu-operator-values.yaml`](../../../deploy/k3s/nvidia-gpu-operator-values.yaml). Pin the
 chart version when installing or upgrading:
 
 ```bash
@@ -64,7 +64,7 @@ Wormhole chips. The NVIDIA smoke Job remains specific to `utmist-z1opa08`.
 
 TT-Operator **0.3.0** installs Fabric Manager **0.2.30** and the DRA driver
 **0.0.59**, configured by
-[`tenstorrent-operator-values.yaml`](../../deploy/k3s/tenstorrent-operator-values.yaml).
+[`tenstorrent-operator-values.yaml`](../../../deploy/k3s/tenstorrent-operator-values.yaml).
 The existing host KMD/firmware and the existing NFD installation are retained;
 driver management, duplicate NFD, telemetry, JobSet, and PMIx are disabled.
 The manually verified `tenstorrent.com/has-tt=true` node label enables discovery.
@@ -96,14 +96,14 @@ a ResourceClaimTemplate, and only its allocated device nodes are injected
 through CDI. Boards are released when the pod finishes, even while its
 completed Job and checkpoints are retained.
 
-[`training-tenstorrent-job.yaml`](../../deploy/k3s/training-tenstorrent-job.yaml) now requests
+[`training-tenstorrent-job.yaml`](../../../deploy/k3s/training-tenstorrent-job.yaml) now requests
 one board, runs without privileged access, and reserves 2 GiB of 1 GiB
 hugepages. The host still has 16 GiB of such hugepages. It mounts the existing
 TT-Metal checkout and Python environment read-only, so it is specific to
 this QuietBox rather than a portable training image.
 
 For uniquely named training checks and separate checkpoint directories,
-use [`submit_tenstorrent_smoke.py`](../../deploy/k3s/submit_tenstorrent_smoke.py). It needs
+use [`submit_tenstorrent_smoke.py`](../../../deploy/k3s/submit_tenstorrent_smoke.py). It needs
 Python PyYAML, available on the server. For example:
 
 ```bash
@@ -161,7 +161,7 @@ the temporary PVC reader is deleted. The barrier times out after five
 minutes if interrupted. The checkpoint PVC is retained.
 
 Operator restart recovery and an NVIDIA CUDA regression check also passed.
-See [`tenstorrent-allocation-results.json`](../../deploy/k3s/tenstorrent-allocation-results.json)
+See [`tenstorrent-allocation-results.json`](../../../deploy/k3s/tenstorrent-allocation-results.json)
 for pinned image IDs and results. Logs, claim/queue snapshots, admission
 checks, and checkpoint archives are in
 `/home/utmist/k3s-allocation-results-2026-10-03` on the NVIDIA server.
@@ -171,7 +171,7 @@ capacity for placement. Verify/correct it before adding memory-based selectors.
 
 ## Training smoke jobs
 
-[`training_smoke.py`](../../deploy/k3s/training_smoke.py) learns a 32-input/32-output linear
+[`training_smoke.py`](../../../deploy/k3s/training_smoke.py) learns a 32-input/32-output linear
 mapping from 128 synthetic samples and evaluates 64 held-out samples. Each
 device must complete 100 gradient updates, reduce training MSE by at least
 98%, achieve held-out MSE below `0.0005`, change its weights, and reload its
@@ -220,7 +220,7 @@ checkpoints. The archives were also checked after the Pods completed.
 Precision and implementations differ; these figures establish convergence
 and are not a performance comparison. Exact image IDs, the TT-Metal host
 commit, Job timestamps, artifact locations, and acceptance thresholds are in
-[`training-smoke-results.json`](../../deploy/k3s/training-smoke-results.json). Local logs and
+[`training-smoke-results.json`](../../../deploy/k3s/training-smoke-results.json). Local logs and
 checkpoint archives are retained under
 `/home/utmist/k3s-training-results-2026-10-03` on the NVIDIA server. The
 completed Kubernetes Jobs and their checkpoint PVCs are retained too.
@@ -292,7 +292,7 @@ entrypoint/arguments, or choose **Small training check** for an accelerator.
 The page displays actual placement, queue messages, exit status and logs.
 Hardware availability is live; the Machines route uses the same inventory.
 Cancel stops a waiting/running workload and retains cancellation history.
-CLI commands are in [the CLI guide](../../cli/docs/setup.md).
+CLI commands are in [the CLI guide](../../../cli/docs/setup.md).
 
 The installed user units keep both local services running during the user's
 systemd session. Their paths target this server and need adjustment on another
@@ -382,7 +382,7 @@ read by fresh containers on both nodes. Temporary read-only output probes are
 removed; test Jobs and result directories remain. The final markers are
 `FOUNDATION_BROWSER_PASSED` and `FOUNDATION_ALLOCATION_OUTPUTS_PASSED`.
 October 8 evidence is under `/home/utmist/mist-foundation-results-2026-10-08`.
-See [the checked-in summary](../../deploy/k3s/foundation-results.json) for actual job IDs,
+See [the checked-in summary](../../../deploy/k3s/foundation-results.json) for actual job IDs,
 deployed image ID, and completed checks.
 
 ### API acceptance test
@@ -402,7 +402,7 @@ Successful output ends with `MIST_API_PASSED`. Jobs and checkpoint directories
 are retained. A barrier times out after five minutes if interrupted. The
 verification script uses the operator's administrative context to inspect
 claims/devices and release test barriers; the Mist API itself cannot exec.
-Results from 2026-10-03 are in [mist-api-results.json](../../deploy/k3s/mist-api-results.json),
+Results from 2026-10-03 are in [mist-api-results.json](../../../deploy/k3s/mist-api-results.json),
 with raw evidence and checkpoint archives under
 `/home/utmist/mist-api-results-2026-10-03`. These checks establish small model
 training and allocation, not large/distributed-model support or performance.

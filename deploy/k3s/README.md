@@ -1,7 +1,7 @@
 # Kubernetes deployment assets
 
 Current installation: two k3s nodes, authenticated team jobs, scoped NFS storage
-and private Tailscale portal. Start with the [k3s setup/handoff](../../docs/k3s-setup.md)
+and private Tailscale portal. Start with the [k3s setup/handoff](../../docs/content/k3s-setup.md)
 and [deployment operations](../private/README.md).
 
 ## Manifest and tooling map
@@ -29,6 +29,6 @@ The application image build uses [Dockerfile.api](Dockerfile.api). API/auth imag
 are imported into main's k3s containerd, not scheduled by a Docker supervisor.
 Use `bash deploy/private/build-and-deploy.sh` for the existing installation.
 
-[Old deployment history](../../docs/archive/k3s-deployment-history.md) and
-[original node setup](../../docs/archive/k3s-setup-history.md) preserve earlier
+[Old deployment history](../../docs/content/archive/k3s-deployment-history.md) and
+[original node setup](../../docs/content/archive/k3s-setup-history.md) preserve earlier
 observations; their unauthenticated/node-local instructions are superseded.

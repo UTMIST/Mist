@@ -23,17 +23,17 @@ administrator SSH access. Kubernetes/containerd run workload containers.
 
 Start with the [documentation index](docs/README.md).
 
-- [Using the portal, teams and jobs](docs/department-rollout.md)
-- [k3s setup, accelerator allocation and diagnostics](docs/k3s-setup.md)
-- [Tailscale and SSH setup](docs/tailscale-ssh.md)
-- [Architecture and code organization](docs/architecture.md)
-- [Storage and upload limits](docs/storage.md)
+- [Using the portal, teams and jobs](docs/content/department-rollout.md)
+- [k3s setup, accelerator allocation and diagnostics](docs/content/k3s-setup.md)
+- [Tailscale and SSH setup](docs/content/tailscale-ssh.md)
+- [Architecture and code organization](docs/content/architecture.md)
+- [Storage and upload limits](docs/content/storage.md)
 - [Deployment and operations](deploy/private/README.md)
-- [Developer setup](docs/development.md), [CLI](cli/docs/setup.md), [testing](docs/testing.md)
+- [Developer setup](docs/content/development.md), [CLI](cli/docs/setup.md), [testing](docs/content/testing.md)
 
 Main contains the department release merged through
 [PR #110](https://github.com/UTMIST/Mist/pull/110). The earlier main and operating
-snapshots are preserved in the [historical archive](docs/archive/README.md).
+snapshots are preserved in the [historical archive](docs/content/archive/_index.md).
 
 ## Development and checks
 
@@ -49,7 +49,7 @@ npm --prefix web-interface run build
 ```
 
 For a local UI against the authenticated deployed API, follow
-[developer setup](docs/development.md). For the existing installation, deploy with
+[developer setup](docs/content/development.md). For the existing installation, deploy with
 `bash deploy/private/build-and-deploy.sh`; read its [prerequisites](deploy/private/README.md)
 before running it. Fresh-host provisioning is covered separately by the k3s guide.
 

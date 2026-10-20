@@ -270,7 +270,9 @@ test('keeps a cleared image blank while editing and uses the image startup defau
   const image = screen.getByLabelText<HTMLInputElement>('Container image')
   fireEvent.change(image, { target: { value: '' } })
   expect(image.value).toBe('')
-  expect(screen.getByRole('button', { name: 'Submit job' }).hasAttribute('disabled')).toBe(true)
+  expect(
+    screen.getByRole('button', { name: 'Submit job' }).hasAttribute('disabled'),
+  ).toBe(true)
   fireEvent.change(image, { target: { value: 'cpu' } })
   expect(image.value).toBe('cpu')
   fireEvent.change(image, { target: { value: 'cpu-runtime' } })

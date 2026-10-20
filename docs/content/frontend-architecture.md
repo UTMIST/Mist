@@ -1,6 +1,11 @@
+---
+title: "Frontend Architecture"
+weight: 90
+---
+
 # Frontend Architecture & Backend Offloading
 
-Documentation of the current Mist frontend ([`web-interface`](../web-interface)), its structural organization, and a roadmap of client-side processing to offload to the backend.
+Documentation of the current Mist frontend ([`web-interface`](../../web-interface)), its structural organization, and a roadmap of client-side processing to offload to the backend.
 
 ## Architecture overview
 

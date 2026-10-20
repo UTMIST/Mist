@@ -1,3 +1,8 @@
+---
+title: "Historical Records"
+weight: 200
+---
+
 # Historical records
 
 These files preserve earlier design decisions and verification phases. They are
@@ -18,4 +23,4 @@ The old main is preserved on
 [`archive/main-before-k3s-20261009`](https://github.com/UTMIST/Mist/tree/archive/main-before-k3s-20261009).
 The pre-cleanup department release is commit
 [`3431ffd`](https://github.com/UTMIST/Mist/tree/3431ffdb713fac72881fc7f61f2750a82fe3f916).
-Use the [current documentation](../README.md) for this installation.
+Use the [current documentation](../_index.md) for this installation.

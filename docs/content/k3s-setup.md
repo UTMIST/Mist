@@ -1,8 +1,13 @@
+---
+title: "k3s Cluster & Accelerators"
+weight: 30
+---
+
 # k3s setup and accelerator handoff
 
 Verified on **October 9, 2026**. This guide describes the existing two-node
 installation, fresh-install boundaries and diagnostic commands. Routine
-application deployment is in [operations](../deploy/private/README.md).
+application deployment is in [operations](../../deploy/private/README.md).
 
 ## Installed cluster
 
@@ -182,7 +187,7 @@ PyTorch autograd/model compatibility.
 
 Use **Jobs → New job → NVIDIA/Tenstorrent → Training check** after signing in and
 selecting your team. This exercises authentication, quotas, queue, allocator,
-training and persistent output. Use the [CLI](../cli/docs/setup.md) from either
+training and persistent output. Use the [CLI](../../cli/docs/setup.md) from either
 host to submit a real script through the same API.
 
 The direct manifest below is an administrator infrastructure diagnostic in the
@@ -215,7 +220,7 @@ retain needed evidence before deleting only that completed diagnostic Job.
 - **Storage unavailable:** verify QuietBox's NFS/team-volume services and both pool
   mounts. Do not delete PVCs or overwrite mounted backing files.
 
-Current live evidence is in [the verification record](../deploy/k3s/evidence/department-2026-10-09/README.md).
+Current live evidence is in [the verification record](../../deploy/k3s/evidence/department-2026-10-09/README.md).
 No new reboot, operator upgrade or rejoin was performed for this documentation audit.
 
 References: [K3s quick start](https://docs.k3s.io/quick-start),

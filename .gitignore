@@ -5,6 +5,7 @@ __pycache__/
 data/
 .direnv/
 .fake-backend-config.json
+.hugo_build.lock
 
 # OS files
 .DS_Store
