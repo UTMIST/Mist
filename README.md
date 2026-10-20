@@ -4,15 +4,17 @@ UTMIST's research compute platform. Submit Python scripts or tagged container
 images, choose CPU, NVIDIA GPUs or Tenstorrent boards, upload datasets, and
 collect persistent results through the same website or CLI.
 
-**Private website:** http://100.73.139.66:8088, accessible through authorized
+**Private website:** [http://100.73.139.66:8088](http://100.73.139.66:8088), accessible through authorized
 Tailscale connectivity. A Mist account and team membership are also required.
 
 ## Current installation
 
-| Machine | Role | LAN address | Tailscale address |
-|---|---|---|---|
-| `utmist-z1opa08` | k3s server, API/auth, website, CPU and two RTX A4000 GPUs | `10.0.0.175` | `100.73.139.66` |
-| `utmist-tt` | k3s worker, four n300 boards/eight chips, shared storage | `10.0.0.112` | `100.95.175.37` |
+
+| Machine          | Role                                                      | LAN address  | Tailscale address |
+| ---------------- | --------------------------------------------------------- | ------------ | ----------------- |
+| `utmist-z1opa08` | k3s server, API/auth, website, CPU and two RTX A4000 GPUs | `10.0.0.175` | `100.73.139.66`   |
+| `utmist-tt`      | k3s worker, four n300 boards/eight chips, shared storage  | `10.0.0.112` | `100.95.175.37`   |
+
 
 The cluster and NFS use the existing LAN. Tailscale provides private portal and
 administrator SSH access. Kubernetes/containerd run workload containers.
@@ -60,3 +62,27 @@ chaining, browser image archives/builds, private pull-credential management and
 distributed multi-machine training are outside this release. Automatic backups,
 HTTPS and monitoring/cleanup products were explicitly excluded. This is a private
 HTTP installation with one control plane, one auth instance and one storage host.
+
+### Documentation
+
+Humans are responsible for editing the human facing docs. This is because the human facing docs will be read by humans, and it is rude to give them untested instructions to follow.
+
+Documentation should include explanations of design decisions for later platform maintainers.
+
+## Frontend Testing
+
+how to use fake backend for testing frontend.
+
+(temporary, functionality, to be removed in future commit.)
+
+```bash
+# Terminal 1
+npm --prefix web-interface run dev -- --host 127.0.0.1 --port 3001 --strictPort
+
+# Terminal 2
+npm --prefix web-interface run fake-backend
+```
+
+
+
+&nbsp;
