@@ -1,7 +1,7 @@
 # Job lifecycle and API
 
-Current authenticated team execution. See [the operating guide](../docs/department-rollout.md#developer-api-contract)
-for the complete API and [architecture](../docs/architecture.md) for source layout.
+Current authenticated team execution. See [the operating guide](../docs/content/department-rollout.md#developer-api-contract)
+for the complete API and [architecture](../docs/content/architecture.md) for source layout.
 
 ## Lifecycle
 

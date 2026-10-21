@@ -1,3 +1,8 @@
+---
+title: "Repository Cleanup"
+weight: 110
+---
+
 # Repository cleanup — October 9, 2026
 
 Based on main commit `3431ffd`, the department release merged through PR #110.
@@ -38,7 +43,7 @@ from deploying services.
 
 ## Verification
 
-- [Sanitized validation report](../deploy/k3s/evidence/department-2026-10-09/cleanup-validation.json).
+- [Sanitized validation report](../../deploy/k3s/evidence/department-2026-10-09/cleanup-validation.json).
 - Full current Go workspace tests with race detection: **29 API tests + 6 CLI
   tests**, no skipped tests; CLI entrypoint has no test files. Vet passes.
 - API and CLI static builds, CLI/root/job help and retired-executor rejection pass.
@@ -60,7 +65,7 @@ from deploying services.
 
 The existing portal continues to run the verified department release. These
 source changes do not redeploy it. Previous live CUDA/TT/browser/isolation
-[release evidence](../deploy/k3s/evidence/department-2026-10-09/README.md) remains
+[release evidence](../../deploy/k3s/evidence/department-2026-10-09/README.md) remains
 valid for that release; it is not claimed as a fresh training/browser run of the
 cleanup candidate. No large storage tests, production restarts, account/job/file
 mutations or full-disk cleanup were performed.
@@ -73,7 +78,7 @@ legacy workspace. No blanket prune, formatting or history rewrite is used.
 ## Reproduce current source checks
 
 See [testing](testing.md), [developer setup](development.md) and
-[documentation index](README.md). Raw local validation output is kept outside Git
+[documentation index](_index.md). Raw local validation output is kept outside Git
 under `/home/utmist/mist-cleanup-validation-20261009`; publish only sanitized
 summaries. Credentials, session state, kubeconfig and SSH private keys stay out
 of committed documentation/evidence.

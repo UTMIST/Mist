@@ -46,7 +46,7 @@ for name in sorted(set(names)):
                 fence = line[3:].strip()
                 block = []
             else:
-                if fence in ("bash", "sh") and "docs/archive/" not in name:
+                if fence in ("bash", "sh") and "/archive/" not in name:
                     check = subprocess.run(["bash", "-n"], input="\n".join(block), text=True, capture_output=True)
                     shells += 1
                     if check.returncode:

@@ -1,3 +1,8 @@
+---
+title: "Portal Design System"
+weight: 80
+---
+
 # Portal design
 
 October 9, 2026. The visual direction takes inspiration from Cursor's restrained

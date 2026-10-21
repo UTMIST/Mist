@@ -1,42 +1,40 @@
-# Documentation
+# Mist Documentation
 
-Current main-branch documentation, verified against the two running machines on
-**October 9, 2026**. Addresses and versions describe this installation; adjust
-host-specific settings when provisioning another environment.
+This directory contains the documentation site for Mist, powered by **Hugo** and the **Hextra** documentation theme.
 
-## Find the right guide
+## Viewing Documentation Locally
 
-| Task | Guide |
-|---|---|
-| Sign in, manage teams, upload data, submit/download jobs | [Department operating guide](department-rollout.md) |
-| Understand services and source layout | [Architecture](architecture.md) |
-| Install/inspect k3s, join a worker, verify accelerator allocation | [k3s setup](k3s-setup.md) |
-| Connect privately and administer either host | [Tailscale and SSH](tailscale-ssh.md) |
-| Understand dataset/model pools and physical capacity | [Storage](storage.md) |
-| Build, deploy, restart or troubleshoot services | [Deployment operations](../deploy/private/README.md) |
-| Develop locally with the existing authenticated API | [Developer setup](development.md) |
-| Authenticate and submit from a terminal | [CLI](../cli/docs/setup.md) |
-| Run automated checks and read recorded live evidence | [Testing](testing.md) |
-| Maintain UI components and interactions | [Design system](design-system.md) |
-| Read completed scope, exclusions and release verification | [Execution record](department-rollout-execution.md) |
-| See what repository cleanup removed and verified | [Cleanup record](repository-cleanup.md) |
+To preview the documentation locally with live-reload:
 
-## Access and execution
-
-```text
-Browser / CLI → Tailscale portal :8088 → Nginx → Go API → k3s
-                                                 |       |
-                                             Better Auth + team policy
-                                                         |
-                                       CPU/NVIDIA or Tenstorrent Job
-                                                         |
-                                   scoped dataset/model NFS mounts on QuietBox
+```bash
+cd docs
+hugo server
 ```
 
-Mist login is separate from Tailscale membership and Linux SSH login. Researchers
-use the portal; administrator SSH is restricted by the installed host rules.
-The worker reaches the control plane and storage through LAN addresses.
+The site will be available at `http://localhost:1313/docs/`.
 
-[Earlier plans and single-owner guides](archive/README.md) are historical only.
-Current guidance does not require Redis, an SSH session to launch a job, a public
-cloud load balancer, or permission to approve every tagged image.
+To build the static site (outputting to `web-interface/public/docs` for the web portal):
+
+```bash
+cd docs
+hugo
+```
+
+## Documentation Guides
+
+Documentation source files are located in `content/`:
+
+| Guide | Description |
+|---|---|
+| [Department operating guide](content/department-rollout.md) | Sign in, manage teams, upload data, submit/download jobs |
+| [Architecture](content/architecture.md) | Service topologies, boundaries, and codebase layout |
+| [k3s setup](content/k3s-setup.md) | Cluster setup, worker nodes, and hardware acceleration |
+| [Tailscale and SSH](content/tailscale-ssh.md) | Remote secure networking and administrator SSH |
+| [Storage](content/storage.md) | Dataset and model shared storage pools |
+| [Developer setup](content/development.md) | Local frontend and backend development |
+| [Testing](content/testing.md) | Automated tests and evidence runs |
+| [Design system](content/design-system.md) | Portal design principles and components |
+| [Frontend architecture](content/frontend-architecture.md) | UI layout and backend offloading plan |
+| [Execution record](content/department-rollout-execution.md) | Department rollout status and validation |
+| [Cleanup record](content/repository-cleanup.md) | Repository maintenance history |
+| [Historical archive](content/archive/_index.md) | Archived previous-generation guides and plans |

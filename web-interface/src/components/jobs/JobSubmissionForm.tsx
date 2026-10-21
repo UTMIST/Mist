@@ -86,7 +86,7 @@ export function JobSubmissionForm({
   const image =
     (mode === 'training-smoke'
       ? profile?.default_image
-      : imageOverride ?? profile?.default_image) || ''
+      : (imageOverride ?? profile?.default_image)) || ''
   const images =
     catalog?.images.filter((option) => option.accelerators.includes(compute)) ??
     []

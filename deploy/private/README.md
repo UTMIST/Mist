@@ -1,9 +1,9 @@
 # Private deployment operations
 
-Current user/admin and architecture guide: [department rollout](../../docs/department-rollout.md).
-Execution/evidence: [rollout checklist](../../docs/department-rollout-execution.md).
-Setup: [k3s](../../docs/k3s-setup.md), [Tailscale/SSH](../../docs/tailscale-ssh.md),
-[storage](../../docs/storage.md), and [developer setup](../../docs/development.md).
+Current user/admin and architecture guide: [department rollout](../../docs/content/department-rollout.md).
+Execution/evidence: [rollout checklist](../../docs/content/department-rollout-execution.md).
+Setup: [k3s](../../docs/content/k3s-setup.md), [Tailscale/SSH](../../docs/content/tailscale-ssh.md),
+[storage](../../docs/content/storage.md), and [developer setup](../../docs/content/development.md).
 
 ## Services and persistent state
 

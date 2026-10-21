@@ -1,9 +1,14 @@
+---
+title: "Department Operating Guide"
+weight: 10
+---
+
 # Mist department rollout
 
 Merged into **main** through [PR #110](https://github.com/UTMIST/Mist/pull/110) on
 October 9, 2026. This is the current operating guide. Original accounts, jobs,
 datasets and checkpoint PVCs are preserved; earlier instructions are in the
-[historical archive](archive/README.md).
+[historical archive](archive/_index.md).
 
 ## Use the portal
 
@@ -255,7 +260,7 @@ A regular-member UI demonstration submitted a custom image containing
 `/app/train.py` and `CMD ["python", "/app/train.py"]`. No script or command override
 was injected. Its two-layer PyTorch network trained for 200 steps on one RTX A4000
 using `cuda:0`, reduced loss from 14.088 to 0.004936, saved weights/metrics and
-verified checkpoint reload. [Container mode evidence](../deploy/k3s/evidence/department-2026-10-09/container-mode-result.json).
+verified checkpoint reload. [Container mode evidence](../../deploy/k3s/evidence/department-2026-10-09/container-mode-result.json).
 The demonstration image was preloaded on the main node; it was not pushed to a
 public registry. Normal team workflows build/push to an allowed registry.
 
@@ -366,7 +371,7 @@ errors for rejected requests.
 The main-node build command is `bash deploy/private/build-and-deploy.sh`.
 It preserves bootstrap/internal auth credentials, builds the API/CLI and imports API/auth images,
 applies policy/RBAC manifests, waits for rollouts, type-checks and builds the SPA,
-and installs an atomic Nginx release. See [private operations](../deploy/private/README.md)
+and installs an atomic Nginx release. See [private operations](../../deploy/private/README.md)
 for host services and recovery of deployment changes. API/auth image tags are
 `mist-api:departments-20261009` and `mist-auth:departments-20261009`.
 
@@ -374,8 +379,8 @@ Build the CLI with `go -C cli build -o ../bin/mist-cli .`. New developer tasks
 should retain the identity → team policy → queued Job → scoped storage boundary.
 Never accept owner/roles from a submission or mount an entire store into a job.
 
-Tests: [department verifier](../deploy/k3s/verify_department.mjs),
-[browser verifier](../deploy/k3s/verify_department_browser.mjs), [large-dataset verifier](../deploy/k3s/verify_large_dataset.py), Go team tests,
+Tests: [department verifier](../../deploy/k3s/verify_department.mjs),
+[browser verifier](../../deploy/k3s/verify_department_browser.mjs), [large-dataset verifier](../../deploy/k3s/verify_large_dataset.py), Go team tests,
 CLI tests and React job/control tests. Checked-in evidence is linked from the execution
 plan. Protected verification state contains credentials and is never checked in.
 

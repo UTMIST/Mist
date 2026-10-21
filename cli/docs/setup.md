@@ -65,4 +65,4 @@ To cancel that job while waiting/running, use `bin/mist-cli job cancel "$JOB_ID"
 read historical jobs; new work requires a team. `--scope common` requires common
 write permission. Custom tagged public images are allowed by team registry policy;
 TT custom images use `--tt-runtime container`. See the
-[department guide](../../docs/department-rollout.md) for limits and storage.
+[department guide](../../docs/content/department-rollout.md) for limits and storage.

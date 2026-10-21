@@ -1,3 +1,8 @@
+---
+title: "Tailscale & Admin SSH"
+weight: 40
+---
+
 # Tailscale and SSH setup
 
 Verified against both hosts on **October 9, 2026**. Tailscale **1.102.4** is
@@ -112,7 +117,7 @@ The installed `mist-portal-firewall.service` permits ordinary Tailscale sources
 to main's TCP **8088**, denying direct SSH/backend/cluster access. Infrastructure
 IPs and the recorded administrator device **100.99.194.52** retain broader access.
 The script contains matching IPv6 entries. Adding an administrator device needs
-an explicit update to [the host allowlist](../deploy/private/portal-firewall.sh),
+an explicit update to [the host allowlist](../../deploy/private/portal-firewall.sh),
 plus any applicable tailnet policy. LAN rules are separate.
 
 A plain SSH public key does not bypass this firewall. Access from an external

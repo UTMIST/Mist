@@ -11,9 +11,12 @@
   "scripts": {
     "dev": "vite dev --port 3000",
     "build": "vite build",
+    "build:docs": "hugo -s ../docs",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint",
+    "fake-backend": "node ../scripts/fake-backend.mjs",
+    "configure-fake-backend": "node ../scripts/configure-fake-backend.mjs",
     "format": "prettier --check .",
     "check": "prettier --write . && eslint --fix"
   },

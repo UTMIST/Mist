@@ -1,3 +1,8 @@
+---
+title: "Architecture & Services"
+weight: 20
+---
+
 # Architecture
 
 Current private department installation, verified October 9, 2026.
