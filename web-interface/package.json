@@ -10,8 +10,9 @@
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "build:docs": "hugo -s ../docs",
+    "build": "npm run build:docs && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint",

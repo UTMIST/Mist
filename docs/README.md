@@ -13,7 +13,7 @@ hugo server
 
 The site will be available at `http://localhost:1313/docs/`.
 
-To build the static site (outputting to `web-interface/public/docs` for the web portal):
+To build the static site (outputting to `docs/public`, which Vite bundles into `web-interface/dist/docs`):
 
 ```bash
 cd docs
@@ -35,6 +35,7 @@ Documentation source files are located in `content/`:
 | [Testing](content/testing.md) | Automated tests and evidence runs |
 | [Design system](content/design-system.md) | Portal design principles and components |
 | [Frontend architecture](content/frontend-architecture.md) | UI layout and backend offloading plan |
+| [Web & docs deployment](content/web-deployment.md) | Vercel build and multi-provider deployment guide |
 | [Execution record](content/department-rollout-execution.md) | Department rollout status and validation |
 | [Cleanup record](content/repository-cleanup.md) | Repository maintenance history |
 | [Historical archive](content/archive/_index.md) | Archived previous-generation guides and plans |

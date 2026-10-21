@@ -53,11 +53,20 @@ not live utilization. Inputs are read-only; save results in `/outputs`.
 The old fake account helpers/chart and unused `use-immer` dependency are retired.
 Current behavior and components follow [the design system](../docs/content/design-system.md).
 
+## Deployment
+
+Production and preview environments can be deployed to **Vercel** or any static hosting provider. The build compiles both the React SPA (served at `/`) and the Hugo documentation (served at `/docs/`) into `web-interface/dist`.
+
+- **Vercel build**: Configured via `vercel.json` (at repo root and `web-interface/vercel.json`).
+- **Dependencies**: Requires Node.js/npm and Hugo installed on the host with internet access for npm packages and Hugo modules.
+- **API Target**: Set `VITE_API_URL` to point to the remote Mist API if not on the same origin.
+- See the [Web & Docs deployment guide](../docs/content/web-deployment.md) for full Vercel settings and instructions for switching to Cloudflare Pages, Netlify, Nginx/Docker, or AWS S3.
+
 ## Verify
 
 ```bash
 npm test
-npx tsc --noEmit
+npm run typecheck
 npm run lint
 npm run build
 ```

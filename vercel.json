@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm --prefix web-interface ci",
+  "buildCommand": "npm --prefix web-interface run typecheck && npm --prefix web-interface run build",
+  "outputDirectory": "web-interface/dist",
+  "redirects": [
+    {
+      "source": "/docs",
+      "destination": "/docs/",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/((?!api(?:/|$)|auth(?:/|$)|docs(?:/|$)).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

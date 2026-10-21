@@ -2,9 +2,19 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "npm ci",
-  "buildCommand": "npx tsc --noEmit && npm run build",
+  "buildCommand": "npm run typecheck && npm run build",
   "outputDirectory": "dist",
+  "redirects": [
+    {
+      "source": "/docs",
+      "destination": "/docs/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
-    { "source": "/((?!api(?:/|$)|auth(?:/|$)).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api(?:/|$)|auth(?:/|$)|docs(?:/|$)).*)",
+      "destination": "/index.html"
+    }
   ]
 }

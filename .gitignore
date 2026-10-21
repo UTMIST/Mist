@@ -15,6 +15,7 @@ data/
 .direnv/
 .fake-backend-config.json
 .vercel/
+docs/_vendor/
 *.local
 
 # Python caches

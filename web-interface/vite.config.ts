@@ -38,11 +38,12 @@ function docsStaticPlugin(): Plugin {
   const docsDir = path.resolve(__dirname, '../docs/public')
 
   function ensureDocsBuilt() {
+    if (process.env.VITEST) return
     if (!fs.existsSync(path.resolve(docsDir, 'index.html'))) {
       try {
-        execSync('hugo -s ../docs', { stdio: 'ignore' })
-      } catch {
-        // Hugo may not be installed in minimal test environments
+        execSync('hugo -s ../docs', { stdio: 'inherit' })
+      } catch (e) {
+        console.warn('Hugo build failed or hugo is not installed:', e)
       }
     }
   }

@@ -27,6 +27,7 @@ host-specific settings when provisioning another environment.
 | Run automated checks and read recorded live evidence | [Testing](testing.md) |
 | Maintain UI components and interactions | [Design system](design-system.md) |
 | Understand frontend architecture and backend offloading | [Frontend architecture](frontend-architecture.md) |
+| Deploy web portal and documentation (Vercel and other hosts) | [Web & docs deployment](web-deployment.md) |
 | Read completed scope, exclusions and release verification | [Execution record](department-rollout-execution.md) |
 | See what repository cleanup removed and verified | [Cleanup record](repository-cleanup.md) |
 
