@@ -1,6 +1,6 @@
 > **Historical record — superseded.** This text describes an earlier phase.
 > Commands and claims below are retained as history, not current setup instructions.
-> Start with the [current documentation index](../README.md) and
+> Start with the [current documentation index](../_index.md) and
 > [department operating guide](../department-rollout.md).
 
 > Current department storage and portal settings: [department rollout](../department-rollout.md).
@@ -11,7 +11,7 @@
 > **Historical account-only snapshot.** The [department rollout](../department-rollout.md)
 > supersedes these instructions: team membership, scoped folders, enforced quotas,
 > self-service images and the new portal are implemented. Use that guide and
-> [current deployment operations](../../deploy/private/README.md) for current behavior.
+> [current deployment operations](../../../deploy/private/README.md) for current behavior.
 > The remaining sections record the preceding foundation, including its limitations.
 
 Implemented on `feat/local-job-foundation`, October 8–9, 2026. This continues the
@@ -196,7 +196,7 @@ inside `/outputs` if you want them to be listed/downloaded.
 
 ## Deployment, restart and rollback
 
-See [deployment scripts](../../deploy/private/README.md). k3s server/agent, NFS and
+See [deployment scripts](../../../deploy/private/README.md). k3s server/agent, NFS and
 Nginx are system services. Kubernetes restores API/auth deployments. The frontend
 is a static release, with `/srv/mist-web/current` pointing at the active build.
 Deployment configuration, RBAC, claim templates and image policies are checked

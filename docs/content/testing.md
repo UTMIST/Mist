@@ -1,3 +1,8 @@
+---
+title: "Automated Testing"
+weight: 70
+---
+
 # Testing
 
 Use the pinned Go/Node runtimes in [developer setup](development.md). The root
@@ -38,7 +43,7 @@ Current automated suites do not require Redis or Docker. The old supervisor,
 Docker manager/logger tests and fake CLI-config tests were removed with their
 retired implementations. This is not a test skip: those products are no longer
 part of the application. The earlier full legacy suite results remain as dated
-[pre-cleanup evidence](../deploy/k3s/evidence/department-2026-10-09/release-validation.json).
+[pre-cleanup evidence](../../deploy/k3s/evidence/department-2026-10-09/release-validation.json).
 
 ## Real installation checks
 
@@ -66,7 +71,7 @@ verifiers have been retired because they no longer reflect current auth/storage.
 
 ## Evidence and limits
 
-The [October 9 evidence](../deploy/k3s/evidence/department-2026-10-09/README.md)
+The [October 9 evidence](../../deploy/k3s/evidence/department-2026-10-09/README.md)
 records real CUDA/TT training, separate board/GPU reservations, input/output
 mounts, checkpoint reload/download, grants/revocation, queue restart and browser
 flows. The regular-member Container demonstration preserved its own image CMD;

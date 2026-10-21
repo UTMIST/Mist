@@ -1,10 +1,24 @@
+# Build outputs
 bin/
-/logs/
-__pycache__/
-*.py[cod]
+dist/
+web-interface/dist/
+docs/public/
+docs/resources/
+*.hugo_build.lock
+
+# Dependencies
+node_modules/
+
+# Runtime data & local environment
 data/
+/logs/
 .direnv/
 .fake-backend-config.json
+*.local
+
+# Python caches
+__pycache__/
+*.py[cod]
 
 # OS files
 .DS_Store

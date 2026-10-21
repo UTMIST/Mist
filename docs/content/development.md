@@ -1,3 +1,8 @@
+---
+title: "Developer Setup"
+weight: 60
+---
+
 # Developer setup
 
 Use Go **1.25.1** and Node.js **22.16.0 or newer**. Run repository commands from
@@ -72,5 +77,5 @@ bash deploy/private/build-and-deploy.sh
 
 This requires existing administrative kubeconfig, Docker/root access, auth
 Secrets, operators and mounted storage. It is not a fresh-machine installer.
-Read [operations](../deploy/private/README.md) and [testing](testing.md) first.
+Read [operations](../../deploy/private/README.md) and [testing](testing.md) first.
 Current user/admin behavior is in [the operating guide](department-rollout.md).

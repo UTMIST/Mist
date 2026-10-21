@@ -4,6 +4,7 @@ import { createAuthClient } from 'better-auth/react'
 import { adminClient } from 'better-auth/client/plugins'
 import { jobsAPI } from '#/api.ts'
 import { errorMessage, usePolling } from '#/hooks/usePolling.ts'
+import { BackendConnectionError } from '#/components/BackendConnectionError.tsx'
 
 export const authClient = createAuthClient({
   basePath: '/auth',
@@ -107,10 +108,11 @@ export function AccountGate({ children }: { children: ReactNode }) {
     )
   if (session.error)
     return (
-      <main className="p-8">
-        <p role="alert">Account service unavailable: {session.error}</p>
-        <button onClick={session.refresh}>Retry</button>
-      </main>
+      <BackendConnectionError
+        error={session.error}
+        onRetry={session.refresh}
+        isRetrying={session.loading}
+      />
     )
   if (session.data?.enabled && !session.data.user)
     return <Login refresh={session.refresh} />

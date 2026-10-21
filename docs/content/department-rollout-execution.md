@@ -1,3 +1,8 @@
+---
+title: "Rollout Execution Record"
+weight: 100
+---
+
 # Department rollout execution
 
 Authorized October 9, 2026: implement all seven agreed remaining parts on
@@ -62,7 +67,7 @@ behavior; they do not add a separate monitoring service.
 
 Recorded October 9 on the private production portal. Reports and selected logs
 are checked in under
-[department evidence](../deploy/k3s/evidence/department-2026-10-09/README.md).
+[department evidence](../../deploy/k3s/evidence/department-2026-10-09/README.md).
 
 - 14 API/cluster/storage checks: membership, write denial, scoped read-only grants,
   running-job revocation, FIFO/fair turns, API restart, cancellation, limits,
@@ -170,5 +175,5 @@ requires an independent reviewer for subsequent pull requests. The live
 private portal already runs the verified implementation. Git publication does
 not reset accounts, jobs or files, or switch the live services again.
 
-See [the final release record](../deploy/k3s/evidence/department-2026-10-09/release-validation.json)
+See [the final release record](../../deploy/k3s/evidence/department-2026-10-09/release-validation.json)
 and [testing instructions](testing.md).

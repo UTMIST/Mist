@@ -1,6 +1,6 @@
 > **Historical record — superseded.** This text describes an earlier phase.
 > Commands and claims below are retained as history, not current setup instructions.
-> Start with the [current documentation index](../README.md) and
+> Start with the [current documentation index](../_index.md) and
 > [department operating guide](../department-rollout.md).
 
 # Kubernetes execution pilot
@@ -38,7 +38,7 @@ flowchart LR
 ```
 
 See [installation, commands and acceptance tests](k3s-deployment-history.md#mist-api-cli-and-jobs-page)
-and [job lifecycle and API endpoints](../../src/jobs.md).
+and [job lifecycle and API endpoints](../../../src/jobs.md).
 
 ## Hardware and scheduling
 
@@ -88,7 +88,7 @@ its allocated board while device cgroups denied the other three, and that
 allocation recovered after restarting the DRA driver. CLI and actual browser
 checks exercise submission, status, logs and cancellation; backend/CLI/web
 tests and a frontend production build cover the application changes.
-See [recorded results](../../deploy/k3s/mist-api-results.json) for evidence paths.
+See [recorded results](../../../deploy/k3s/mist-api-results.json) for evidence paths.
 
 ## Access and retention
 

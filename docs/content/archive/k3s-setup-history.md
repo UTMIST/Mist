@@ -1,6 +1,6 @@
 > **Historical record — superseded.** This text describes an earlier phase.
 > Commands and claims below are retained as history, not current setup instructions.
-> Start with the [current documentation index](../README.md) and
+> Start with the [current documentation index](../_index.md) and
 > [department operating guide](../department-rollout.md).
 
 # Single-node k3s and NVIDIA GPU pilot: setup and handoff
@@ -28,7 +28,7 @@ The NVIDIA GPU Operator added the Kubernetes integration:
 
 The operator was configured **not** to replace the existing host driver. Those
 values are in
-[`nvidia-gpu-operator-values.yaml`](../../deploy/k3s/nvidia-gpu-operator-values.yaml). NVIDIA
+[`nvidia-gpu-operator-values.yaml`](../../../deploy/k3s/nvidia-gpu-operator-values.yaml). NVIDIA
 states that its NRI plugin is not yet generally available; this is a pilot
 configuration. See the [GPU Operator installation guide](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/getting-started.html)
 and [CDI/NRI guide](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/cdi.html).
@@ -125,7 +125,7 @@ healthy.
 
 ### 4. Execute CUDA through k3s
 
-The tracked [`gpu-smoke-job.yaml`](../../deploy/k3s/gpu-smoke-job.yaml) requests and limits one
+The tracked [`gpu-smoke-job.yaml`](../../../deploy/k3s/gpu-smoke-job.yaml) requests and limits one
 `nvidia.com/gpu` device. Create the namespace if it does not already exist:
 
 ```bash

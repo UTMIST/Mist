@@ -3,7 +3,7 @@
 The authenticated React portal serves real team Jobs, hardware inventory,
 dataset uploads, common/member folder browsing, account administration and team
 policy/sharing controls. Production: **http://100.73.139.66:8088** through Tailscale.
-See the [operating guide](../docs/department-rollout.md).
+See the [operating guide](../docs/content/department-rollout.md).
 
 ## Start locally
 
@@ -24,7 +24,7 @@ npm run dev -- --host 127.0.0.1 --port 3001 --strictPort
 
 Vite forwards `/api` and `/auth` to the API on port 3000. `MIST_API_PROXY` changes
 that target. Authenticate with a real Mist account and select your team; this
-preview reaches real jobs/data. See [development](../docs/development.md) for
+preview reaches real jobs/data. See [development](../docs/content/development.md) for
 other-host origins and backend work. Production uses a static Nginx release,
 not Vite or these per-user services.
 
@@ -51,7 +51,7 @@ preserves image startup with blank overrides. CPU/RAM inventory shows allocation
 not live utilization. Inputs are read-only; save results in `/outputs`.
 
 The old fake account helpers/chart and unused `use-immer` dependency are retired.
-Current behavior and components follow [the design system](../docs/design-system.md).
+Current behavior and components follow [the design system](../docs/content/design-system.md).
 
 ## Verify
 
@@ -62,4 +62,4 @@ npm run lint
 npm run build
 ```
 
-See [testing](../docs/testing.md) for browser-to-cluster checks and their scope.
+See [testing](../docs/content/testing.md) for browser-to-cluster checks and their scope.

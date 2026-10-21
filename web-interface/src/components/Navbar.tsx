@@ -1,7 +1,14 @@
 import { Link } from '@tanstack/react-router'
 import { authClient, useAccount } from '#/auth.tsx'
 import { useState } from 'react'
-import { LayoutDashboard, Play, Database, Server, Users } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Play,
+  Database,
+  Server,
+  Users,
+  BookOpen,
+} from 'lucide-react'
 import { WorkspaceSelector } from '#/teams.tsx'
 
 export default function Navbar() {
@@ -60,6 +67,12 @@ export default function Navbar() {
           </span>{' '}
           Teams
         </Link>
+        <a href="/docs/">
+          <span aria-hidden="true">
+            <BookOpen size={17} />
+          </span>{' '}
+          Docs
+        </a>
       </nav>
       <div className="mist-sidebar-account">
         <WorkspaceSelector />
