@@ -179,10 +179,10 @@ func (s *TeamService) provisionNamespace(ctx context.Context, t *Team) error {
 			return err
 		}
 	}
-	if err = s.ensureVolume(ctx, t.ID, ns, "team-storage", fmt.Sprintf("teams/%s", t.ID), t.Policy.StorageGiB, false); err != nil {
+	if err = s.ensureVolume(ctx, t.ID, ns, "team-datasets", fmt.Sprintf("teams/%s/datasets", t.ID), t.Policy.StorageGiB, false); err != nil {
 		return err
 	}
-	if err = s.ensureVolume(ctx, t.ID, ns, "team-models", fmt.Sprintf("teams/%s/.models", t.ID), t.Policy.ModelStorageGiB, false); err != nil {
+	if err = s.ensureVolume(ctx, t.ID, ns, "team-results", fmt.Sprintf("teams/%s/results", t.ID), t.Policy.ModelStorageGiB, false); err != nil {
 		return err
 	}
 	s.provisioned[t.ID] = teamProvisioned{signature: string(signature), checked: time.Now()}
@@ -209,13 +209,15 @@ func teamNetworkPolicy(ns string) *networkv1.NetworkPolicy {
 func (s *TeamService) ensureVolume(ctx context.Context, sourceTeam, namespace, claim, path string, gib int64, readonly bool) error {
 	c := s.app.executor.client
 	name := namespace + "-" + claim
-	pv := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"mist.io/team": sourceTeam}}, Spec: corev1.PersistentVolumeSpec{Capacity: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", gib))}, AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}, PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain, StorageClassName: "", ClaimRef: &corev1.ObjectReference{Name: claim, Namespace: namespace}, MountOptions: []string{"nfsvers=4.2", "hard", "timeo=100", "retrans=2"}, PersistentVolumeSource: corev1.PersistentVolumeSource{NFS: &corev1.NFSVolumeSource{Server: envOr("MIST_NFS_SERVER", "10.0.0.112"), Path: "/srv/mist-storage/" + path, ReadOnly: readonly}}}}
+	pv := &corev1.PersistentVolume{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"mist.io/team": sourceTeam}}, Spec: corev1.PersistentVolumeSpec{Capacity: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", gib))}, AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}, PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain, StorageClassName: "", ClaimRef: &corev1.ObjectReference{Name: claim, Namespace: namespace}, MountOptions: []string{"nfsvers=4.1", "hard", "timeo=100", "retrans=2"}, PersistentVolumeSource: corev1.PersistentVolumeSource{NFS: &corev1.NFSVolumeSource{Server: envOr("MIST_NFS_SERVER", "192.168.240.2"), Path: envOr("MIST_NFS_ROOT", "/srv/mist-data") + "/" + path, ReadOnly: readonly}}}}
 	if existing, err := c.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
 		if _, err = c.CoreV1().PersistentVolumes().Create(ctx, pv, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
+	} else if existing.Spec.NFS == nil || *existing.Spec.NFS != *pv.Spec.NFS {
+		return fmt.Errorf("storage volume %s points at a different export; replace its retained binding during storage cutover", name)
 	} else if existing.Spec.Capacity.Storage().Cmp(pv.Spec.Capacity[corev1.ResourceStorage]) < 0 {
 		existing.Spec.Capacity = pv.Spec.Capacity
 		if _, err = c.CoreV1().PersistentVolumes().Update(ctx, existing, metav1.UpdateOptions{}); err != nil {

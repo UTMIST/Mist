@@ -37,8 +37,8 @@ func (a *App) requestExecutor(r *http.Request) *KubernetesExecutor {
 	if access, _ := r.Context().Value(teamContextKey{}).(*TeamAccess); access != nil {
 		clone := *a.executor
 		clone.namespace, clone.owner = access.Team.namespace(), access.Team.ID
-		clone.storage, clone.sharedPVC, clone.team = access.Store, "team-models", access
-		clone.inputPVC = "team-storage"
+		clone.storage, clone.sharedPVC, clone.team = access.Store, "team-results", access
+		clone.inputPVC = "team-datasets"
 		return &clone
 	}
 	member, _ := r.Context().Value(memberKey{}).(*Member)

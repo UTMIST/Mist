@@ -1,0 +1,130 @@
+[
+  {
+    "id": "mist-b5e74aec693e5111ae262449",
+    "namespace": "mist-team-a91af070ba2a6bdc",
+    "node": "utmist-z1opa08",
+    "automount_service_account_token": false,
+    "volumes": [
+      {
+        "claim": "team-results",
+        "read_only": false,
+        "nfs": {
+          "path": "/srv/mist-data/teams/team-a91af070ba2a6bdc/results",
+          "server": "192.168.240.2"
+        },
+        "mount_options": [
+          "nfsvers=4.1",
+          "hard",
+          "timeo=100",
+          "retrans=2"
+        ]
+      },
+      {
+        "claim": "team-datasets",
+        "read_only": true,
+        "nfs": {
+          "path": "/srv/mist-data/teams/team-a91af070ba2a6bdc/datasets",
+          "server": "192.168.240.2"
+        },
+        "mount_options": [
+          "nfsvers=4.1",
+          "hard",
+          "timeo=100",
+          "retrans=2"
+        ]
+      }
+    ],
+    "mounts": [
+      {
+        "mountPath": "/checkpoints/mist-b5e74aec693e5111ae262449",
+        "name": "checkpoints",
+        "subPath": "members/21008782734082c80dbd4eb4/jobs/mist-b5e74aec693e5111ae262449/outputs"
+      },
+      {
+        "mountPath": "/outputs",
+        "name": "checkpoints",
+        "subPath": "members/21008782734082c80dbd4eb4/jobs/mist-b5e74aec693e5111ae262449/outputs"
+      },
+      {
+        "mountPath": "/inputs",
+        "name": "input",
+        "readOnly": true,
+        "subPath": "members/21008782734082c80dbd4eb4/datasets/dataset-3c4ddd41a5c75880df01796f/content"
+      },
+      {
+        "mountPath": "/mist-script",
+        "name": "script",
+        "readOnly": true
+      }
+    ]
+  },
+  {
+    "id": "mist-57208c18e561c8cef36e6697",
+    "namespace": "mist-team-a91af070ba2a6bdc",
+    "node": "utmist-tt",
+    "automount_service_account_token": false,
+    "volumes": [
+      {
+        "claim": "team-results",
+        "read_only": false,
+        "nfs": {
+          "path": "/srv/mist-data/teams/team-a91af070ba2a6bdc/results",
+          "server": "192.168.240.2"
+        },
+        "mount_options": [
+          "nfsvers=4.1",
+          "hard",
+          "timeo=100",
+          "retrans=2"
+        ]
+      },
+      {
+        "claim": "team-datasets",
+        "read_only": true,
+        "nfs": {
+          "path": "/srv/mist-data/teams/team-a91af070ba2a6bdc/datasets",
+          "server": "192.168.240.2"
+        },
+        "mount_options": [
+          "nfsvers=4.1",
+          "hard",
+          "timeo=100",
+          "retrans=2"
+        ]
+      }
+    ],
+    "mounts": [
+      {
+        "mountPath": "/checkpoints/mist-57208c18e561c8cef36e6697",
+        "name": "checkpoints",
+        "subPath": "members/21008782734082c80dbd4eb4/jobs/mist-57208c18e561c8cef36e6697/outputs"
+      },
+      {
+        "mountPath": "/outputs",
+        "name": "checkpoints",
+        "subPath": "members/21008782734082c80dbd4eb4/jobs/mist-57208c18e561c8cef36e6697/outputs"
+      },
+      {
+        "mountPath": "/home/utmist-tt/TT/tt-metal",
+        "name": "metal",
+        "readOnly": true
+      },
+      {
+        "mountPath": "/home/utmist-tt/.local/share/uv/python",
+        "name": "python",
+        "readOnly": true
+      },
+      {
+        "mountPath": "/inputs",
+        "name": "input",
+        "readOnly": true,
+        "subPath": "members/21008782734082c80dbd4eb4/datasets/dataset-3c4ddd41a5c75880df01796f/content"
+      },
+      {
+        "mountPath": "/mist-script",
+        "name": "script",
+        "readOnly": true
+      }
+    ]
+  }
+]

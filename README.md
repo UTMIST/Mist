@@ -7,6 +7,14 @@ collect persistent results through the same website or CLI.
 **Private website:** [http://100.73.139.66:8088](http://100.73.139.66:8088), accessible through authorized
 Tailscale connectivity. A Mist account and team membership are also required.
 
+## Storage update — October 21
+
+New submissions use ordinary team dataset/result folders on QuietBox, accessed
+through the direct Ethernet link. Storage allowances are advisory; team access
+is enforced. See [current storage operations](deploy/k3s/storage/README.md) for
+layout, setup, API semantics, verification and rollback. The earlier operating
+snapshots describe the retired image-backed layout.
+
 ## Current installation
 
 

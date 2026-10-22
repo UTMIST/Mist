@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -45,7 +44,6 @@ func departmentTestApp(t *testing.T) (*App, *fake.Clientset, []Team) {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("MIST_REQUIRE_TEAM_FILESYSTEM", "false")
 	t.Setenv("MIST_TEAMS_ENABLED", "true")
 	t.Setenv("MIST_AUTH_DATABASE", filepath.Join(t.TempDir(), "auth.sqlite"))
 	e := &KubernetesExecutor{client: c, namespace: "mist", owner: "legacy", storage: store, cpuNode: "main", ttNode: "tt", allowedImages: map[string]bool{cpuImage: true, ttImage: true, nvidiaImage: true}}
@@ -69,7 +67,12 @@ func departmentTestApp(t *testing.T) (*App, *fake.Clientset, []Team) {
 	t.Cleanup(func() { _ = app.auth.Close() })
 
 	for _, team := range teams {
-		if err = atomicJSON(filepath.Join(root, "metadata/provision-status", team.ID+".json"), map[string]any{"state": "Ready", "storage_gib": team.Policy.StorageGiB, "model_storage_gib": team.Policy.ModelStorageGiB}); err != nil {
+		for _, pool := range []string{"datasets", "results"} {
+			if err := os.MkdirAll(filepath.Join(root, "teams", team.ID, pool), 0750); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err = atomicJSON(filepath.Join(root, "metadata/provision-status", team.ID+".json"), teamStorageStatus{State: "Ready", Layout: sharedFolderLayout, UsageObservedUnix: time.Now().Unix()}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = app.teams.store(&team); err != nil {
@@ -157,7 +160,7 @@ func TestDepartmentTeamPermissionsAndScopedSharing(t *testing.T) {
 		t.Fatal("revoked grant remains effective")
 	}
 }
-func TestDepartmentPolicyAndStorageBudget(t *testing.T) {
+func TestDepartmentPolicyAndAdvisoryStorage(t *testing.T) {
 	a, _, teams := departmentTestApp(t)
 	p := defaultTeamPolicy()
 	p.CPU = "1"
@@ -177,12 +180,12 @@ func TestDepartmentPolicyAndStorageBudget(t *testing.T) {
 	if _, err := e.normalize(CreateJobRequest{Command: []string{"true"}, TimeoutSeconds: 30}); err != nil {
 		t.Fatalf("valid request rejected: %v", err)
 	}
-	if err := a.teams.mutate(context.Background(), func(list *[]Team) error { (*list)[0].Policy.StorageGiB = 1500; return nil }); err == nil {
-		t.Fatal("overcommitted storage budget")
+	if err := a.teams.mutate(context.Background(), func(list *[]Team) error { (*list)[0].Policy.StorageGiB = 1500; return nil }); err != nil {
+		t.Fatalf("advisory allowance must not reserve disk space: %v", err)
 	}
-	_, actual, _ := a.teams.registry(context.Background())
-	if actual[0].Policy.StorageGiB != 200 {
-		t.Fatal("failed transaction changed persisted allocation")
+	changed := departmentRequest(a, "GET", "/teams", "alice", "", "")
+	if changed.Code != 200 || !strings.Contains(changed.Body.String(), `"storage_limits_enforced":false`) {
+		t.Fatalf("advisory semantics missing: %s", changed.Body)
 	}
 }
 func TestDepartmentDurableFairAdmission(t *testing.T) {
@@ -197,7 +200,7 @@ func TestDepartmentDurableFairAdmission(t *testing.T) {
 		store, _ := a.teams.store(&team)
 		for i := 0; i < 2; i++ {
 			e := *a.executor
-			e.namespace, e.owner, e.storage, e.sharedPVC = team.namespace(), team.ID, store, "team-storage"
+			e.namespace, e.owner, e.storage, e.sharedPVC = team.namespace(), team.ID, store, "team-datasets"
 			e.team = &TeamAccess{Team: &team, Member: &Member{ID: team.Members[0].ID}, Service: a.teams}
 			job, err := e.submit(ctx, CreateJobRequest{Command: []string{"true"}, CPU: "1", Memory: "64Mi"})
 			if err != nil {
@@ -407,7 +410,7 @@ func TestDepartmentSplitDatasetAndModelPaths(t *testing.T) {
 			claims[volume.Name] = volume.PersistentVolumeClaim.ClaimName
 		}
 	}
-	if claims["input"] != "team-storage" || claims["checkpoints"] != "team-models" {
+	if claims["input"] != "team-datasets" || claims["checkpoints"] != "team-results" {
 		t.Fatalf("storage pools not separated: %+v", claims)
 	}
 	store, err := a.teams.store(&team)
@@ -439,21 +442,78 @@ func TestDepartmentSplitDatasetAndModelPaths(t *testing.T) {
 	}
 }
 
-func TestDepartmentMissingModelMountCannotBorrowDatasetCapacity(t *testing.T) {
+func TestDepartmentFoldersFailClosedForMissingOrUnsafePaths(t *testing.T) {
 	a, _, teams := departmentTestApp(t)
 	team := teams[0]
-	var fs syscall.Statfs_t
-	if err := syscall.Statfs(a.executor.storage.root, &fs); err != nil {
+	results := filepath.Join(a.executor.storage.root, "teams", team.ID, "results")
+	if err := os.RemoveAll(results); err != nil {
 		t.Fatal(err)
 	}
-	gib := (int64(fs.Blocks)*fs.Bsize + 1024*1024*1024 - 1) / (1024 * 1024 * 1024)
-	team.Policy.StorageGiB, team.Policy.ModelStorageGiB = gib, gib
-	if err := atomicJSON(filepath.Join(a.executor.storage.root, "metadata/provision-status", team.ID+".json"), map[string]any{"state": "Ready", "storage_gib": gib, "model_storage_gib": gib}); err != nil {
+	if _, err := a.teams.store(&team); err == nil {
+		t.Fatal("missing results directory accepted")
+	}
+	if err := os.Symlink(t.TempDir(), results); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("MIST_REQUIRE_TEAM_FILESYSTEM", "true")
-	if _, err := a.teams.store(&team); err == nil || !strings.Contains(err.Error(), "separate model filesystem") {
-		t.Fatalf("missing model mount accepted: %v", err)
+	if _, err := a.teams.store(&team); err == nil {
+		t.Fatal("symlink results directory accepted")
+	}
+	if err := os.Remove(results); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(results, 0750); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(a.executor.storage.root, "metadata/provision-status", team.ID+".json")
+	if err := atomicJSON(path, map[string]any{"state": "Ready", "storage_gib": 200, "model_storage_gib": 500}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.teams.store(&team); err == nil {
+		t.Fatal("old image layout status accepted")
+	}
+}
+
+func TestDepartmentSharedStorageUsageAndAdvisoryDecrease(t *testing.T) {
+	a, _, teams := departmentTestApp(t)
+	team := teams[0]
+	path := filepath.Join(a.executor.storage.root, "metadata/provision-status", team.ID+".json")
+	status := teamStorageStatus{State: "Ready", Layout: sharedFolderLayout, DatasetUsedBytes: 123, ModelUsedBytes: 456, UsageObservedUnix: time.Now().Add(-3 * time.Minute).Unix()}
+	if err := atomicJSON(path, status); err != nil {
+		t.Fatal(err)
+	}
+	response := departmentRequest(a, "GET", "/storage", "alice", team.ID, "")
+	var info struct {
+		DatasetUsed    int64  `json:"dataset_used_bytes"`
+		ModelUsed      int64  `json:"model_used_bytes"`
+		Stale          bool   `json:"usage_stale"`
+		Enforced       bool   `json:"storage_limits_enforced"`
+		Capacity       uint64 `json:"capacity_bytes"`
+		Available      uint64 `json:"available_bytes"`
+		ModelCapacity  uint64 `json:"model_capacity_bytes"`
+		ModelAvailable uint64 `json:"model_available_bytes"`
+	}
+	if response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.DatasetUsed != 123 || info.ModelUsed != 456 || !info.Stale || info.Enforced || info.Capacity == 0 || info.Available == 0 {
+		t.Fatalf("incorrect folder usage: %+v", info)
+	}
+	if info.ModelCapacity != info.Capacity || info.ModelAvailable != info.Available {
+		t.Fatal("compatibility fields must refer to the same shared disk")
+	}
+	policy := team.Policy
+	policy.StorageGiB, policy.ModelStorageGiB = 1, 1
+	body, _ := json.Marshal(map[string]any{"policy": policy})
+	changed := departmentRequest(a, "PATCH", "/teams/"+team.ID, "admin", "", string(body))
+	if changed.Code != 200 {
+		t.Fatalf("allowance decrease must not require migration: %s", changed.Body)
+	}
+	upload := departmentRequest(a, "POST", "/datasets?filename=tiny.csv", "alice", team.ID, "1,2\n")
+	if upload.Code != 201 {
+		t.Fatalf("advisory change blocked upload: %s", upload.Body)
 	}
 }
 
@@ -495,5 +555,33 @@ func TestDepartmentDefaultPoolsAndLegacyPolicy(t *testing.T) {
 	p.ModelStorageGiB = -1
 	if err := validateTeam(&Team{Name: "Invalid", Policy: p}); err == nil {
 		t.Fatal("negative model pool accepted")
+	}
+}
+
+func TestTeamVolumesUseEthernetFolderExportsAndRejectStaleBindings(t *testing.T) {
+	a, client, teams := departmentTestApp(t)
+	t.Setenv("MIST_NFS_SERVER", "192.168.240.2")
+	t.Setenv("MIST_NFS_ROOT", "/srv/mist-data")
+	team := teams[0]
+	ctx := context.Background()
+	if err := a.teams.provisionNamespace(ctx, &team); err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range [][2]string{{"team-datasets", "datasets"}, {"team-results", "results"}} {
+		pv, err := client.CoreV1().PersistentVolumes().Get(ctx, team.namespace()+"-"+pair[0], metav1.GetOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pv.Spec.NFS.Server != "192.168.240.2" || pv.Spec.NFS.Path != "/srv/mist-data/teams/"+team.ID+"/"+pair[1] {
+			t.Fatalf("wrong Ethernet export: %+v", pv.Spec.NFS)
+		}
+		pv.Spec.NFS.Path = "/obsolete-export"
+		if _, err = client.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		err = a.teams.ensureVolume(ctx, team.ID, team.namespace(), pair[0], "teams/"+team.ID+"/"+pair[1], 1, false)
+		if err == nil {
+			t.Fatal("stale export binding accepted")
+		}
 	}
 }
