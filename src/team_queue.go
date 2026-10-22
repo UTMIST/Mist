@@ -58,7 +58,7 @@ func (s *TeamService) submitTeam(ctx context.Context, e *KubernetesExecutor, req
 		e.inputSubPath = ds.ContentPath
 		if source.ID != t.ID {
 			claim := "input-" + req.DatasetID
-			if err = s.ensureVolume(ctx, source.ID, e.namespace, claim, "teams/"+source.ID+"/"+ds.ContentPath, source.Policy.StorageGiB, true); err != nil {
+			if err = s.ensureVolume(ctx, source.ID, e.namespace, claim, "teams/"+source.ID+"/datasets/"+ds.ContentPath, source.Policy.StorageGiB, true); err != nil {
 				return nil, err
 			}
 			e.inputPVC, e.inputSubPath = claim, ""

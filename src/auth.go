@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/scrypt"
+	"golang.org/x/text/unicode/norm"
 	_ "modernc.org/sqlite"
 )
 
@@ -69,7 +70,8 @@ func newAuthService(dbPath string, log *slog.Logger) (*AuthService, error) {
 		image TEXT,
 		createdAt TEXT NOT NULL,
 		updatedAt TEXT NOT NULL,
-		role TEXT DEFAULT 'user'
+		role TEXT DEFAULT 'user',
+		banned INTEGER NOT NULL DEFAULT 0
 	);
 
 	CREATE TABLE IF NOT EXISTS session (
@@ -105,6 +107,19 @@ func newAuthService(dbPath string, log *slog.Logger) (*AuthService, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("init auth schema: %w", err)
+	}
+	// Preserve deactivated Better Auth accounts, and upgrade Go-auth databases
+	// created before that compatibility column was retained.
+	var hasBanned int
+	if err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('user') WHERE name='banned'").Scan(&hasBanned); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if hasBanned == 0 {
+		if _, err := db.Exec("ALTER TABLE user ADD COLUMN banned INTEGER NOT NULL DEFAULT 0"); err != nil {
+			db.Close()
+			return nil, err
+		}
 	}
 
 	s := &AuthService{
@@ -174,8 +189,8 @@ func (s *AuthService) bootstrapAdmin() error {
 	defer tx.Rollback()
 
 	_, err = tx.Exec(`
-		INSERT INTO user (id, name, email, role, createdAt, updatedAt)
-		VALUES (?, ?, ?, 'admin', ?, ?)
+		INSERT INTO user (id, name, email, role, emailVerified, createdAt, updatedAt)
+		VALUES (?, ?, ?, 'admin', 0, ?, ?)
 	`, userID, "Mist Administrator", email, now, now)
 	if err != nil {
 		return err
@@ -213,14 +228,14 @@ func verifyPassword(hashed, password string) bool {
 		return bcrypt.CompareHashAndPassword([]byte(hashed), []byte(password)) == nil
 	}
 	parts := strings.Split(hashed, ":")
-	if len(parts) == 2 {
-		salt, err1 := hex.DecodeString(parts[0])
-		expected, err2 := hex.DecodeString(parts[1])
-		if err1 == nil && err2 == nil {
-			derived, err := scrypt.Key([]byte(password), salt, 16384, 8, 1, len(expected))
-			if err == nil && subtle.ConstantTimeCompare(derived, expected) == 1 {
-				return true
-			}
+	if len(parts) == 2 && len(parts[0]) == 32 && len(parts[1]) == 128 {
+		_, saltErr := hex.DecodeString(parts[0])
+		expected, err := hex.DecodeString(parts[1])
+		if saltErr == nil && err == nil {
+			// Better Auth uses the hex salt text (not decoded bytes), NFKC
+			// normalization and scrypt r=16. Preserve existing account logins.
+			derived, err := scrypt.Key([]byte(norm.NFKC.String(password)), []byte(parts[0]), 16384, 16, 1, 64)
+			return err == nil && subtle.ConstantTimeCompare(derived, expected) == 1
 		}
 	}
 	return false
@@ -251,7 +266,7 @@ func (s *AuthService) checkRateLimit(key string, windowSec int64, maxReq int) bo
 }
 
 func extractSessionToken(r *http.Request) string {
-	for _, cookieName := range []string{"better-auth.session_token", "session_token", "member", "identity"} {
+	for _, cookieName := range []string{"better-auth.session_token", "session_token"} {
 		if c, err := r.Cookie(cookieName); err == nil && c.Value != "" {
 			val := c.Value
 			if idx := strings.Index(val, "."); idx != -1 {
@@ -263,7 +278,7 @@ func extractSessionToken(r *http.Request) string {
 	cookieHeader := r.Header.Get("Cookie")
 	for _, part := range strings.Split(cookieHeader, ";") {
 		part = strings.TrimSpace(part)
-		for _, name := range []string{"better-auth.session_token=", "session_token=", "member=", "identity="} {
+		for _, name := range []string{"better-auth.session_token=", "session_token="} {
 			if strings.HasPrefix(part, name) {
 				val := strings.TrimPrefix(part, name)
 				if idx := strings.Index(val, "."); idx != -1 {
@@ -287,19 +302,8 @@ func (s *AuthService) session(r *http.Request) (*Member, error) {
 		SELECT u.id, u.name, u.email, u.role
 		FROM session s
 		JOIN user u ON s.userId = u.id
-		WHERE s.token = ? AND s.expiresAt > ?
+		WHERE s.token = ? AND s.expiresAt > ? AND COALESCE(u.banned, 0) = 0
 	`, token, now).Scan(&m.ID, &m.Name, &m.Email, &m.Role)
-	if err == nil {
-		return &m, nil
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	err = s.db.QueryRowContext(r.Context(), `
-		SELECT id, name, email, role
-		FROM user
-		WHERE id = ?
-	`, token).Scan(&m.ID, &m.Name, &m.Email, &m.Role)
 	if err == nil {
 		return &m, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -310,7 +314,7 @@ func (s *AuthService) session(r *http.Request) (*Member, error) {
 }
 
 func (s *AuthService) activeMembers(ctx context.Context) (map[string]AccountStatus, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, role FROM user")
+	rows, err := s.db.QueryContext(ctx, "SELECT id, role FROM user WHERE COALESCE(banned, 0) = 0")
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +332,7 @@ func (s *AuthService) activeMembers(ctx context.Context) (map[string]AccountStat
 
 func (s *AuthService) LookupMember(ctx context.Context, id string) (*Member, error) {
 	var m Member
-	err := s.db.QueryRowContext(ctx, "SELECT id, name, email, role FROM user WHERE id = ?", id).
+	err := s.db.QueryRowContext(ctx, "SELECT id, name, email, role FROM user WHERE id = ? AND COALESCE(banned, 0) = 0", id).
 		Scan(&m.ID, &m.Name, &m.Email, &m.Role)
 	if err != nil {
 		return nil, errors.New("account unavailable")
@@ -429,7 +433,7 @@ func (s *AuthService) handleSignInEmail(w http.ResponseWriter, r *http.Request) 
 	err := s.db.QueryRowContext(r.Context(), `
 		SELECT id, name, email, role, createdAt, updatedAt
 		FROM user
-		WHERE LOWER(email) = LOWER(?)
+		WHERE LOWER(email) = LOWER(?) AND COALESCE(banned, 0) = 0
 	`, req.Email).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeAuthError(w, 401, "Invalid email or password", "INVALID_EMAIL_OR_PASSWORD")
@@ -508,7 +512,7 @@ func (s *AuthService) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		SELECT u.id, u.name, u.email, u.role, s.id, s.userId, s.token, s.expiresAt
 		FROM session s
 		JOIN user u ON s.userId = u.id
-		WHERE s.token = ? AND s.expiresAt > ?
+		WHERE s.token = ? AND s.expiresAt > ? AND COALESCE(u.banned, 0) = 0
 	`, token, now).Scan(&user.ID, &user.Name, &user.Email, &user.Role,
 		&sess.ID, &sess.UserID, &sess.Token, &sess.ExpiresAt)
 	if err == nil {
@@ -519,22 +523,6 @@ func (s *AuthService) handleGetSession(w http.ResponseWriter, r *http.Request) {
 				"userId":    sess.UserID,
 				"token":     sess.Token,
 				"expiresAt": sess.ExpiresAt,
-			},
-		})
-		return
-	}
-
-	err = s.db.QueryRowContext(r.Context(), `
-		SELECT id, name, email, role FROM user WHERE id = ?
-	`, token).Scan(&user.ID, &user.Name, &user.Email, &user.Role)
-	if err == nil {
-		writeJSON(w, 200, map[string]interface{}{
-			"user": user,
-			"session": map[string]interface{}{
-				"id":        "sess-mock",
-				"userId":    user.ID,
-				"token":     token,
-				"expiresAt": time.Now().Add(24 * time.Hour).Format(time.RFC3339Nano),
 			},
 		})
 		return
@@ -688,8 +676,8 @@ func (s *AuthService) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	_, err = tx.ExecContext(r.Context(), `
-		INSERT INTO user (id, name, email, role, createdAt, updatedAt)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO user (id, name, email, role, emailVerified, createdAt, updatedAt)
+		VALUES (?, ?, ?, ?, 0, ?, ?)
 	`, userID, req.Name, req.Email, req.Role, now, now)
 	if err != nil {
 		writeAuthError(w, 500, "Failed to create user", "INTERNAL_ERROR")

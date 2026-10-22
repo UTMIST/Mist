@@ -493,6 +493,7 @@ const server = http.createServer(async (req, res) => {
       sendJSON(res, 200, {
         teams: state.teams,
         storage_budget_gib: state.storageBudgetGiB,
+        storage_limits_enforced: false,
       })
       return
     }
@@ -708,7 +709,22 @@ const server = http.createServer(async (req, res) => {
     // ----------------------------------------------------
 
     if (pathname === '/storage' && req.method === 'GET') {
-      sendJSON(res, 200, state.storage)
+      const team = state.teams.find((t) => t.id === activeTeam)
+      const datasets = state.datasets.filter((d) => !activeTeam || d.team_id === activeTeam)
+      const jobs = state.jobs.filter((j) => !activeTeam || j.team_id === activeTeam)
+      sendJSON(res, 200, {
+        ...state.storage,
+        storage_mode: 'shared-folders',
+        storage_limits_enforced: false,
+        dataset_used_bytes: datasets.reduce((total, dataset) => total + dataset.size, 0),
+        model_used_bytes: jobs.reduce((total, job) =>
+          total + (state.jobFiles.get(job.id) ?? []).reduce((sum, file) => sum + file.size, 0), 0),
+        dataset_allocation_gib: team?.policy.storage_gib ?? state.storage.dataset_allocation_gib,
+        model_allocation_gib: team?.policy.model_storage_gib ?? state.storage.model_allocation_gib,
+        usage_observed_at: new Date().toISOString(),
+        usage_stale: false,
+        storage_low: state.storage.available_bytes < state.storage.capacity_bytes / 10,
+      })
       return
     }
 
