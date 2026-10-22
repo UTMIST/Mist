@@ -166,6 +166,10 @@ func TestMemberAuthIsolationAndFailureClosed(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	seedTestSession(t, app.auth, "alice")
+	seedTestSession(t, app.auth, "bob")
+	t.Cleanup(func() { _ = app.auth.Close() })
+
 	request := func(method, path, cookie, origin, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Cookie", cookie)
@@ -178,17 +182,17 @@ func TestMemberAuthIsolationAndFailureClosed(t *testing.T) {
 	if response := request("GET", "/jobs", "", "", ""); response.Code != 401 {
 		t.Fatal("anonymous request accepted")
 	}
-	if response := request("POST", "/jobs", "member=alice", "http://evil.test", `{"command":["true"]}`); response.Code != 403 {
+	if response := request("POST", "/jobs", "better-auth.session_token=test-session-alice", "http://evil.test", `{"command":["true"]}`); response.Code != 403 {
 		t.Fatal("cross-origin mutation accepted")
 	}
-	if response := request("POST", "/jobs", "member=alice", "http://mist.test", `{"command":["true"]}`); response.Code != 201 {
+	if response := request("POST", "/jobs", "better-auth.session_token=test-session-alice", "http://mist.test", `{"command":["true"]}`); response.Code != 201 {
 		t.Fatalf("submit failed %d %s", response.Code, response.Body.String())
 	}
-	if response := request("GET", "/jobs", "member=bob", "", ""); response.Code != 200 || !strings.Contains(response.Body.String(), `"count":0`) {
+	if response := request("GET", "/jobs", "better-auth.session_token=test-session-bob", "", ""); response.Code != 200 || !strings.Contains(response.Body.String(), `"count":0`) {
 		t.Fatalf("another member sees jobs: %s", response.Body.String())
 	}
 	app.auth.Close()
-	if response := request("GET", "/jobs", "member=alice", "", ""); response.Code != 503 {
+	if response := request("GET", "/jobs", "better-auth.session_token=test-session-alice", "", ""); response.Code != 503 {
 		t.Fatal("auth failure did not close access")
 	}
 }

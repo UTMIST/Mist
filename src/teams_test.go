@@ -63,6 +63,11 @@ func departmentTestApp(t *testing.T) (*App, *fake.Clientset, []Team) {
 			t.Fatal(err)
 		}
 	}
+	for _, id := range []string{"alice", "bob", "admin"} {
+		seedTestSession(t, app.auth, id)
+	}
+	t.Cleanup(func() { _ = app.auth.Close() })
+
 	for _, team := range teams {
 		if err = atomicJSON(filepath.Join(root, "metadata/provision-status", team.ID+".json"), map[string]any{"state": "Ready", "storage_gib": team.Policy.StorageGiB, "model_storage_gib": team.Policy.ModelStorageGiB}); err != nil {
 			t.Fatal(err)
@@ -75,7 +80,7 @@ func departmentTestApp(t *testing.T) (*App, *fake.Clientset, []Team) {
 }
 func departmentRequest(a *App, method, path, identity, team, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	req.Header.Set("Cookie", "identity="+identity)
+	req.Header.Set("Cookie", "better-auth.session_token=test-session-"+identity)
 	if team != "" {
 		req.Header.Set("X-Mist-Team", team)
 	}

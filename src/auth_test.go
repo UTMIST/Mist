@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -9,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestAuthService(t *testing.T) *AuthService {
@@ -169,13 +172,16 @@ func TestAuthService_AdminUserManagement(t *testing.T) {
 	_, _ = s.db.Exec(`INSERT INTO user (id, name, email, role, createdAt, updatedAt) VALUES ('user1', 'User', 'user@mist.local', 'user', datetime('now'), datetime('now'))`)
 	_, _ = s.db.Exec(`INSERT INTO account (id, userId, accountId, providerId, password, createdAt, updatedAt) VALUES ('a_user', 'user1', 'user@mist.local', 'credential', ?, datetime('now'), datetime('now'))`, hashed)
 
+	seedTestSession(t, s, "admin1")
+	seedTestSession(t, s, "user1")
+
 	// Admin creates a new user
 	rec := authRequest(s, "POST", "/auth/admin/create-user", map[string]string{
 		"name":     "Bob",
 		"email":    "bob@mist.local",
 		"password": "bobpassword123",
 		"role":     "user",
-	}, "identity=admin1")
+	}, "better-auth.session_token=test-session-admin1")
 	if rec.Code != 200 {
 		t.Fatalf("create-user failed: %d %s", rec.Code, rec.Body.String())
 	}
@@ -192,13 +198,13 @@ func TestAuthService_AdminUserManagement(t *testing.T) {
 		"name":     "Mallory",
 		"email":    "mallory@mist.local",
 		"password": "mallorypassword123",
-	}, "identity=user1")
+	}, "better-auth.session_token=test-session-user1")
 	if rec.Code != 403 {
 		t.Fatalf("expected 403 for non-admin create-user, got %d", rec.Code)
 	}
 
 	// List users
-	rec = authRequest(s, "GET", "/auth/admin/list-users?limit=100", nil, "identity=admin1")
+	rec = authRequest(s, "GET", "/auth/admin/list-users?limit=100", nil, "better-auth.session_token=test-session-admin1")
 	if rec.Code != 200 {
 		t.Fatalf("list-users failed: %d %s", rec.Code, rec.Body.String())
 	}
@@ -215,7 +221,7 @@ func TestAuthService_AdminUserManagement(t *testing.T) {
 	rec = authRequest(s, "POST", "/auth/admin/set-user-password", map[string]string{
 		"userId":      created.User.ID,
 		"newPassword": "newbobpassword123",
-	}, "identity=admin1")
+	}, "better-auth.session_token=test-session-admin1")
 	if rec.Code != 200 {
 		t.Fatalf("set-user-password failed: %d %s", rec.Code, rec.Body.String())
 	}
@@ -262,5 +268,122 @@ func TestAuthService_InternalMembers(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &body)
 	if len(body.Members) != 2 {
 		t.Fatalf("expected 2 members, got %d", len(body.Members))
+	}
+}
+
+// Fixture sessions exercise the same lookup as real sign-in, never user-ID cookies.
+func seedTestSession(t *testing.T, service *AuthService, id string) {
+	t.Helper()
+	now := time.Now().UTC()
+	_, err := service.db.Exec(`INSERT INTO session (id,token,userId,expiresAt,createdAt,updatedAt) VALUES (?,?,?,?,?,?)`, "session-"+id, "test-session-"+id, id, now.Add(time.Hour).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAuthServiceRejectsUserIDAndExpiredSessionCookies(t *testing.T) {
+	service := newTestAuthService(t)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := service.db.Exec(`INSERT INTO user (id,name,email,role,createdAt,updatedAt) VALUES (?,?,?,?,?,?)`, "known-user", "Known", "known@mist.local", "admin", now, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTestSession(t, service, "known-user")
+	for _, cookie := range []string{"identity=known-user", "member=known-user", "session_token=known-user", "better-auth.session_token=known-user"} {
+		request := httptest.NewRequest("GET", "/session", nil)
+		request.Header.Set("Cookie", cookie)
+		member, err := service.session(request)
+		if err != nil || member != nil {
+			t.Fatalf("forged identity cookie accepted: %v", err)
+		}
+		response := authRequest(service, "GET", "/auth/get-session", nil, cookie)
+		var body struct {
+			User *Member `json:"user"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.User != nil {
+			t.Fatal("session endpoint accepted a forged identity")
+		}
+	}
+	if _, err := service.db.Exec(`UPDATE session SET expiresAt=?`, time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest("GET", "/session", nil)
+	request.Header.Set("Cookie", "better-auth.session_token=test-session-known-user")
+	if member, err := service.session(request); err != nil || member != nil {
+		t.Fatalf("expired session accepted: %v", err)
+	}
+}
+
+func TestBetterAuthPasswordCompatibility(t *testing.T) {
+	// Public test vector generated with Better Auth's Node scrypt parameters.
+	const hash = "0123456789abcdef0123456789abcdef:8582d1a409fb81869c9f080d49ce2d8839d611a9905642ce9e7b9e5c1cf7e7b71add2af990c5095edf0733f174780d62b2f7ff2fb42cd07a5edf561bef26dc34"
+	if !verifyPassword(hash, "legacy-password-123") || verifyPassword(hash, "wrong-password") {
+		t.Fatal("existing Better Auth password compatibility is broken")
+	}
+}
+
+func TestDeactivatedAccountsCannotUseExistingSessions(t *testing.T) {
+	service := newTestAuthService(t)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := service.db.Exec(`INSERT INTO user (id,name,email,role,banned,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?)`, "inactive", "Inactive", "inactive@mist.local", "admin", 1, now, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTestSession(t, service, "inactive")
+	request := httptest.NewRequest("GET", "/session", nil)
+	request.Header.Set("Cookie", "better-auth.session_token=test-session-inactive")
+	if member, err := service.session(request); err != nil || member != nil {
+		t.Fatal("deactivated account retained access")
+	}
+	active, err := service.activeMembers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := active["inactive"]; exists {
+		t.Fatal("deactivated account can keep running jobs")
+	}
+	if _, err := service.LookupMember(context.Background(), "inactive"); err == nil {
+		t.Fatal("deactivated account can be enrolled")
+	}
+	response := authRequest(service, "GET", "/auth/get-session", nil, "better-auth.session_token=test-session-inactive")
+	var body struct {
+		User *Member `json:"user"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.User != nil {
+		t.Fatal("session endpoint exposes deactivated account")
+	}
+}
+
+func TestExistingBetterAuthSchemaCanCreateAccounts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "existing.sqlite")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, emailVerified INTEGER NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, role TEXT)`)
+	db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MIST_ADMIN_EMAIL", "existing-schema@mist.local")
+	t.Setenv("MIST_ADMIN_PASSWORD", "test-password-123")
+	service, err := newAuthService(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	login := authRequest(service, "POST", "/auth/sign-in/email", map[string]string{"email": "existing-schema@mist.local", "password": "test-password-123"}, "")
+	if login.Code != 200 {
+		t.Fatal("bootstrap must support old NOT NULL columns")
+	}
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(login.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	created := authRequest(service, "POST", "/auth/admin/create-user", map[string]string{"name": "New member", "email": "new-schema@mist.local", "password": "test-password-456"}, "better-auth.session_token="+body.Token)
+	if created.Code != 200 {
+		t.Fatalf("member creation failed against existing schema: %s", created.Body)
 	}
 }
