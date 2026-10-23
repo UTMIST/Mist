@@ -24,7 +24,7 @@ import (
 	"time"
 )
 
-// Physical per-team dataset capacity is the upload limit; no small fixed ceiling.
+// Uploads are bounded by real shared-disk free space and an optional upload cap.
 const maxDatasetBytes int64 = 1 << 50
 
 var datasetIDPattern = regexp.MustCompile(`^dataset-[a-f0-9]{24}$`)
@@ -80,9 +80,6 @@ func (s *SharedStorage) availableUploadLimit(team bool) int64 {
 		return 0
 	}
 	reserve := int64(1024 * 1024 * 1024)
-	if team {
-		reserve = 64 * 1024 * 1024
-	}
 	return max(0, min(s.uploadLimit, int64(stats.Bavail)*int64(stats.Bsize)-reserve))
 }
 func (s *SharedStorage) dataset(id, owner string) (*Dataset, error) {
@@ -141,9 +138,6 @@ func (s *SharedStorage) upload(r *http.Request, owner string) (*Dataset, error) 
 		return nil, err
 	}
 	reserve := int64(1024 * 1024 * 1024)
-	if r.Context().Value(teamContextKey{}) != nil {
-		reserve = 64 * 1024 * 1024
-	}
 	remaining := int64(stats.Bavail)*int64(stats.Bsize) - reserve
 	if remaining <= 0 {
 		return nil, fmt.Errorf("dataset storage has insufficient free space: %w", syscall.ENOSPC)
@@ -320,12 +314,20 @@ func (a *App) storageInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	info := map[string]interface{}{"enabled": true, "capacity_bytes": stat.Blocks * uint64(stat.Bsize), "available_bytes": stat.Bavail * uint64(stat.Bsize), "upload_limit_bytes": s.availableUploadLimit(e.team != nil), "max_dataset_bytes": s.uploadLimit}
 	if e.team != nil {
-		var models syscall.Statfs_t
-		if err := syscall.Statfs(s.resultsRoot(), &models); err != nil {
+		usage, err := a.teams.storageStatus(e.team.Team.ID)
+		if err != nil {
 			executorError(w, err)
 			return
 		}
-		info["model_capacity_bytes"], info["model_available_bytes"] = models.Blocks*uint64(models.Bsize), models.Bavail*uint64(models.Bsize)
+		info["storage_mode"] = "shared-folders"
+		info["storage_limits_enforced"] = false
+		// Retained response fields are aliases for the same shared disk, not
+		// independent model capacity. New clients use the sampled usage fields.
+		info["model_capacity_bytes"], info["model_available_bytes"] = info["capacity_bytes"], info["available_bytes"]
+		info["dataset_used_bytes"], info["model_used_bytes"] = usage.DatasetUsedBytes, usage.ModelUsedBytes
+		info["usage_observed_at"] = usage.observedAt()
+		info["usage_stale"] = time.Since(time.Unix(usage.UsageObservedUnix, 0)) > 2*time.Minute
+		info["storage_low"] = stat.Bavail*uint64(stat.Bsize) < max(uint64(5*1024*1024*1024), stat.Blocks*uint64(stat.Bsize)/10)
 		info["dataset_allocation_gib"], info["model_allocation_gib"] = e.team.Team.Policy.StorageGiB, e.team.Team.Policy.ModelStorageGiB
 	}
 	writeJSON(w, 200, info)

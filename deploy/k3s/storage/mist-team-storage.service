@@ -1,12 +1,13 @@
 [Unit]
-Description=Mist bounded team filesystem provisioning
+Description=Mist shared team folders and usage reporting
 After=local-fs.target nfs-server.service
-RequiresMountsFor=/srv/mist-storage
+RequiresMountsFor=/srv/mist-data
 Requires=nfs-server.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /usr/local/lib/mist/team_volumes.py
+Environment=MIST_STORAGE_ROOT=/srv/mist-data
+ExecStart=/usr/bin/python3 /usr/local/lib/mist/team_folders.py
 Restart=on-failure
 RestartSec=5
 UMask=0077

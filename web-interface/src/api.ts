@@ -186,6 +186,13 @@ export const storageAPI = {
       available_bytes: number
       model_capacity_bytes?: number
       model_available_bytes?: number
+      storage_mode?: 'shared-folders'
+      storage_limits_enforced?: boolean
+      dataset_used_bytes?: number
+      model_used_bytes?: number
+      usage_observed_at?: string
+      usage_stale?: boolean
+      storage_low?: boolean
       dataset_allocation_gib?: number
       model_allocation_gib?: number
       upload_limit_bytes: number

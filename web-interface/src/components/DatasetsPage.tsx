@@ -19,11 +19,13 @@ import { TeamStorageBrowser } from '#/components/TeamStorageBrowser.tsx'
 function StorageMeter({
   label,
   capacity,
-  available,
+  used,
+  advisory = false,
 }: {
   label: string
   capacity: number
-  available: number
+  used: number
+  advisory?: boolean
 }) {
   return (
     <div className="mist-storage-meter">
@@ -31,15 +33,21 @@ function StorageMeter({
         <Database size={17} aria-hidden="true" />
         <span>{label}</span>
         <strong>
-          {formatBytes(capacity - available)} / {formatBytes(capacity)}
+          {formatBytes(used)} / {formatBytes(capacity)}
         </strong>
       </div>
       <progress
         aria-label={`${label} usage`}
-        value={capacity - available}
-        max={capacity}
+        value={Math.min(used, capacity)}
+        max={Math.max(1, capacity)}
       />
-      <small>{formatBytes(available)} available</small>
+      <small>
+        {advisory
+          ? used > capacity
+            ? 'Above advisory allowance — writes are still allowed while disk space remains.'
+            : 'Advisory allowance — shared disk space is not reserved.'
+          : `${formatBytes(Math.max(0, capacity - used))} available`}
+      </small>
     </div>
   )
 }
@@ -155,21 +163,46 @@ export function DatasetsPage() {
         </p>
       )}
       {storage.data?.enabled && (
-        <div className="mist-storage-pools">
-          <StorageMeter
-            label={selected ? 'Datasets' : 'Legacy storage'}
-            capacity={storage.data.capacity_bytes}
-            available={storage.data.available_bytes}
-          />
-          {storage.data.model_capacity_bytes !== undefined &&
-            storage.data.model_available_bytes !== undefined && (
+        <section aria-label="Storage usage" className="space-y-3">
+          <p className="mist-output-note">
+            Shared disk: {formatBytes(storage.data.available_bytes)} free of{' '}
+            {formatBytes(storage.data.capacity_bytes)}. All teams use this disk.
+          </p>
+          {selected && (
+            <div className="mist-storage-pools">
+              <StorageMeter
+                label="Datasets"
+                capacity={
+                  (storage.data.dataset_allocation_gib ?? 0) * 1024 ** 3
+                }
+                used={storage.data.dataset_used_bytes ?? 0}
+                advisory
+              />
               <StorageMeter
                 label="Models & results"
-                capacity={storage.data.model_capacity_bytes}
-                available={storage.data.model_available_bytes}
+                capacity={(storage.data.model_allocation_gib ?? 0) * 1024 ** 3}
+                used={storage.data.model_used_bytes ?? 0}
+                advisory
               />
-            )}
-        </div>
+            </div>
+          )}
+          {selected && (
+            <p className="mist-output-note">
+              File usage updates approximately every 30 seconds.
+            </p>
+          )}
+          {storage.data.storage_low && (
+            <p role="alert">
+              Shared disk space is low. Uploads and jobs may run out of space.
+            </p>
+          )}
+          {storage.data.usage_stale && (
+            <p role="alert">
+              Storage usage reporting is delayed. The displayed usage may be out
+              of date.
+            </p>
+          )}
+        </section>
       )}
       {uploading && (
         <Modal

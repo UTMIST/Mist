@@ -376,7 +376,7 @@ func (a *App) datasetFiles(w http.ResponseWriter, r *http.Request) {
 	serveStoredFiles(w, r, path, len(parts) == 3)
 }
 
-// Keep the public common/member tree stable while files live in two quota pools.
+// Keep the public common/member tree stable across dataset and result directories.
 func serveTeamFolder(w http.ResponseWriter, r *http.Request, store *SharedStorage, scope string) {
 	data := filepath.Join(store.root, scopePath(scope))
 	models := filepath.Join(store.resultsRoot(), scopePath(scope))

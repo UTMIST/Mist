@@ -12,18 +12,18 @@ Setup: [k3s](../../docs/content/k3s-setup.md), [Tailscale/SSH](../../docs/conten
 | Nginx production portal | Main, localhost and `100.73.139.66:8088` | `/srv/mist-web/releases`, atomic `current` symlink |
 | Go API, auth, and admission controller | `mist-system`, main, one Recreate replica | Team/queue ConfigMaps; Kubernetes Jobs; Local `mist-auth-data` SQLite WAL PVC |
 | k3s server / agent | Main / QuietBox | Existing cluster and device operators |
-| NFSv4 storage | QuietBox | 1,600 GiB sparse image; separate bounded dataset/model filesystems |
-| Team provisioning agent | QuietBox `mist-team-storage.service` | Validated manifests, fstab mounts and NFS exports |
+| NFSv4 storage | QuietBox | Ordinary `/srv/mist-data/teams` dataset/result folders over direct Ethernet |
+| Team provisioning agent | QuietBox `mist-team-storage.service` | Validated requests, ordinary directories and sampled usage |
 | Portal host firewall | Both `mist-portal-firewall.service` | Owned INPUT/FORWARD chains and host config |
 
-API image tag is `mist-api:departments-20261009`, imported into main's k3s containerd.
+API image tag is `mist-api:folders-20261021`, imported into main's k3s containerd.
 New jobs run in `mist-team-<id>` namespaces. Historical `mist` workloads/PVCs remain.
 Never scale the current API above one replica: admission requires one controller.
 
 ## Build and redeploy on main
 
 Run from a checkout of the reviewed current main on the NVIDIA host. Required:
-Go 1.25.1, Node 22.16+, working Docker access, the private kubeconfig, existing
+Go 1.26.0, Node 22.16+, working Docker access, the private kubeconfig, existing
 auth Secrets, GPU/TT operators and mounted QuietBox storage. The script is for
 this existing installation; it is not a fresh-cluster/bootstrap installer.
 Checking out/merging Git does not restart or deploy services automatically.
@@ -66,56 +66,23 @@ rollback for research users. The pre-cleanup department release `3431ffd` contai
 the verified team architecture; rebuild a compatible department version rather
 than restoring the archived pre-platform main for normal users.
 
-## QuietBox host setup
+## QuietBox host setup and storage cutover
 
-The existing `deploy/k3s/storage/setup-quietbox.sh` creates only the bounded base
-image when missing; it never formats a physical disk. Base exports use `crossmnt`
-to expose explicitly mounted child filesystems. Before changing storage, inspect
-mounts and existing exports. Do not replace a live filesystem with an empty image.
+Follow [shared-folder storage operations](../k3s/storage/README.md). This supersedes
+image-backed setup, online filesystem growth and model-pool migration instructions.
+New storage uses `/srv/mist-data` over `192.168.240.2` and new NFS volume bindings.
+Existing image files and bindings are retained for rollback; fresh storage was
+requested without data migration. No physical disk is formatted.
 
-Install the new provisioning service as root on QuietBox:
+Team dataset/model values are advisory. Track actual shared-disk free space and
+sampled team file usage. Uploads preserve 1 GiB of disk headroom; running jobs can
+still exhaust storage. New Kubernetes PV/PVC sizes are binding declarations,
+not capacity reservations or write limits.
 
-```bash
-install -d -m 0755 /usr/local/lib/mist
-install -m 0755 deploy/k3s/storage/team_volumes.py /usr/local/lib/mist/team_volumes.py
-install -m 0644 deploy/k3s/storage/mist-team-storage.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now mist-team-storage
-```
-
-The agent reads API-owned requests outside workload mounts, enforces the combined
-1,500 GiB dataset + model allocation budget, refuses unknown images/nonempty covered directories,
-and supports online growth. Team disable/removal never deletes files or frees an
-allocation. Shrinking is rejected. New teams default to 200 GiB datasets and 500 GiB models/results. Per-member
-folders share the applicable team pool's hard filesystem capacity. PV/PVC sizes are declarations; ext4 enforces actual writes.
-
-NFS permits only `10.0.0.175` and `10.0.0.112` over the existing LAN. Keep QuietBox
-online and its router/network connection intact. No separate switch or direct
-cable is required for this pilot.
-
-## Dataset request limits
-
-Uploads are bounded by actual dataset free space minus a 64 MiB metadata reserve.
-An optional `MIST_MAX_DATASET_GIB` ceiling can lower this (1–1,048,576 GiB).
-There is no fixed 64 GiB cap. Nginx streams bodies without buffering; authenticated
-API admission enforces capacity. Browser and Go allow 24-hour transfers. ZIP
-archives need both staging and expanded space. Cancellation is supported;
-interrupted transfers restart from the beginning.
-
-## Existing store expansion
-
-`storage/grow-quietbox-store.py --gib 1600` expands only the known, correctly
-labelled image, after checking host headroom. It grows sparsely and never formats
-physical disks or shrinks existing filesystems. The current image was expanded
-online; its initial physical preallocation was released with
-`fstrim -v /srv/mist-storage`. Do not unlink or truncate a mounted backing file.
-The host had about 1.9 TiB free after release. Logical capacity is not a physical
-reservation; account for future image growth alongside existing research files.
-
-Migration must run without active team jobs and with API submissions paused.
-Restart the updated storage agent, wait for both pool capacities to be Ready,
-then deploy the updated API. Old policies with no `model_storage_gib` retain the
-old allocation independently for each pool. Preserve credentials/auth data.
+The October 21 rollout also preserves existing Better Auth password hashes and
+deactivated accounts in Go auth, and requires real unexpired sessions. Session
+cookies based only on user IDs are rejected. Auth data remains on its existing
+local PVC; a consistent pre-cutover database snapshot is retained privately.
 
 ## Portal network rules
 
@@ -169,8 +136,8 @@ QuietBox:
 
 ```bash
 systemctl is-active k3s-agent tailscaled nfs-server mist-team-storage mist-portal-firewall
-mountpoint /srv/mist-storage
-df -h /srv/mist-storage /srv/mist-storage/teams/team-*
+findmnt -T /srv/mist-data
+df -h /srv/mist-data
 ```
 
 With root access, inspect `exportfs -v` and the provisioning service journal if a
@@ -182,13 +149,12 @@ real login and show two NVIDIA GPUs/four TT boards. Both nodes must be Ready.
 - **401:** Sign in again. SSH/Tailscale identity is separate from Mist identity.
 - **403:** Confirm active team membership, scope writing authority and current
   policy. Administrators also need team membership to use files/jobs.
-- **503:** Check auth and API pods, DNS, child filesystem mounts and provisioning
+- **503:** Check auth and API pods, DNS, shared directory readiness and provisioning
   status. Access and missing team mounts fail closed.
 - **Queued:** Check per-team concurrency/resources, node health and device
   availability. Aged large requests drain their target node; no preemption.
-- **507 / ENOSPC:** Team filesystem is full. An administrator can grow it within
-  the allocation budget. Delete only unneeded datasets that have no active job
-  references. No automatic result cleanup was added.
+- **507 / ENOSPC:** Team filesystem is full. Check actual QuietBox disk space; advisory allowances do not add capacity.
+  Delete only unneeded datasets that have no active job references. No automatic result cleanup was added.
 - **Image rejected:** Use an explicit tag/digest from an allowed registry. No
   per-image approval is needed. Private pull-credential management is excluded.
 - **Image pull/runtime failure:** Verify the image is publicly accessible and

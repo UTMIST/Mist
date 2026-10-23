@@ -98,7 +98,6 @@ function Members() {
     [password, setPassword] = useState(''),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false)
-  const current = useAccount().user
   const [creating, setCreating] = useState(false)
   const [resetUser, setResetUser] = useState<string | null>(null)
   const [search, setSearch] = useState('')

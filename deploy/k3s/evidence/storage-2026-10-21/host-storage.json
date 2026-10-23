@@ -1,0 +1,11 @@
+{
+  "root": "/srv/mist-data",
+  "filesystem": "/dev/nvme0n1p2 ext4",
+  "image_files_in_new_root": 0,
+  "logical_regular_file_bytes": 535003,
+  "capacity_bytes": 3936290357248,
+  "available_bytes": 2010709856256,
+  "storage_service": "active",
+  "ethernet_speed_mbps": "1000",
+  "ethernet_profile_autoconnect": "yes"
+}
