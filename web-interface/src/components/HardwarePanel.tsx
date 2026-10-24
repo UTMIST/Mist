@@ -54,6 +54,7 @@ export function HardwarePanel({
                     'Total',
                     'Allocated',
                     'Available',
+                    'Load',
                     'Placement',
                   ].map((label) => (
                     <th key={label} scope="col" className="py-2 pr-4">
@@ -78,6 +79,24 @@ export function HardwarePanel({
                       {error || pool.available === null
                         ? 'Unknown'
                         : pool.available}
+                    </td>
+                    <td className="pr-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 bg-gray-200 h-2 rounded-full overflow-hidden">
+                          <div
+                            className="bg-green-600 h-2 rounded-full"
+                            style={{
+                              width: `${pool.total > 0 ? (pool.allocated / pool.total) * 100 : 0}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {pool.total > 0
+                            ? Math.round((pool.allocated / pool.total) * 100)
+                            : 0}
+                          %
+                        </span>
+                      </div>
                     </td>
                     <td>
                       {error ? 'Unknown' : pool.ready ? 'Ready' : 'Unavailable'}

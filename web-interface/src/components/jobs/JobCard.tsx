@@ -42,7 +42,7 @@ export function JobCard({
         <span className="min-w-0">
           <span className="block font-medium truncate">{job.name}</span>
           <span className="block text-xs text-gray-500 truncate">
-            {job.creator_name || job.id}
+            {job.creator_name || job.id} {job.team_id ? `· ${job.team_id}` : ''}
           </span>
         </span>
         <span className="mist-job-status" data-state={job.job_state}>
@@ -90,6 +90,9 @@ export function JobCard({
               value={`${computeNames[job.accelerator]}${job.device_count ? ` × ${job.device_count}${job.accelerator === 'tenstorrent' ? ' boards' : ' GPUs'}` : ''}`}
             />
             <CardInfoField label="Job ID" value={job.id} />
+            {job.team_id && (
+              <CardInfoField label="Workspace" value={job.team_id} />
+            )}
             {job.creator_name && (
               <CardInfoField label="Submitted by" value={job.creator_name} />
             )}

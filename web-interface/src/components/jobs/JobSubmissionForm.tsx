@@ -194,6 +194,13 @@ export function JobSubmissionForm({
         }}
         className="space-y-4"
       >
+        <div className="bg-blue-50/70 border border-blue-200 rounded p-3 text-xs text-blue-900 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span className="font-semibold block">Attributed Workspace:</span>
+            <span>{team ? `${team.name} (${team.type ?? 'team'})` : 'Personal Quota'}</span>
+          </div>
+          <span className="text-[11px] text-blue-700">Compute and outputs are attributed to this workspace</span>
+        </div>
         <fieldset className="mist-form-section">
           <legend className="mist-section-label">
             <span>1</span> Choose compute
@@ -476,7 +483,7 @@ export function JobSubmissionForm({
                 </option>
               ))}
             </Picker>
-            <p className="mt-1 text-xs">Read-only input at /inputs.</p>
+            <p className="mt-1 text-xs">Read-only input at /inputs. Connected to your active workspace.</p>
             {datasetError && (
               <p role="alert">Dataset list unavailable: {datasetError}</p>
             )}

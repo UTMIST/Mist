@@ -60,6 +60,8 @@ func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
 			a.teams = newTeamService(a)
 			mux.HandleFunc("/teams", a.teamEndpoint)
 			mux.HandleFunc("/teams/", a.teamEndpoint)
+			mux.HandleFunc("/workspaces", a.teamEndpoint)
+			mux.HandleFunc("/workspaces/", a.teamEndpoint)
 			a.httpServer.Handler = a.auth.middleware(a.teams.middleware(mux))
 		} else {
 			a.httpServer.Handler = a.auth.middleware(mux)

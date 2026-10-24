@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -17,14 +19,74 @@ func hashID(id string) string {
 }
 
 type Member struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Role  string `json:"role"`
+	ID      string `json:"id"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	Role    string `json:"role"`
+	IsAdmin bool   `json:"is_admin"`
 }
 
 type AccountStatus struct {
 	Role string `json:"role"`
+}
+
+// Authenticator provides an interface for user authentication, member lookups,
+// and session middleware. This allows plugging in the incoming core auth system,
+// the current Better Auth / SQLite implementation, or dummy mock implementations.
+type Authenticator interface {
+	http.Handler
+	Close() error
+	Session(r *http.Request) (*Member, error)
+	LookupMember(ctx context.Context, id string) (*Member, error)
+	ActiveMembers(ctx context.Context) (map[string]AccountStatus, error)
+	Middleware(next http.Handler) http.Handler
+}
+
+// Ensure AuthService implements Authenticator.
+var _ Authenticator = (*AuthService)(nil)
+
+// DummyAuthenticator is a stub implementation of Authenticator for testing or headless runs.
+type DummyAuthenticator struct {
+	Members map[string]*Member
+}
+
+func NewDummyAuthenticator() *DummyAuthenticator {
+	return &DummyAuthenticator{
+		Members: make(map[string]*Member),
+	}
+}
+
+func (d *DummyAuthenticator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+func (d *DummyAuthenticator) Close() error {
+	return nil
+}
+
+func (d *DummyAuthenticator) Session(r *http.Request) (*Member, error) {
+	return nil, nil
+}
+
+func (d *DummyAuthenticator) LookupMember(ctx context.Context, id string) (*Member, error) {
+	if m, ok := d.Members[id]; ok {
+		return m, nil
+	}
+	return nil, errors.New("account unavailable")
+}
+
+func (d *DummyAuthenticator) ActiveMembers(ctx context.Context) (map[string]AccountStatus, error) {
+	res := make(map[string]AccountStatus)
+	for id, m := range d.Members {
+		res[id] = AccountStatus{Role: m.Role}
+	}
+	return res, nil
+}
+
+func (d *DummyAuthenticator) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+	})
 }
 
 type AuthGateway = AuthService
