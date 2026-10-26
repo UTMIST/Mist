@@ -127,6 +127,21 @@ change), and also every 10 s:
 4. At each `RUNNING` job's deadline (`started_at + time_limit`), move it to
    `STOPPING` and call `Executor.Terminate(grace)`.
 
+```mermaid
+flowchart TD
+    T["Trigger: submit, cancel, job end,<br/>node or config change, 10 s tick"] --> L[Load pending jobs + allocation ledger]
+    L --> P[Compute priority, sort]
+    P --> N{Next pending job?}
+    N -->|none left| D["Past deadline? STOPPING + Terminate"]
+    N -->|yes| Lim{Within running limits?}
+    Lim -->|no| R1["pending_reason: USER_LIMIT, TEAM_LIMIT or QOS_LIMIT"] --> N
+    Lim -->|yes| Fit{Node with free capacity?}
+    Fit -->|no| R2["pending_reason: RESOURCES<br/>(M3: reserve for backfill)"] --> N
+    Fit -->|yes| Tx["One transaction:<br/>allocation + LAUNCHING + node"]
+    Tx --> Launch[Executor.Launch] --> N
+    Ev[Executor events] --> Up["Update job state, free allocation,<br/>record usage"] --> T
+```
+
 **Free capacity** = the node's capacity reported by the executor, minus the
 host's reserved share, minus the allocations of all `LAUNCHING`, `RUNNING` and
 `STOPPING` jobs. The scheduler places jobs from this ledger and never waits for

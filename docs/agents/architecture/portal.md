@@ -29,6 +29,31 @@ All logic (permissions, defaults, states, reasons) lives in the API. Overview:
 | Admin | Accounts (disable or enable), partitions, QoS, limits, nodes (drain or up), provisioner status per host, volumes | M3 (M1: read-only node and provisioner status) |
 | Terminal | Browser terminal attached to an interactive job | M5 |
 
+Which endpoints each page uses:
+
+```mermaid
+flowchart LR
+    subgraph Pages
+        gs[Getting started]
+        acc[Account]
+        jobs[Jobs]
+        q[Partitions + queue]
+        teams[Teams]
+        adm[Admin]
+        term["Terminal (M5)"]
+    end
+    gs --> me["GET /v1/me"]
+    acc --> me
+    acc --> keys["/v1/me/ssh-keys"]
+    jobs --> j["GET /v1/jobs, /v1/jobs/id<br/>POST cancel"]
+    jobs -->|WebSocket| log["/v1/jobs/id/log?follow=1"]
+    q --> pq["GET /v1/partitions, /v1/queue"]
+    teams --> t["GET /v1/teams/slug, usage"]
+    adm --> a["/v1/admin/..."]
+    term -->|WebSocket| att["/v1/jobs/id/attach"]
+    me & keys & j & log & pq & t & a & att --> API[(mistd api)]
+```
+
 ## Not in the portal
 
 - **Job submission.** Scripts live in `/mist` and are submitted over SSH. A

@@ -4,6 +4,28 @@ Covers which host runs what, how hosts and users connect, where configuration
 and secrets live, admin access, and how nodes are added. Overview:
 [ARCHITECTURE.md](../../../ARCHITECTURE.md). Related decisions: D7, D10, D13.
 
+## Topology
+
+```mermaid
+flowchart LR
+    Users([Researchers + admins]) -->|Tailscale| TSN
+    Users -->|Tailscale| TST
+    subgraph NV["utmist-z1opa08 · 56 CPU · 157 GiB · 2× A4000"]
+        TSN["tailscale0<br/>100.73.139.66"] -->|"portal :8088"| NVsvc["k3s server · mistd api + scheduler<br/>Postgres · Nginx portal"]
+        NVgpu[gpu partition]
+        ens6["ens6 · AQC107 10GBASE-T<br/>192.168.240.1"]
+    end
+    subgraph TT["utmist-tt · 32 CPU · 503 GiB · 4× n300"]
+        TST["tailscale0<br/>100.95.175.37"] -->|"ssh :22"| TTsvc["k3s agent · NFS /mist · sshd + mist-gate<br/>mist-relay · provisioner"]
+        TTpart[cpu + tt partitions]
+        x710["enp10s0f0np0 · X710 10GBASE-T<br/>192.168.240.2"]
+    end
+    ens6 <-->|"Cat6a direct link, 10 GbE<br/>k3s, NFS, agents to API"| x710
+    LAN[("Home LAN / internet<br/>10.0.0.0/24")]
+    NV --- LAN
+    TT --- LAN
+```
+
 ## Hosts
 
 | | `utmist-z1opa08` (NVIDIA) | `utmist-tt` (QuietBox) |

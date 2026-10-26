@@ -5,6 +5,26 @@ fixes the conventions every endpoint follows, how callers authenticate, and the
 job wire types shared by the CLI, portal and scheduler. Each component document
 lists the endpoints it owns. Overview: [ARCHITECTURE.md](../../../ARCHITECTURE.md).
 
+## How it fits
+
+Every request passes the same middleware, then reaches the handlers of the
+component that owns it:
+
+```mermaid
+flowchart LR
+    portal["Portal<br/>session cookie"] --> mw
+    relay["mist-relay<br/>relay token + asserted user"] --> mw
+    agents["Provisioner, key lookup<br/>host token"] --> mw
+    mw["Auth middleware<br/>resolves principal"] --> authz{identity.Authorize}
+    authz --> idh["/v1/me, /v1/teams<br/>Identity"]
+    authz --> sth["/v1/teams/slug/usage<br/>Storage"]
+    authz --> jh["/v1/jobs, /v1/partitions, /v1/queue<br/>Scheduler"]
+    authz --> adm["/v1/admin/...<br/>Identity + Scheduler"]
+    mw --> inth["/internal/v1/...<br/>Identity"]
+    idh & sth & jh & adm & inth --> db[(Postgres)]
+    jh -->|"logs, attach"| ex[Executor]
+```
+
 ## Conventions
 
 - **Format.** JSON over HTTP. Paths are versioned: `/v1/...` for users and

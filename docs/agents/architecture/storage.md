@@ -4,6 +4,29 @@ Covers where files live, who can read and write them, how storage is served to
 jobs, how it grows, and what researchers need to know. Overview:
 [ARCHITECTURE.md](../../../ARCHITECTURE.md). Related decisions: D5, D8, D9, D10, D12.
 
+## How it fits
+
+Each path a byte can take to and from `/mist`:
+
+```mermaid
+flowchart LR
+    R([Researcher]) -->|"scp, rsync, sftp"| GW
+    subgraph TT["utmist-tt"]
+        GW[Login gateway] -->|local writes, as the user| V1[("/mist volume 1<br/>NVMe")]
+        Prov[Provisioner] -->|layout, permissions| V1
+        TTJob[cpu / tt job] -->|bind mount| V1
+        TTJob --- TTScratch[(scratch, wiped)]
+    end
+    subgraph NV["utmist-z1opa08"]
+        GPUJob[gpu job] --- NVScratch[(scratch, wiped)]
+        Backup[("backup disk (M3)")]
+    end
+    GPUJob -->|"NFS over 10 GbE<br/>charged team + software only"| V1
+    V1 -.->|"nightly, encrypted, no .cache"| Backup
+    Prov -->|usage report| API[mistd api]
+    V2[("volume 2 (future)")] -.-> GPUJob
+```
+
 ## Two kinds of storage
 
 | | **Durable: `/mist`** | **Scratch: node-local** |

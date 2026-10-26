@@ -13,6 +13,32 @@ gives them, how they sign up, and how accounts reach the hosts. Overview:
 - Publish the **desired host state** that the provisioner applies: users,
   groups and team folders.
 
+## How it fits
+
+Identity data flows from misty into Mist's tables, and from there out to every
+place that needs to know who someone is.
+
+```mermaid
+flowchart LR
+    subgraph Sources
+        stub["misty stub (YAML)"]
+        misty[(misty API)]
+    end
+    stub --> sync["Directory sync<br/>every few minutes + at sign-in"]
+    misty -.->|later| sync
+    sync --> cache[(people, teams, memberships)]
+    signup[Portal sign-up] --> acct[(accounts<br/>UID and GID allocation)]
+    cache --> acct
+    signup --> keys[(ssh_keys)]
+
+    acct --> state["/internal/v1/provision/state"]
+    cache --> state
+    state --> prov["Provisioner on TT box<br/>useradd, groups, folders"]
+    keys --> keyapi["/internal/v1/ssh-keys/user"] --> relay[mist-relay] --> sshd[sshd login]
+    acct --> nss[mist-nss ConfigMap] --> pods[Job pods: whoami works]
+    acct --> authz[identity.Authorize] --> handlers[Every API handler]
+```
+
 ## Misty
 
 Misty is the source of truth for people, teams and membership. Mist reads it

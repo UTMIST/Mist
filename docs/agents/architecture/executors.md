@@ -14,6 +14,32 @@ There are two executors:
 Both implement the same interface and pass the same conformance tests. Each node
 is managed by exactly one executor.
 
+## How it fits
+
+Both executors take the same `LaunchSpec` and end at the same `mist-job-entry`.
+Only the middle differs:
+
+```mermaid
+flowchart LR
+    S[Scheduler] -->|LaunchSpec| I{{Executor interface}}
+    I --> K["K3s executor (M1)"]
+    I -.-> NE["Node executor (M5)"]
+
+    K -->|client-go| KAPI[k3s API server]
+    KAPI --> Pod["Pod job-ID<br/>uid, team gid, nodeName,<br/>requests = limits, no token"]
+    KAPI --> CM["ConfigMap job-ID<br/>script + job.json"]
+    Pod --> Vol["Volumes: team folder, software,<br/>scratch, /dev/shm, mist-nss"]
+    Pod --> Dev["Device plugin / DRA<br/>allocated GPUs or boards"]
+    Pod --> Entry[mist-job-entry]
+
+    NE -.->|gRPC + mTLS| Agent[mist-noded]
+    Agent -.->|D-Bus| Unit["systemd unit mist-job-ID<br/>User, DeviceAllow, MemoryMax, BindPaths"]
+    Unit -.-> Entry
+
+    Entry --> Work[Script, command or shell]
+    K -->|"Started, Exited, Lost"| S
+```
+
 ## Interface
 
 ```go
