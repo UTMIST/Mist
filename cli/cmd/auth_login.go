@@ -16,9 +16,20 @@ import (
 type LoginCmd struct {
 	Email         string `help:"Mist member email" required:""`
 	PasswordStdin bool   `help:"Read password from standard input (for automation)"`
+	Misty         bool   `help:"Sign in with a code sent by Misty"`
+	CodeStdin     bool   `help:"Read the Misty code from standard input"`
 }
 
 func (l *LoginCmd) Run(ctx *AppContext) error {
+	if l.Misty {
+		if l.PasswordStdin {
+			return fmt.Errorf("--password-stdin cannot be used with --misty")
+		}
+		return l.loginMisty(ctx)
+	}
+	if l.CodeStdin {
+		return fmt.Errorf("--code-stdin requires --misty")
+	}
 	var password string
 	if l.PasswordStdin {
 		data, err := io.ReadAll(io.LimitReader(os.Stdin, 130))
@@ -57,6 +68,10 @@ func (l *LoginCmd) Run(ctx *AppContext) error {
 	if response.StatusCode != 200 {
 		return fmt.Errorf("login failed (HTTP %d)", response.StatusCode)
 	}
+	return ctx.saveLogin(base, response)
+}
+
+func (ctx *AppContext) saveLogin(base string, response *http.Response) error {
 	cookies := []string{}
 	for _, cookie := range response.Cookies() {
 		if strings.Contains(cookie.Name, "session_token") && cookie.Value != "" {

@@ -37,8 +37,15 @@ func NewKubernetesApp(executor *KubernetesExecutor, log *slog.Logger) *App {
 	mux.HandleFunc("GET /storage/folders", a.storageFolders)
 	mux.HandleFunc("GET /storage/files", a.storageFolderFiles)
 	authDisabled := os.Getenv("MIST_AUTH_DISABLED") == "true"
+	if mode := envOr("MIST_AUTH_MODE", "local"); mode != "local" && mode != "misty" {
+		panic("MIST_AUTH_MODE must be local or misty")
+	}
+	if os.Getenv("MIST_AUTH_MODE") == "misty" && authDisabled {
+		panic("MIST_AUTH_DISABLED cannot be used with Misty login")
+	}
 	authDB := os.Getenv("MIST_AUTH_DATABASE")
 	authRequired := os.Getenv("MIST_AUTH_ENABLED") == "true" ||
+		os.Getenv("MIST_AUTH_MODE") == "misty" ||
 		os.Getenv("MIST_TEAMS_ENABLED") == "true" ||
 		os.Getenv("BETTER_AUTH_SECRET") != "" ||
 		authDB != "" ||

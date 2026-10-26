@@ -26,11 +26,13 @@ import (
 )
 
 type AuthService struct {
-	db          *sql.DB
-	log         *slog.Logger
-	origins     map[string]bool
-	legacyEmail string
-	mu          sync.Mutex
+	misty        *mistyClient
+	db           *sql.DB
+	log          *slog.Logger
+	origins      map[string]bool
+	legacyEmail  string
+	legacyUserID string
+	mu           sync.Mutex
 }
 
 func newAuthService(dbPath string, log *slog.Logger) (*AuthService, error) {
@@ -50,6 +52,9 @@ func newAuthService(dbPath string, log *slog.Logger) (*AuthService, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open auth db: %w", err)
 	}
+	// SQLite pragmas below are connection-local. Reuse that connection so all
+	// admissions observe busy_timeout and foreign_keys, including concurrent logins.
+	db.SetMaxOpenConns(1)
 
 	for _, pragma := range []string{
 		"PRAGMA journal_mode = WAL;",
@@ -151,6 +156,10 @@ func newAuthService(dbPath string, log *slog.Logger) (*AuthService, error) {
 
 	if err := s.bootstrapAdmin(); err != nil {
 		log.Warn("bootstrap admin failed", "error", err)
+	}
+	if err := s.initMisty(); err != nil {
+		db.Close()
+		return nil, err
 	}
 
 	return s, nil
@@ -298,13 +307,26 @@ func (s *AuthService) session(r *http.Request) (*Member, error) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var m Member
+	var personID string
 	err := s.db.QueryRowContext(r.Context(), `
-		SELECT u.id, u.name, u.email, u.role
+		SELECT u.id, u.name, u.email, u.role, COALESCE(s.mistyPersonId, '')
 		FROM session s
 		JOIN user u ON s.userId = u.id
 		WHERE s.token = ? AND s.expiresAt > ? AND COALESCE(u.banned, 0) = 0
-	`, token, now).Scan(&m.ID, &m.Name, &m.Email, &m.Role)
+	`, token, now).Scan(&m.ID, &m.Name, &m.Email, &m.Role, &personID)
 	if err == nil {
+		if s.misty != nil {
+			if personID == "" {
+				return nil, nil
+			}
+			active, err := s.misty.active(r.Context(), personID)
+			if err != nil {
+				return nil, err
+			}
+			if !active {
+				return nil, nil
+			}
+		}
 		return &m, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -375,8 +397,21 @@ func setSessionCookies(w http.ResponseWriter, token string, maxAge int, isSecure
 func (s *AuthService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	path := r.URL.Path
+	if s.misty != nil && r.Method == http.MethodPost &&
+		(r.Header.Get("Origin") != s.misty.origin || r.Header.Get("Sec-Fetch-Site") == "cross-site") {
+		writeAuthError(w, 403, "Untrusted request origin", "FORBIDDEN")
+		return
+	}
+	if s.misty != nil && (path == "/auth/sign-in/email" || path == "/auth/change-password" || path == "/auth/admin/set-user-password" || path == "/auth/admin/create-user") {
+		writeAuthError(w, 403, "Accounts sign in through Misty", "MISTY_LOGIN_REQUIRED")
+		return
+	}
 
 	switch {
+	case path == "/auth/misty/start" && r.Method == http.MethodPost:
+		s.handleMistyStart(w, r)
+	case path == "/auth/misty/confirm" && r.Method == http.MethodPost:
+		s.handleMistyConfirm(w, r)
 	case path == "/auth/sign-in/email" && r.Method == http.MethodPost:
 		s.handleSignInEmail(w, r)
 	case path == "/auth/sign-out" && r.Method == http.MethodPost:
@@ -495,6 +530,19 @@ func (s *AuthService) handleSignOut(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *AuthService) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	if s.misty != nil {
+		member, err := s.session(r)
+		if err != nil {
+			writeAuthError(w, 503, "Sign-in is temporarily unavailable", "AUTH_UNAVAILABLE")
+			return
+		}
+		if member == nil {
+			writeJSON(w, 200, map[string]any{"user": nil, "session": nil})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"user": member, "session": map[string]string{"userId": member.ID}})
+		return
+	}
 	token := extractSessionToken(r)
 	if token == "" {
 		writeJSON(w, 200, map[string]interface{}{"user": nil, "session": nil})
@@ -860,7 +908,11 @@ func (s *AuthService) middleware(next http.Handler) http.Handler {
 			return
 		}
 		if r.URL.Path == "/session" && r.Method == http.MethodGet {
-			writeJSON(w, 200, map[string]interface{}{"enabled": true, "user": member})
+			mode := "local"
+			if s.misty != nil {
+				mode = "misty"
+			}
+			writeJSON(w, 200, map[string]interface{}{"enabled": true, "user": member, "auth_mode": mode})
 			return
 		}
 		if member == nil {

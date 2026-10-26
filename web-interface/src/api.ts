@@ -132,7 +132,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const jobsAPI = {
   session: (signal?: AbortSignal) =>
-    request<{ enabled: boolean; user: Member | null }>('/session', { signal }),
+    request<{
+      enabled: boolean
+      user: Member | null
+      auth_mode?: 'local' | 'misty'
+    }>('/session', { signal }),
   list: (signal?: AbortSignal) =>
     request<{ jobs: Job[]; count: number }>('/jobs', { signal }),
   hardware: (signal?: AbortSignal) =>
