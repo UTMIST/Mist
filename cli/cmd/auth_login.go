@@ -30,6 +30,9 @@ func (l *LoginCmd) Run(ctx *AppContext) error {
 	if l.CodeStdin {
 		return fmt.Errorf("--code-stdin requires --misty")
 	}
+	if _, err := credentialOrigin(ctx.baseURL()); err != nil {
+		return err
+	}
 	var password string
 	if l.PasswordStdin {
 		data, err := io.ReadAll(io.LimitReader(os.Stdin, 130))
@@ -60,7 +63,7 @@ func (l *LoginCmd) Run(ctx *AppContext) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", u.Scheme+"://"+u.Host)
-	response, err := ctx.HTTPClient.Do(req)
+	response, err := ctx.credentialClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -144,8 +147,10 @@ func (l *LogoutCmd) Run(ctx *AppContext) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", origin)
-	req.Header.Set("Cookie", ctx.Config.SessionCookie)
-	response, err := ctx.HTTPClient.Do(req)
+	if err := ctx.attachSession(req); err != nil {
+		return err
+	}
+	response, err := ctx.credentialClient().Do(req)
 	if err != nil {
 		return err
 	}

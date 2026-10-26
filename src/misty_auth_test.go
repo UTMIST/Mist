@@ -26,13 +26,15 @@ func newMistyTestAuth(t *testing.T) (*AuthService, *atomic.Bool, *atomic.Int32) 
 			t.Error("missing gateway credential")
 		}
 		switch r.URL.Path {
+		case "/v1/auth/issuer":
+			writeJSON(w, 200, map[string]string{"issuer": "misty:local"})
 		case "/v1/auth/email/start":
 			var body map[string]string
 			json.NewDecoder(r.Body).Decode(&body)
 			if body["client_ip"] != "192.0.2.1" {
 				t.Error("client IP was not derived from socket")
 			}
-			writeJSON(w, 202, map[string]any{"challenge_id": testChallengeID, "expires_in": 600})
+			writeJSON(w, 202, map[string]any{"challenge_id": testChallengeID, "expires_in": 600, "issuer": "misty:local"})
 		case "/v1/auth/email/confirm":
 			calls.Add(1)
 			var body map[string]string
@@ -41,9 +43,9 @@ func newMistyTestAuth(t *testing.T) (*AuthService, *atomic.Bool, *atomic.Int32) 
 				writeJSON(w, 400, map[string]string{"detail": "invalid"})
 				return
 			}
-			writeJSON(w, 200, map[string]string{"person_id": testPersonID, "email": "member@example.com"})
+			writeJSON(w, 200, map[string]string{"person_id": testPersonID, "email": "member@example.com", "issuer": "misty:local"})
 		case "/v1/auth/people/" + testPersonID + "/status":
-			writeJSON(w, 200, map[string]bool{"active": active.Load()})
+			writeJSON(w, 200, map[string]any{"active": active.Load(), "issuer": "misty:local"})
 		default:
 			t.Error("unexpected gateway path", r.URL.Path)
 			http.NotFound(w, r)
@@ -51,6 +53,8 @@ func newMistyTestAuth(t *testing.T) (*AuthService, *atomic.Bool, *atomic.Int32) 
 	}))
 	t.Cleanup(gateway.Close)
 	t.Setenv("MIST_AUTH_MODE", "misty")
+	t.Setenv("MISTY_ENVIRONMENT", "local")
+	t.Setenv("MISTY_ACCOUNT_LINKS", "")
 	t.Setenv("MISTY_GATEWAY_URL", gateway.URL)
 	t.Setenv("MISTY_GATEWAY_API_KEY", "gw_test_private")
 	t.Setenv("MIST_SITE_ORIGIN", "https://compute.example.com")
@@ -76,6 +80,10 @@ func TestMistyLoginPreservesUserIDAndRole(t *testing.T) {
 	s, _, _ := newMistyTestAuth(t)
 	_, err := s.db.Exec(`INSERT INTO user(id,name,email,role,createdAt,updatedAt) VALUES('existing-user','Member','MEMBER@example.com','admin',datetime('now'),datetime('now'))`)
 	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MISTY_ACCOUNT_LINKS", `{"`+testPersonID+`":"existing-user"}`)
+	if err := s.initMisty(); err != nil {
 		t.Fatal(err)
 	}
 	start := mistyRequest(s, "/auth/misty/start", map[string]string{"email": "member@example.com"}, nil)
@@ -138,12 +146,12 @@ func TestMistyAttemptBudgetAndConcurrentRedemption(t *testing.T) {
 	t.Run("attempt budget", func(t *testing.T) {
 		s, _, calls := newMistyTestAuth(t)
 		cookies := startMistyTest(t, s)
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 3; i++ {
 			if r := mistyRequest(s, "/auth/misty/confirm", map[string]string{"challenge_id": testChallengeID, "code": "000000"}, cookies); r.Code != 400 {
 				t.Fatal(r.Code)
 			}
 		}
-		if r := mistyRequest(s, "/auth/misty/confirm", map[string]string{"challenge_id": testChallengeID, "code": "123456"}, cookies); r.Code != 400 || calls.Load() != 5 {
+		if r := mistyRequest(s, "/auth/misty/confirm", map[string]string{"challenge_id": testChallengeID, "code": "123456"}, cookies); r.Code != 400 || calls.Load() != 3 {
 			t.Fatal("budget bypass", r.Code, calls.Load())
 		}
 	})
@@ -285,6 +293,7 @@ func TestMistyLegacyOwnershipSurvivesEmailChangeAndReassignment(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.legacyEmail = "old@example.com"
+	t.Setenv("MISTY_ACCOUNT_LINKS", `{"`+testPersonID+`":"legacy-user"}`)
 	if err = s.initMisty(); err != nil {
 		t.Fatal(err)
 	}

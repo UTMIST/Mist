@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -17,19 +15,14 @@ import (
 )
 
 func (l *LoginCmd) loginMisty(ctx *AppContext) error {
-	base, err := url.Parse(ctx.baseURL())
-	if err != nil || base.Host == "" || base.User != nil {
-		return fmt.Errorf("invalid compute URL")
-	}
-	ip := net.ParseIP(base.Hostname())
-	if base.Scheme != "https" && !(base.Scheme == "http" && (base.Hostname() == "localhost" || (ip != nil && ip.IsLoopback()))) {
-		return fmt.Errorf("Misty login requires HTTPS (HTTP only on loopback)")
+	origin, err := credentialOrigin(ctx.baseURL())
+	if err != nil {
+		return err
 	}
 	// Never follow a login redirect with a code or binding cookie.
-	client := *ctx.HTTPClient
+	client := ctx.credentialClient()
 	client.Timeout = 15 * time.Second
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	origin := base.Scheme + "://" + base.Host
 	post := func(path string, body any, cookies []*http.Cookie) (*http.Response, error) {
 		data, _ := json.Marshal(body)
 		req, err := http.NewRequest(http.MethodPost, origin+path, bytes.NewReader(data))

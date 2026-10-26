@@ -36,6 +36,7 @@ type mistyStatus struct {
 
 type mistyClient struct {
 	baseURL  string
+	issuer   string
 	origin   string
 	apiKey   string
 	http     *http.Client
@@ -52,11 +53,15 @@ func newMistyClient() (*mistyClient, error) {
 		return nil, errors.New("MIST_AUTH_MODE must be local or misty")
 	}
 	base := strings.TrimRight(os.Getenv("MISTY_GATEWAY_URL"), "/")
+	environment := os.Getenv("MISTY_ENVIRONMENT")
+	if environment != "local" && environment != "staging" && environment != "production" {
+		return nil, errors.New("Misty login requires MISTY_ENVIRONMENT=local, staging, or production")
+	}
 	key := os.Getenv("MISTY_GATEWAY_API_KEY")
 	if !safeMistyURL(base) || !safeMistyURL(os.Getenv("MIST_SITE_ORIGIN")) || !strings.HasPrefix(key, "gw_") {
 		return nil, errors.New("Misty login requires MISTY_GATEWAY_URL and MIST_SITE_ORIGIN over HTTPS (HTTP only on loopback), and a scoped MISTY_GATEWAY_API_KEY")
 	}
-	return &mistyClient{baseURL: base, origin: strings.TrimRight(os.Getenv("MIST_SITE_ORIGIN"), "/"), apiKey: key, statuses: map[string]*mistyStatus{}, http: &http.Client{
+	return &mistyClient{baseURL: base, issuer: "misty:" + environment, origin: strings.TrimRight(os.Getenv("MIST_SITE_ORIGIN"), "/"), apiKey: key, statuses: map[string]*mistyStatus{}, http: &http.Client{
 		Timeout:       8 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
@@ -96,7 +101,11 @@ func (c *mistyClient) request(ctx context.Context, method, path string, body any
 	}
 	defer response.Body.Close()
 	if response.StatusCode >= 200 && response.StatusCode < 300 && out != nil {
-		if err := json.NewDecoder(io.LimitReader(response.Body, 8192)).Decode(out); err != nil {
+		data, err := io.ReadAll(io.LimitReader(response.Body, 8193))
+		var identity struct {
+			Issuer string `json:"issuer"`
+		}
+		if err != nil || len(data) > 8192 || json.Unmarshal(data, &identity) != nil || identity.Issuer != c.issuer || json.Unmarshal(data, out) != nil {
 			return 0, errMistyUnavailable
 		}
 	}
@@ -158,6 +167,9 @@ func (s *AuthService) initMisty() error {
  CREATE INDEX IF NOT EXISTS misty_login_expiry ON misty_login(expires_at);
  CREATE TABLE IF NOT EXISTS misty_legacy_owner (
  singleton INTEGER PRIMARY KEY CHECK(singleton=1), user_id TEXT NOT NULL REFERENCES user(id)
+ );
+ CREATE TABLE IF NOT EXISTS misty_issuer (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), issuer TEXT NOT NULL, gateway_url TEXT NOT NULL
  );`)
 	if err != nil {
 		return fmt.Errorf("initialize Misty login tables: %w", err)
@@ -171,6 +183,11 @@ func (s *AuthService) initMisty() error {
 	}
 	if err != nil {
 		return err
+	}
+	if client != nil {
+		if err := s.pinMistyIssuerAndAccounts(client); err != nil {
+			return err
+		}
 	}
 	err = s.db.QueryRow(`SELECT user_id FROM misty_legacy_owner WHERE singleton=1`).Scan(&s.legacyUserID)
 	if err == nil {
@@ -191,6 +208,77 @@ func (s *AuthService) initMisty() error {
 	}
 	_, err = s.db.Exec(`INSERT INTO misty_legacy_owner(singleton,user_id) VALUES(1,?)`, s.legacyUserID)
 	return err
+}
+
+// Pin this database to one gateway and issuer. Account migration is an explicit
+// operator mapping of immutable IDs, never proof inferred from a recycled email.
+func (s *AuthService) pinMistyIssuerAndAccounts(client *mistyClient) error {
+	// Check the durable origin before sending any credential to a newly configured
+	// URL. The transaction below checks again before changing identity state.
+	var pinnedIssuer, pinnedGateway string
+	err := s.db.QueryRow(`SELECT issuer,gateway_url FROM misty_issuer WHERE singleton=1`).Scan(&pinnedIssuer, &pinnedGateway)
+	if err == nil && (pinnedIssuer != client.issuer || pinnedGateway != client.baseURL) {
+		return errors.New("auth database is pinned to a different Misty issuer or gateway; use a separate database")
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	status, err := client.request(context.Background(), "GET", "/v1/auth/issuer", nil, &struct{}{})
+	if err != nil || status != 200 {
+		return errors.New("cannot verify the configured Misty issuer")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var issuer, gateway string
+	err = tx.QueryRow(`SELECT issuer,gateway_url FROM misty_issuer WHERE singleton=1`).Scan(&issuer, &gateway)
+	if errors.Is(err, sql.ErrNoRows) {
+		var unbound int
+		if err = tx.QueryRow(`SELECT (SELECT count(*) FROM misty_identity)+(SELECT count(*) FROM session WHERE COALESCE(mistyPersonId,'')<>'')`).Scan(&unbound); err != nil {
+			return err
+		}
+		if unbound != 0 {
+			return errors.New("existing Misty identities require an explicit issuer migration")
+		}
+		if _, err = tx.Exec(`INSERT INTO misty_issuer(singleton,issuer,gateway_url) VALUES(1,?,?)`, client.issuer, client.baseURL); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else if issuer != client.issuer || gateway != client.baseURL {
+		return errors.New("auth database is pinned to a different Misty issuer or gateway; use a separate database")
+	}
+	if raw := os.Getenv("MISTY_ACCOUNT_LINKS"); raw != "" {
+		var links map[string]string
+		if json.Unmarshal([]byte(raw), &links) != nil || links == nil {
+			return errors.New("MISTY_ACCOUNT_LINKS must map Misty person UUIDs to existing compute user IDs")
+		}
+		for personID, userID := range links {
+			if !mistyID.MatchString(personID) || userID == "" {
+				return errors.New("invalid MISTY_ACCOUNT_LINKS mapping")
+			}
+			var count int
+			if err = tx.QueryRow(`SELECT count(*) FROM user WHERE id=?`, userID).Scan(&count); err != nil {
+				return err
+			}
+			if count != 1 {
+				return errors.New("MISTY_ACCOUNT_LINKS references an unknown compute account")
+			}
+			if _, err = tx.Exec(`INSERT INTO misty_identity(person_id,user_id) VALUES(?,?) ON CONFLICT(person_id) DO NOTHING`, personID, userID); err != nil {
+				return errors.New("conflicting MISTY_ACCOUNT_LINKS mapping")
+			}
+			var linked string
+			if err = tx.QueryRow(`SELECT user_id FROM misty_identity WHERE person_id=?`, personID).Scan(&linked); err != nil {
+				return err
+			}
+			if linked != userID {
+				return errors.New("MISTY_ACCOUNT_LINKS cannot overwrite an existing identity")
+			}
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *AuthService) mistyGuard(w http.ResponseWriter, r *http.Request) bool {
@@ -337,7 +425,7 @@ func (s *AuthService) handleMistyConfirm(w http.ResponseWriter, r *http.Request)
 	}
 	var email string
 	err := s.db.QueryRowContext(r.Context(), `UPDATE misty_login SET in_flight=1,attempts=attempts+1
-  WHERE binding_hash=? AND challenge_id=? AND expires_at>? AND in_flight=0 AND attempts<5 RETURNING email`, hash, payload.ChallengeID, time.Now().Unix()).Scan(&email)
+  WHERE binding_hash=? AND challenge_id=? AND expires_at>? AND in_flight=0 AND attempts<3 RETURNING email`, hash, payload.ChallengeID, time.Now().Unix()).Scan(&email)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeAuthError(w, 400, "Invalid or expired login. Request a new code.", "INVALID_LOGIN")
 		return
@@ -397,8 +485,8 @@ func (s *AuthService) createMistySession(r *http.Request, personID, email, bindi
 		if err = tx.QueryRow(`SELECT count(*),COALESCE(min(id),'') FROM user WHERE lower(email)=?`, email).Scan(&count, &userID); err != nil {
 			return nil, "", err
 		}
-		if count > 1 {
-			return nil, "", errors.New("ambiguous existing account")
+		if count != 0 {
+			return nil, "", errors.New("existing account requires an explicit Misty identity mapping")
 		}
 		if count == 0 {
 			userID = "user-" + randomToken(12)

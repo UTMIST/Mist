@@ -522,7 +522,11 @@ func (s *AuthService) handleSignInEmail(w http.ResponseWriter, r *http.Request) 
 func (s *AuthService) handleSignOut(w http.ResponseWriter, r *http.Request) {
 	token := extractSessionToken(r)
 	if token != "" {
-		_, _ = s.db.ExecContext(r.Context(), "DELETE FROM session WHERE token = ?", token)
+		if _, err := s.db.ExecContext(r.Context(), "DELETE FROM session WHERE token = ?", token); err != nil {
+			s.log.Error("session revocation failed")
+			writeAuthError(w, 503, "Sign-out could not be completed. Please retry.", "AUTH_UNAVAILABLE")
+			return
+		}
 	}
 	isSecure := strings.HasPrefix(os.Getenv("MIST_SITE_ORIGIN"), "https:") || r.TLS != nil
 	setSessionCookies(w, "", -1, isSecure)
@@ -822,7 +826,11 @@ func (s *AuthService) handleRevokeUserSessions(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if req.UserID != "" {
-		_, _ = s.db.ExecContext(r.Context(), "DELETE FROM session WHERE userId = ?", req.UserID)
+		if _, err := s.db.ExecContext(r.Context(), "DELETE FROM session WHERE userId = ?", req.UserID); err != nil {
+			s.log.Error("user session revocation failed")
+			writeAuthError(w, 503, "Sessions could not be revoked. Please retry.", "AUTH_UNAVAILABLE")
+			return
+		}
 	}
 	writeJSON(w, 200, map[string]interface{}{"status": true})
 }

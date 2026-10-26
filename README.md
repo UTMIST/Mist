@@ -45,7 +45,7 @@ snapshots are preserved in the [historical archive](docs/content/archive/_index.
 
 ## Development and checks
 
-Use Go **1.25.1** and Node.js **22.16.0 or newer**. The Go workspace contains the
+Use Go **1.26.10 or newer** and Node.js **22.16.0 or newer**. The Go workspace contains the
 API (`src`) and CLI (`cli`). From the repository root:
 
 ```bash
@@ -76,6 +76,13 @@ HTTP installation with one control plane, one auth instance and one storage host
 Humans are responsible for editing the human facing docs. This is because the human facing docs will be read by humans, and it is rude to give them untested instructions to follow.
 
 Documentation should include explanations of design decisions for later platform maintainers.
+
+## Optional Misty login
+
+Optional Misty email login is documented in
+[the rollout guide](docs/agents/misty-login.md). It requires HTTPS, an explicit
+expected Misty environment, and reviewed identity mappings for existing accounts.
+It is disabled by default and has not been enabled on the live private portal.
 
 ## Frontend Testing
 

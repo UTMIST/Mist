@@ -1,6 +1,6 @@
 module mist
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/distribution/reference v0.6.0

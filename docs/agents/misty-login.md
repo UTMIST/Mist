@@ -15,6 +15,8 @@ Use `deploy/private/misty-login.env.example` as the configuration reference:
 | `MIST_AUTH_MODE` | `local` (default) or `misty`; unknown values fail startup |
 | `MIST_SITE_ORIGIN` | Exact browser origin; required in Misty mode |
 | `MISTY_GATEWAY_URL` | Gateway origin, without an API path |
+| `MISTY_ENVIRONMENT` | Required expected `local`, `staging`, or `production` issuer |
+| `MISTY_ACCOUNT_LINKS` | Optional JSON map of reviewed Misty UUIDs to existing compute user IDs; required to migrate existing accounts |
 | `MISTY_GATEWAY_API_KEY` | Server-only issued `gw_` key with `auth:email` and `auth:status` |
 
 Both origins must use HTTPS; loopback HTTP is allowed for development only.
@@ -30,21 +32,35 @@ peers may attest `X-Real-IP`. Browsers never supply the gateway key or client IP
    cannot enable this mode. Do not expose the Kubernetes API or widen tailnet
    access just to enable login.
 3. Back up the existing auth database using `deploy/private/backup-auth.sh`.
-   Check that the active Misty email for each existing admin matches exactly one
-   local user (case-insensitively). Duplicate matches or a local ban deny login.
+   Review each existing account's immutable Misty person UUID and compute user ID
+   with an operator. Set `MISTY_ACCOUNT_LINKS` to those mappings, for example
+   `{"00000000-0000-4000-8000-000000000001":"existing-compute-user-id"}`.
+   Email possession alone cannot claim an existing account, including an admin.
+   Duplicate/conflicting mappings, unknown local IDs, and local bans deny access.
 4. Deploy this source using the normal reviewed compute release process. Load
    the gateway key through a protected Kubernetes Secret, never a frontend env
    variable or a checked-in manifest. Configure the remaining values on the API
    deployment and keep its existing single-replica SQLite/PVC arrangement.
+   Set `MISTY_ENVIRONMENT=production` for production or `staging` for a separate
+   staging compute database. Startup verifies `/v1/auth/issuer` and atomically
+   pins the issuer and gateway origin in SQLite. Missing issuer, mismatch,
+   gateway outage, or an attempt to repoint a pinned database prevents startup.
 5. Verify an existing account retains its local ID, role, teams and files; a new
    eligible member gets role `user`. Verify wrong-code errors, replay rejection,
    sign-out, and inactive-member denial before considering the cutover complete.
 
-Startup adds `misty_identity`, `misty_login`, `misty_legacy_owner`, and nullable
+Startup adds `misty_identity`, `misty_login`, `misty_legacy_owner`, `misty_issuer`, and nullable
 `session.mistyPersonId`; existing rows and credentials remain. Old password
 sessions are rejected while Misty mode is enabled. Password creation/change/reset
 endpoints and their UI controls are disabled in this mode. Existing local admin
 roles remain local authority; Misty never grants compute administrator access.
+Mappings persist after `MISTY_ACCOUNT_LINKS` is removed; repeating a mapping is
+idempotent, and a conflicting mapping is rejected transactionally. Do not change
+an issuer pin or transplant a staging database into production. Gateway-domain
+changes require a separately reviewed migration, after backup and identity review.
+A database containing older, unpinned Misty identities refuses automatic adoption;
+reconcile those mappings and invalidate its old Misty sessions in an explicit
+maintenance migration before recording the reviewed issuer/origin.
 
 If `MIST_LEGACY_OWNER_EMAIL` is configured, first enablement requires it to match
 one existing local user. That user's ID is pinned durably before any email can
@@ -70,12 +86,13 @@ Neither the code nor a session token is returned to JavaScript or logged.
 The API stores challenge metadata, not code values or code hashes.
 
 The gateway's generic 202 does not disclose whether an account exists or an
-email was sent. A failed/throttled resend can leave the earlier code valid;
+email was sent. Earlier codes remain valid until their own expiry, attempt exhaustion or use;
 the UI retains recent request IDs so users may explicitly choose that request.
 It never silently tries a code against multiple challenges.
 
-First successful login links the verified email to one existing local ID, or
-creates a new ordinary member. Subsequent logins use the stored Misty person ID,
+First successful login uses an explicit existing UUID mapping or creates a new
+ordinary member when no local account has that email. An email matching an
+unlinked existing account is denied until an operator supplies its UUID mapping. Subsequent logins use the stored Misty person ID,
 allowing email changes without transferring local ownership. Conflicting emails,
 duplicate accounts, bans and already-linked identities fail closed.
 
@@ -88,13 +105,24 @@ Authentication is checked when a request starts, not continuously during a
 long-running response.
 
 Compute adds durable per-IP start (5/minute) and confirm (30/minute) admission,
-five attempts per challenge, ten-minute expiry and strict 4 KiB inputs. Misty
+three attempts per challenge, ten-minute expiry and strict 4 KiB inputs. Misty
 also enforces application, client-IP and mailbox quotas. Database failures deny
 admission before sending; upstream failures do not grant sessions. Definitive
 upstream 429 responses preserve a wait response and do not use a local guess.
 The gateway currently allows 60 status checks/minute per application: size its
 quota/cache policy deliberately before exceeding about 30 continuously active
-identities. HTTP clients have bounded timeouts and do not follow redirects.
+identities. Issuer checks share that status quota. Every successful gateway
+response must match the expected issuer, including after startup. HTTP clients
+have bounded timeouts and do not follow redirects.
+
+The gateway allows five delivered challenges per mailbox issuance window with
+three guesses each, instead of a shared mailbox guess lockout. Other challenges
+cannot exhaust or invalidate an already-delivered code. Mail delivery quotas can
+still be exhausted by targeted abuse; edge abuse protection and monitoring remain
+necessary. The gateway API documents its fixed windows and ten-minute TTL.
+
+Logout and admin revocation return 503 on database deletion failure, retain the
+credential for retry, and never claim that a still-valid session was revoked.
 
 ## CLI
 
@@ -107,7 +135,15 @@ mist --api-url https://compute.example.com/api auth login --misty --email member
 The CLI requests a code, reads it without echoing, confirms with the bound
 challenge cookie and saves only session cookies in its existing mode-0600 config.
 `--code-stdin` reads a code from standard input; do not put codes in arguments.
-The old password flow remains available only in local mode.
+The old password flow remains available only in local mode. All credential-bearing
+CLI requests require HTTPS (except loopback), reject redirects, and send a saved
+session only to its exact saved scheme/host/port. An `--api-url` override cannot
+reuse another environment's session. Use separate config files:
+
+```sh
+mist --config ~/.config/mist/staging.json --api-url https://staging-compute.example.com/api auth login --misty --email member@example.com
+mist --config ~/.config/mist/production.json --api-url https://compute.example.com/api auth login --misty --email member@example.com
+```
 
 ## Validation and changed files
 
@@ -123,9 +159,11 @@ checks and the remaining live deployment checks.
   handlers, eligibility cache, configuration and durable legacy-owner migration.
 - `src/auth.go`, `src/app.go`, `src/member_auth.go`: session provenance, opt-in
   mode enforcement, SQLite connection consistency and stable ownership routing.
-- `src/misty_auth_test.go`: failure, concurrency, identity and session regressions.
-- `cli/cmd/auth_misty.go`, `auth_login.go`, `auth_misty_test.go`: bound code login
-  and reuse of protected session persistence, with regression coverage.
+- `src/misty_auth_test.go`, `src/auth_security_test.go`: failure, concurrency,
+  explicit identity migration, issuer isolation and session revocation regressions.
+- `cli/cmd/auth_misty.go`, `auth_login.go`, `api_client.go`, `auth_misty_test.go`,
+  `session_security_test.go`: bound code login, origin-bound session transport,
+  redirect rejection and protected persistence, with regression coverage.
 - `web-interface/src/components/MistyLogin.tsx` and its test: email/code flow,
   retry/error states and request selection after resend.
 - `web-interface/src/auth.tsx`, `api.ts`, `components/AccountPage.tsx`: mode-aware
@@ -133,3 +171,10 @@ checks and the remaining live deployment checks.
 - `deploy/private/misty-login.env.example` and this document: configuration,
   rollout/rollback and ownership/security boundaries.
 - `docs/agents/misty-login-verification.md`: observed test evidence and limits.
+
+- `go.work`, `src/go.mod`, `cli/go.mod`, `README.md`: require the patched Go
+  1.26.10 toolchain or newer and document the supported build/login configuration.
+- `deploy/k3s/Dockerfile.api`, `deploy/private/build-and-deploy.sh`: move the API
+  and deployment helper images to supported Alpine 3.24.3.
+- `web-interface/package.json`, `package-lock.json`: pin patched Zod 4.6.6 and Undici 7.30.1, and
+  restore missing optional-platform lock entries required by clean npm installs.

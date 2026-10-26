@@ -1,6 +1,6 @@
 # Misty login verification — 2026-10-26
 
-The local implementation passed independent code review and the checks below.
+The local implementation passed the source, regression and integration checks below.
 No live service was deployed and no real email was sent. Tailscale was not needed.
 
 ## Cross-service browser check
@@ -16,7 +16,7 @@ Observed results:
 
 - An active registered email received a challenge; an incorrect code failed.
 - The correct code created a compute session, preserving the seeded existing
-  local user ID and administrator role.
+  local user ID and administrator role through an explicit operator UUID mapping.
 - Reusing the redeemed challenge failed.
 - Password account-creation and reset controls were absent in Misty mode.
 - Retiring the member in the real directory caused the existing compute session
@@ -42,27 +42,55 @@ browser requests.
   selects an earlier request explicitly after a replacement request.
 - `git diff --check` passed.
 
-The macOS API build hits pre-existing Linux-specific `statfs` type differences,
-so Go tests ran in `golang:1.26` containers. `npm ci` encountered missing optional
-platform packages in the existing lockfile; `npm install --ignore-scripts`
-installed the same existing package versions plus missing optional entries for
-verification. The original lockfile was restored; dependency repair is separate
-from this feature.
+The macOS API build hits existing Linux-specific `statfs` type differences,
+so Go tests and binaries use Linux Go 1.26.10. The module/workspace minimum now
+requires that patch or newer. Clean `npm ci --ignore-scripts` succeeds with the
+repaired optional-platform lock entries. Existing package versions are unchanged
+except patched Zod 4.6.6 and Undici 7.30.1; the full npm audit is clean. The API
+image builds on Alpine 3.24.3, and deployment helper images use the same release.
+
+## Security regression evidence
+
+The following tests failed against the vulnerable implementation and passed
+after the corresponding fix:
+
+- `TestSessionRejectsChangedOrigin` and `TestSessionRejectsRedirects`: API calls
+  and logout withhold saved cookies from another origin or redirect destination.
+- `TestRevocationReportsDatabaseFailure`: a real SQLite trigger rejects session
+  deletion; logout/admin revocation report failure, retain retry credentials, and
+  successfully revoke after the injected failure is removed.
+- `TestMistyUnlinkedExistingAccountCannotBeClaimedByEmail`: neither ordinary nor
+  admin accounts can be claimed by a new identity through email equality.
+- `TestMistyIssuerMismatchAndDatabasePin` and
+  `TestMistyRejectsMissingOrChangedResponseIssuer`: wrong issuers/origins and
+  missing attestation fail closed. A changed gateway origin is rejected before
+  sending its configured credential.
+- Gateway regressions demonstrate that exhausting other challenges or delivering
+  a new code cannot block a valid earlier challenge. Both storage adapters bound
+  guesses with three attempts per challenge and five deliveries per mailbox
+  issuance window.
+
+Additional tests verify explicit mapping persistence, conflict rejection, secure
+CLI URL validation and retry behavior. API/CLI race suites and `go vet`, frontend
+tests/types/lint/build, gateway Postgres tests, migration round trip and Misty's
+repository-wide `make check` passed. The updated browser run again exercised the
+real gateway/directory/verification containers with fake mail, including issuer
+checks, explicitly mapped admin identity, replay and retirement.
 
 ## Local evidence
 
 The operator workspace retains the disposable test harness and logs:
 
-- `/tmp/misty-compute-browser/fullstack.py`: container orchestration, derived
+- `/tmp/misty-compute-browser/security_fullstack.py`: container orchestration, derived
   from Misty's existing `services/gateway/tests/smoke_stack.py`.
-- `/tmp/misty-compute-browser/fullstack_harness_test.go`: compute auth/static
+- `/tmp/misty-compute-browser/security_harness_test.go`: compute auth/static
   frontend harness, injected only into a temporary test checkout.
 - `/tmp/misty-compute-browser/fullstack.cjs`: browser assertions.
-- `/tmp/misty-compute-fullstack.log` and
-  `/tmp/misty-compute-fullstack-browser.log`: successful integration results.
+- `/tmp/misty-security-fullstack-final.log` and
+  `/tmp/misty-security-fullstack-browser.log`: successful integration results.
 - `/tmp/misty-compute-browser/fullstack-signed-in.png`: authenticated account UI.
-- `/tmp/misty-compute-browser/artifact-hash.txt`: SHA-256 over changed Go and
-  TypeScript source/test paths and contents.
+- `/tmp/misty-security-fixes-artifacts.json`: hashes of the changed source and
+  regression files used for the security checks.
 
 These are local temporary artifacts, not deployment assets. All test containers,
 networks and disposable databases were removed after verification.
