@@ -138,3 +138,87 @@ func TestMistyAccountMappingIsExplicitAndImmutable(t *testing.T) {
 		t.Fatal("missing target account accepted")
 	}
 }
+
+func TestMistyRollbackRevokesOnlyMistySessions(t *testing.T) {
+	s, _, _ := newMistyTestAuth(t)
+	cookies := startMistyTest(t, s)
+	login := mistyRequest(s, "/auth/misty/confirm", map[string]string{"challenge_id": testChallengeID, "code": "123456"}, cookies)
+	if login.Code != 200 {
+		t.Fatal(login.Code)
+	}
+	request := httptest.NewRequest("GET", "/session", nil)
+	for _, cookie := range login.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	if _, err := s.db.Exec(`INSERT INTO session(id,token,userId,expiresAt,createdAt,updatedAt)
+        SELECT 'local-session','local-token',userId,expiresAt,createdAt,updatedAt FROM session LIMIT 1`); err != nil {
+		t.Fatal(err)
+	}
+	_ = startMistyTest(t, s) // A pending challenge must not survive the mode change.
+	t.Setenv("MIST_AUTH_MODE", "local")
+	if err := s.initMisty(); err != nil {
+		t.Fatal(err)
+	}
+	var pending, identities int
+	if err := s.db.QueryRow(`SELECT count(*) FROM misty_login`).Scan(&pending); err != nil || pending != 0 {
+		t.Fatal("pending login survived rollback", err)
+	}
+	if err := s.db.QueryRow(`SELECT count(*) FROM misty_identity`).Scan(&identities); err != nil || identities != 1 {
+		t.Fatal("identity mapping lost during rollback", err)
+	}
+	member, err := s.session(request)
+	if err != nil || member != nil {
+		t.Fatal("Misty session survived rollback", err)
+	}
+	local := httptest.NewRequest("GET", "/session", nil)
+	local.AddCookie(&http.Cookie{Name: "session_token", Value: "local-token"})
+	if member, err = s.session(local); err != nil || member == nil {
+		t.Fatal("local session lost", err)
+	}
+	t.Setenv("MIST_AUTH_MODE", "misty")
+	if err := s.initMisty(); err != nil {
+		t.Fatal(err)
+	}
+	if member, err = s.session(request); err != nil || member != nil {
+		t.Fatal("revoked Misty session revived", err)
+	}
+}
+
+func TestMistyLocalModeRejectsAnOverlappingMistyWriter(t *testing.T) {
+	s, _, _ := newMistyTestAuth(t)
+	cookies := startMistyTest(t, s)
+	login := mistyRequest(s, "/auth/misty/confirm", map[string]string{"challenge_id": testChallengeID, "code": "123456"}, cookies)
+	if login.Code != 200 {
+		t.Fatal(login.Code)
+	}
+	request := httptest.NewRequest("GET", "/session", nil)
+	for _, cookie := range login.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	// A late write from a rolling-out Misty process can arrive after startup cleanup.
+	s.misty = nil
+	if member, err := s.session(request); err != nil || member != nil {
+		t.Fatal("local mode accepted Misty provenance", err)
+	}
+}
+
+func TestMistyRollbackCleanupFailureIsAtomic(t *testing.T) {
+	s, _, _ := newMistyTestAuth(t)
+	cookies := startMistyTest(t, s)
+	login := mistyRequest(s, "/auth/misty/confirm", map[string]string{"challenge_id": testChallengeID, "code": "123456"}, cookies)
+	if login.Code != 200 {
+		t.Fatal(login.Code)
+	}
+	_ = startMistyTest(t, s)
+	if _, err := s.db.Exec(`CREATE TRIGGER reject_login_cleanup BEFORE DELETE ON misty_login BEGIN SELECT RAISE(FAIL,'synthetic cleanup failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MIST_AUTH_MODE", "local")
+	if err := s.initMisty(); err == nil {
+		t.Fatal("rollback initialization ignored cleanup failure")
+	}
+	var sessions int
+	if err := s.db.QueryRow(`SELECT count(*) FROM session WHERE mistyPersonId<>''`).Scan(&sessions); err != nil || sessions != 1 {
+		t.Fatal("cleanup transaction partially committed", err)
+	}
+}

@@ -70,7 +70,10 @@ does not overwrite a recorded pin. Handle deliberate ownership transfers as a
 separate reviewed data migration.
 
 For rollback, restore `MIST_AUTH_MODE=local` and restart the same code version.
-Keep the additive tables, existing database and volume. Existing local passwords
+Startup durably deletes Misty sessions and pending login challenges; local mode
+also rejects any Misty session written by an overlapping old process. Switching
+back to Misty requires a fresh login. Existing local sessions and identity/owner
+mappings are preserved. Keep the additive tables, existing database and volume. Existing local passwords
 work again; users first created through Misty have no password and need an admin
 to provision one. Rolling back to older code that lacks the durable ownership pin
 is unsafe after a legacy owner's email changes.
@@ -109,9 +112,13 @@ three attempts per challenge, ten-minute expiry and strict 4 KiB inputs. Misty
 also enforces application, client-IP and mailbox quotas. Database failures deny
 admission before sending; upstream failures do not grant sessions. Definitive
 upstream 429 responses preserve a wait response and do not use a local guess.
-The gateway currently allows 60 status checks/minute per application: size its
-quota/cache policy deliberately before exceeding about 30 continuously active
-identities. Issuer checks share that status quota. Every successful gateway
+The gateway defaults to 600 status checks/minute per application and a 1200/minute
+pre-authentication edge-IP guard. `LOGIN_STATUS_PER_MINUTE` and
+`EDGE_REQUESTS_PER_MINUTE` are configured on Misty together, with at least 120
+requests/minute of edge headroom. This budgets roughly 300 continuously active
+identities; leave margin for issuer checks and other traffic sharing the backend
+IP, and verify directory latency under expected load. The 30-second eligibility
+cache is unchanged. Issuer checks share the status quota. Every successful gateway
 response must match the expected issuer, including after startup. HTTP clients
 have bounded timeouts and do not follow redirects.
 
@@ -178,3 +185,14 @@ checks and the remaining live deployment checks.
   and deployment helper images to supported Alpine 3.24.3.
 - `web-interface/package.json`, `package-lock.json`: pin patched Zod 4.6.6 and Undici 7.30.1, and
   restore missing optional-platform lock entries required by clean npm installs.
+
+
+## Independent audit follow-up
+
+Misty handles a known verification cooldown by deferring the same challenge once
+for up to 60 seconds, with no additional send-budget charge. It rechecks eligibility
+and expiry before delivery and never retries an ambiguous transport/provider
+failure. Mailbox and application abuse caps remain necessary; an attacker can
+still exhaust new-send capacity. This is separate from guessing or invalidating
+an already-delivered code. Deployment prerequisites and other operational risks
+remain in the rollout section above.

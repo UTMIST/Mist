@@ -102,3 +102,26 @@ logged out. Live HTTPS, ingress/proxy-IP configuration, real email delivery,
 database backup/cutover and existing production account mappings remain
 unverified. Misty's staging gateway still requires deployment and provisioning.
 Follow [the rollout guide](misty-login.md) before enabling the feature.
+
+
+## Independent audit follow-up: rollback sessions
+
+The added rollback regressions fail against the audited `cc3218d` implementation
+and pass with the follow-up change. Rolling back to local auth durably revokes
+Misty sessions and clears pending challenges while preserving local sessions and
+identity mappings. Re-enabling Misty cannot revive the deleted credentials.
+Local mode also rejects Misty-provenance rows from an overlapping old process.
+A synthetic SQLite delete failure verifies startup fails and the cleanup
+transaction cannot partially commit.
+
+The complete Linux API/CLI race suites and `go vet` passed. Misty's companion
+change passed full disposable-Postgres suites and a real HTTP reproduction of
+Discord/compute cooldown overlap and resend-clock skew, with fake mail only.
+Status capacity is configured on Misty; compute keeps its 30-second eligibility
+cache. Existing live-host and real-mail limitations above still apply.
+
+Changed-file rationale: `src/auth.go` rejects mismatched session provenance;
+`src/misty_auth.go` performs transactional rollback cleanup;
+`src/auth_security_test.go` covers rollback, late writes and cleanup failure;
+`docs/agents/misty-login.md` describes rollback and updated gateway capacity;
+this verification report records the evidence and remaining limits.

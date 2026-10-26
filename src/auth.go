@@ -326,6 +326,9 @@ func (s *AuthService) session(r *http.Request) (*Member, error) {
 			if !active {
 				return nil, nil
 			}
+		} else if personID != "" {
+			// Also reject rows written by an overlapping older Misty process.
+			return nil, nil
 		}
 		return &m, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {

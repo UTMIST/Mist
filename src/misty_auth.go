@@ -188,6 +188,23 @@ func (s *AuthService) initMisty() error {
 		if err := s.pinMistyIssuerAndAccounts(client); err != nil {
 			return err
 		}
+	} else {
+		// A rollback must not turn a Misty proof into an unchecked local session.
+		// Delete it durably so switching back cannot revive the credential.
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err = tx.Exec(`DELETE FROM session WHERE COALESCE(mistyPersonId,'')<>''`); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`DELETE FROM misty_login`); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
 	}
 	err = s.db.QueryRow(`SELECT user_id FROM misty_legacy_owner WHERE singleton=1`).Scan(&s.legacyUserID)
 	if err == nil {
