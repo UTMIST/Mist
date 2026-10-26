@@ -13,6 +13,28 @@ identity reaches the API, and the `mist` command. Overview:
 - **Admins** use separate admin accounts that are not in `mist-users`. They are
   not restricted (see [deployment-and-network.md](deployment-and-network.md)).
 
+## How it fits
+
+Every SSH connection is routed by account type, then by the command requested:
+
+```mermaid
+flowchart TD
+    C[SSH connection] --> sshd[sshd]
+    sshd -->|AuthorizedKeysCommand| keys[mist-relay keys] -->|cached lookup| API[(mistd api)]
+    sshd -->|admin account| shell[Normal shell]
+    sshd -->|member of mist-users| gate{"mist-gate<br/>checks SSH_ORIGINAL_COMMAND"}
+    gate -->|sftp subsystem| sftp[sftp-server]
+    gate -->|"scp -t / -f"| scp[scp]
+    gate -->|"rsync --server"| rsync[rsync, flags checked]
+    gate -->|"mist ..."| cli[mist CLI]
+    gate -->|no command| prompt["Gate prompt<br/>ls, cd, cat, tail, mist"]
+    gate -->|anything else| deny[Refused + help]
+    prompt --> cli
+    cli -->|"/run/mist/relay.sock"| relay["mist-relay<br/>SO_PEERCRED identifies user"]
+    relay -->|"relay token + asserted user"| API
+    sftp & scp & rsync -->|as the user| disk[("/mist")]
+```
+
 ## sshd configuration
 
 ```text

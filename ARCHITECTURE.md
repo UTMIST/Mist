@@ -88,6 +88,92 @@ flowchart LR
 
 Owners should confirm or reassign rows here.
 
+## How the parts fit together
+
+Each box is one owner's area; every arrow between boxes is a contract listed in
+the table below. Deployment and network (hosts, the 10 GbE link, Tailscale,
+secrets) sits under all of it; see its own diagram in
+[deployment-and-network.md](docs/agents/architecture/deployment-and-network.md).
+
+```mermaid
+flowchart TB
+    R([Researcher])
+    Misty[(misty)]
+
+    subgraph GW["Login gateway · owner TBD"]
+        sshd[sshd]
+        gate[mist-gate]
+        cli[mist CLI]
+        relay[mist-relay]
+    end
+
+    subgraph PO["Portal · Andrei"]
+        ui[Web UI]
+    end
+
+    subgraph API["mistd api · shared"]
+        mw[Auth middleware + routing]
+    end
+
+    subgraph ID["Identity · Lucas"]
+        dir[misty client / stub]
+        acct[(accounts, teams, SSH keys)]
+        prov[Provisioner agent]
+    end
+
+    subgraph SC["Scheduler · Brandon"]
+        sched[Scheduling cycle]
+        ledger[(jobs, allocations, usage)]
+    end
+
+    subgraph EX["Executors + k3s · Brandon"]
+        k3sx[K3s executor]
+        entry[mist-job-entry]
+    end
+
+    subgraph RT["Runtime · Scott"]
+        img[Runtime images]
+        sw["/mist/software"]
+    end
+
+    subgraph ST["Storage · Ansh"]
+        vol[("/mist volumes")]
+        scratch[(Node scratch)]
+    end
+
+    R -->|"ssh, scp, rsync"| sshd --> gate --> cli
+    gate -->|"file transfer as the user"| vol
+    cli -->|unix socket| relay
+    sshd -.->|AuthorizedKeysCommand| relay
+    relay -->|"HTTP /v1 + asserted user"| mw
+    R -->|browser| ui -->|"HTTP /v1 + session"| mw
+    mw -->|identity.Authorize| acct
+    mw -->|job endpoints| sched
+    dir --> Misty
+    dir --> acct
+    prov -->|"GET provision/state"| mw
+    prov -->|"users, groups, folders"| vol
+    sched --> ledger
+    sched -->|Executor interface| k3sx
+    acct -.->|mist-nss ConfigMap| k3sx
+    k3sx -->|"pod: uid, team gid, devices"| entry
+    k3sx -->|"mounts team folder + software"| vol
+    k3sx --> scratch
+    img -.->|ships| entry
+    img -.-> sw
+```
+
+| Boundary | Provider → consumer | Contract | Defined in |
+|---|---|---|---|
+| Who is registered, which teams | misty → Identity | `Directory` interface (stub until the real API) | [identity](docs/agents/architecture/identity-and-accounts.md#misty) |
+| Who may do what | Identity → every API handler | `identity.Authorize(principal, action, resource)` | [identity](docs/agents/architecture/identity-and-accounts.md#roles) |
+| Linux accounts and folders | Identity → Provisioner → Storage | `/internal/v1/provision/state`, layout rules | [identity](docs/agents/architecture/identity-and-accounts.md#provisioner), [storage](docs/agents/architecture/storage.md#layout) |
+| CLI calls as the researcher | Gateway → API | Relay socket, `X-Mist-Asserted-User` + relay token | [login gateway](docs/agents/architecture/login-gateway.md#identity-relay) |
+| Everything clients see | API → Portal, CLI | `/v1` endpoints and wire types | [api](docs/agents/architecture/api.md) |
+| Running a job | Scheduler → Executors | `executor.Executor`, `LaunchSpec`, events | [executors](docs/agents/architecture/executors.md#interface) |
+| What a job sees | Executors + Runtime → researcher code | Job environment contract, `mist-job-entry` | [runtime](docs/agents/architecture/runtime-environment.md) |
+| Where files live | Storage → Executors, Gateway | Volumes, mount paths, permissions | [storage](docs/agents/architecture/storage.md#volumes-and-growth) |
+
 ## Core concepts
 
 - **Person.** A human registered in misty. Misty is the source of truth for
@@ -110,6 +196,79 @@ Owners should confirm or reassign rows here.
   teams.
 - **Volume.** One durable storage location, an NFS export on one server. Each
   team folder lives entirely on one volume. There is one volume today.
+
+## The researcher's journey
+
+One researcher, Alice on team `vision`, goes from sign-up to results. The boxes
+mark which owner's component handles each step.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor R as Alice
+    box Portal · Andrei
+        participant W as Portal
+    end
+    box Login gateway · TBD
+        participant G as Gateway + relay
+    end
+    box API · shared, Identity · Lucas
+        participant A as mistd api
+        participant P as Provisioner
+    end
+    box Scheduler + executors · Brandon
+        participant S as Scheduler
+        participant E as K3s executor
+    end
+    box Runtime · Scott, Storage · Ansh
+        participant J as Job
+        participant F as /mist
+    end
+
+    Note over R,F: Join
+    R->>W: Sign in
+    W->>A: Is Alice registered in misty?
+    A-->>W: Yes, teams [vision]. Account alice, uid 20007
+    R->>W: Add SSH public key
+    P->>A: Poll desired state
+    P->>F: Create user, groups, /mist/teams/vision/alice
+
+    Note over R,F: Bring code and data
+    R->>G: ssh, then rsync ./project
+    G->>F: Write to /mist/teams/vision/alice/project
+    R->>G: mist run -p cpu -- hf download some-model
+    G->>A: Submit command job (cpu)
+    A->>S: Job queued
+    S->>E: Launch on utmist-tt
+    E->>J: Start as alice, team vision
+    J->>F: Model saved to team .cache
+
+    Note over R,F: Set up an environment
+    R->>G: mist shell -p gpu --gpus 1
+    G->>A: Submit interactive job
+    S->>E: Launch on utmist-z1opa08 (1 GPU)
+    E->>J: Start shell holder
+    G->>A: Attach terminal (WebSocket)
+    A->>E: Attach
+    R->>J: uv sync (venv lands in her folder)
+    R->>J: exit, job completes
+
+    Note over R,F: Train
+    R->>G: mist submit train.sh
+    G->>A: Submit batch job 412
+    A-->>R: 412 PENDING (RESOURCES)
+    S->>E: GPU frees up, launch 412
+    E->>J: Start train.sh
+    J->>F: Stream mist-412.out, write checkpoints
+    R->>G: mist logs -f 412
+    J-->>E: Exit 0
+    E-->>S: Exited
+    S->>A: 412 COMPLETED
+
+    Note over R,F: Take results home
+    R->>G: rsync checkpoints back to laptop
+    G->>F: Read as alice
+```
 
 ## Key flows
 

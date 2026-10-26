@@ -30,6 +30,28 @@ software. Researchers never choose or build images.
 - **No root and no `apt`.** System packages are requested through the profile
   owner.
 
+## Inside a job
+
+What one job (Alice's job 412, charged to `vision`) can reach:
+
+```mermaid
+flowchart LR
+    subgraph Job["Job 412: runs as alice, group team-vision"]
+        entry["mist-job-entry<br/>umask, private dot-folders, header"] --> script[bash train.sh] --> py[python train.py]
+    end
+    py -->|"HOME, workdir, checkpoints"| team["/mist/teams/vision/alice"]
+    py -->|"HF_HOME, TORCH_HOME"| tcache["/mist/teams/vision/.cache"]
+    py -->|TMPDIR| scratch["/scratch and /tmp<br/>deleted at job end"]
+    py -->|read only| sw["/mist/software + runtime image"]
+    py -->|"CUDA_VISIBLE_DEVICES=0"| gpu[Its allocated GPU only]
+    entry -->|"stdout + stderr"| out["mist-412.out"]
+    py -->|outbound only| net((Internet))
+    other["Other teams' folders,<br/>other GPUs, cluster network"]
+    style other stroke-dasharray: 5 5
+```
+
+The dashed box is what does **not** exist inside the job.
+
 ## Filesystem inside a job
 
 | Path | What | Writable |
