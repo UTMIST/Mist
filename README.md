@@ -7,6 +7,15 @@ collect persistent results through the same website or CLI.
 **Private website:** [http://100.73.139.66:8088](http://100.73.139.66:8088), accessible through authorized
 Tailscale connectivity. A Mist account and team membership are also required.
 
+## Architecture redesign — October 26
+
+Mist is moving to an HPC-style design: per-team folders, restricted SSH login,
+and jobs that run as the researcher's own Linux user under Mist's own scheduler.
+Jobs no longer need images or mounts. Start with [ARCHITECTURE.md](ARCHITECTURE.md);
+component contracts and the decision log are in
+[docs/agents/architecture/](docs/agents/architecture/decisions.md). The
+sections below and `docs/content/` describe the platform being replaced.
+
 ## Storage update — October 21
 
 New submissions use ordinary team dataset/result folders on QuietBox, accessed
