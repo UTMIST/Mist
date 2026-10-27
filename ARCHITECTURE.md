@@ -12,7 +12,7 @@ component owners. Each component has a document with the contracts it must
 honour. The reasons behind major choices are in the
 [decision log](docs/agents/architecture/decisions.md).
 
-> **Status:** target design, agreed October 2026. This design replaces the
+> **Status:** target design, revised 27 October 2026 after architecture review. This design replaces the
 > platform described in `docs/content/` (container-image jobs, dataset and
 > result pools, team namespaces). It starts fresh: no users or data are migrated.
 
@@ -86,7 +86,12 @@ flowchart LR
 | Web portal | Lightweight UI over the API: account, SSH keys, teams, jobs, queue, usage, admin | [portal.md](docs/agents/architecture/portal.md) | Andrei |
 | Deployment and network | Hosts, network paths, services, secrets, admin access, adding nodes | [deployment-and-network.md](docs/agents/architecture/deployment-and-network.md) | Ethan, with Ansh |
 
-Owners should confirm or reassign rows here.
+Owners should confirm or reassign rows here. Before implementing a component,
+read [implementation-contracts.md](docs/agents/architecture/implementation-contracts.md).
+It defines cross-component invariants, required acceptance evidence, and decisions
+that must be resolved before a milestone can ship. Component documents are the
+normative contracts; the implementation plan orders the work. D18–D23 supersede
+specific older decisions as listed in the decision log.
 
 ## How the parts fit together
 
@@ -155,7 +160,7 @@ flowchart TB
     prov -->|"users, groups, folders"| vol
     sched --> ledger
     sched -->|Executor interface| k3sx
-    acct -.->|mist-nss ConfigMap| k3sx
+    acct -.->|per-job mist-nss projection| k3sx
     k3sx -->|"pod: uid, team gid, devices"| entry
     k3sx -->|"mounts team folder + software"| vol
     k3sx --> scratch
@@ -262,7 +267,9 @@ sequenceDiagram
     J->>F: Stream mist-412.out, write checkpoints
     R->>G: mist logs -f 412
     J-->>E: Exit 0
-    E-->>S: Exited
+    E-->>S: Finished (CLEANING; allocation held)
+    E->>E: Persist result, delete execution, confirm node cleanup
+    E-->>S: Exited (cleanup receipt)
     S->>A: 412 COMPLETED
 
     Note over R,F: Take results home
@@ -312,8 +319,8 @@ sequenceDiagram
     S->>E: Launch(job 412, node, resources)
     E->>N: start as uid, team gid, team folder, devices
     N-->>E: running … exited(0)
-    E-->>S: status events
-    S->>A: job 412 COMPLETED
+    E-->>S: Finished, then Exited after confirmed cleanup
+    S->>A: job 412 COMPLETED; allocation released
     U->>G: tail -f mist-412.out
 ```
 
@@ -343,16 +350,21 @@ reconcile them from the database.
 | Volumes, team placement, usage | Mist DB | Storage |
 | Partitions, QoS, limits | Mist DB (admin-configured) | Scheduler |
 | Jobs, job events, usage records | Mist DB | Scheduler |
-| Pods and other execution objects | Derived by the executor | Executors |
+| Pods and other execution objects | Derived by the executor; cleanup acknowledged before reuse | Executors |
 | Files | `/mist` | Storage |
 
 Each owner owns their tables and migrations. Other components go through that
-owner's Go package or API, not their tables.
+owner's Go package or API, not their tables. Packages participating in admission
+and revocation accept the same database transaction so authorization and job
+changes serialize; an HTTP authorization check followed by an unrelated commit
+is not sufficient. Durable job intents and executor observations survive restarts.
+User files are not derived state and must never be recreated or deleted by job
+reconciliation.
 
 ## Code layout
 
 ```text
-cmd/mistd/            one binary: `mistd api`, `mistd scheduler`, `mistd provision`
+cmd/mistd/            api, scheduler, provision, cleanup-report subcommands
 cmd/mist/             CLI (on the login gateway; laptops later)
 cmd/mist-gate/        SSH ForceCommand dispatcher
 cmd/mist-relay/       login-node identity relay and SSH key lookup
@@ -375,7 +387,7 @@ They are removed once the new path serves jobs.
 
 | Milestone | Outcome |
 |---|---|
-| **M1: GPU batch** | Sign-up (misty stubbed), SSH login, file transfer, `mist submit/run/jobs/show/logs/cancel` on `gpu` and `cpu`, team isolation, 10 GbE direct link |
+| **M1: GPU batch** | Sign-up (misty stubbed), SSH login, file transfer, `mist submit/run/jobs/show/logs/cancel` on `gpu` and `cpu`, verified permissions/revocation/network isolation, crash recovery and cleanup accounting, 10 GbE direct link |
 | **M2: Interactive** | `mist shell` and `mist attach` with reattach grace; `interactive` QoS |
 | **M3: Fair scheduling** | Priority, fairshare by team, backfill, accounting, admin limits, queue views; backups in place |
 | **M4: Tenstorrent** | `tt` partition, TT runtime image, board reset between jobs |
@@ -390,7 +402,7 @@ Each component document lists its work per milestone.
 | Real misty API: shape, and how membership changes reach Mist (polling or webhooks) | Identity |
 | How people prove who they are at sign-in (Google or UofT SSO, or email magic link) | Identity |
 | Enforced storage quotas: needs `/mist` on a dedicated filesystem with project quotas | Storage |
-| Offboarding: what happens to a folder when someone leaves a team or UTMIST | Identity, Storage |
+| Retention after access revocation: archive or transfer departed members’ folders (access revocation itself is specified) | Identity, Storage |
 | Backup tool, schedule and retention | Storage |
 | Default limits per partition and per user once real usage is known | Scheduler |
 | Monitoring and alerting beyond the portal | Deployment |

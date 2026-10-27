@@ -216,3 +216,64 @@ which keeps it easy to understand and to swap executors.
 
 **Consequences.** Placement only counts devices, CPUs and memory. Time-slicing
 could later be added as an opt-in for small debug work.
+
+## D18. Mist admits jobs; Kubernetes may allocate DRA claims
+
+**Supersedes:** D1's unconditional scheduler bypass. Mist alone owns queue order,
+policy, admission and the target node. GPU/CPU Pods use `nodeName`. TT Pods omit
+it and use an exact unique node selector so Kubernetes can allocate/reserve DRA
+claims on the chosen node. A claim stall is a bounded launch failure, never an
+invitation to move the job. Pin and test the installed DRA driver and board reset
+scope before M4. Source: [Kubernetes DRA pre-scheduled Pods](https://kubernetes.io/docs/concepts/resource-management/dynamic-resource-allocation/how-dra-works/).
+
+## D19. Personal work defaults to read-only for teammates
+
+**Clarifies D8 and supersedes conflicting implementation defaults.** Jobs and
+uploads use `0027`; ordinary personal files are `0640`, directories inherit
+setgid and exclude group write. Only shared/cache areas have group-write default
+ACLs. Private dot-directories remain `0700`. Owners can explicitly change modes;
+provisioning never recursively rewrites researcher content. Verify read/write
+behavior as another UID, not merely the mode of the top-level directory.
+
+## D20. Access revocation includes live sessions and queued work
+
+**Refines D6 and D14.** `mist-users` is permanent; disabled accounts never lose
+the marker enforcing restricted SSH. Directory snapshots and gateway leases have
+a maximum 5 min validity, with no stale-cache extension. Known removal invalidates
+API sessions, stops affected pending/launching/running jobs and kills gateway
+sessions before updating groups. Existing process credentials do not change when
+membership files change. A root local deny store and watchdog enforce expiry even
+if the API is down. Revocation completion is acknowledged, not assumed while a
+node is unreachable. Sources: [Linux credentials](https://man7.org/linux/man-pages/man7/credentials.7.html),
+[usermod password locking](https://man7.org/linux/man-pages/man8/usermod.8.html).
+
+## D21. Execution intent, process outcome and cleanup are separate durable facts
+
+**Refines D3 and D12.** Commit immutable admission/launch intent before invoking an
+executor; recover the same execution ID after ambiguous responses. Never rerun
+started work automatically. A finished process enters `CLEANING`; resources stay
+charged until node cleanup is proven. Lost nodes retain quarantined allocations.
+Store result/log tail before object deletion and retain receipts/tombstones.
+Postgres preserves control state, not running processes or user files: wiping
+Pods can lose execution and scratch. OOM/SIGKILL can prevent an output footer;
+the API reports authoritative status and incomplete output explicitly.
+
+## D22. Interactive jobs own a persistent terminal
+
+**Decision.** One holder owns one shell/PTY for the execution lifetime. Attach is
+transport to that PTY, never a new shell. One client at a time, bounded replay,
+10 min local detach grace, and unchanged walltime apply under both executors.
+API/relay restart may detach but cannot reset grace or shell state. Holder death
+fails the job. User code stays inside the one allocation/cgroup.
+
+## D23. Isolation must hold on the host as well as in the job spec
+
+**Refines D4, D5 and D13.** NetworkPolicy is paired with host filtering, including
+job traffic to its own node, explicit DNS exceptions and tested IPv6 behavior.
+Native execution explicitly replaces supplementary groups and drops credentials
+before user code; systemd `SupplementaryGroups=` alone only extends NSS groups.
+The same real-node conformance suite gates K3s and native execution. Adding nodes
+uses a switch unless a separate bridge/routing design has been verified; D10's
+second-port suggestion is not a complete network design. Sources:
+[Kubernetes NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/),
+[systemd.exec](https://www.freedesktop.org/software/systemd/man/258/systemd.exec.html).

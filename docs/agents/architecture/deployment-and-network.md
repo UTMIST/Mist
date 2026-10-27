@@ -11,7 +11,7 @@ flowchart LR
     Users([Researchers + admins]) -->|Tailscale| TSN
     Users -->|Tailscale| TST
     subgraph NV["utmist-z1opa08 · 56 CPU · 157 GiB · 2× A4000"]
-        TSN["tailscale0<br/>100.73.139.66"] -->|"portal :8088"| NVsvc["k3s server · mistd api + scheduler<br/>Postgres · Nginx portal"]
+        TSN["tailscale0<br/>100.73.139.66"] -->|"portal HTTPS :443"| NVsvc["k3s server · mistd api + scheduler<br/>Postgres · Nginx portal"]
         NVgpu[gpu partition]
         ens6["ens6 · AQC107 10GBASE-T<br/>192.168.240.1"]
     end
@@ -40,7 +40,7 @@ flowchart LR
 |---|---|---|
 | **Direct link (10 GbE)** | NVIDIA `ens6` `192.168.240.1/24`, TT `enp10s0f0np0` `192.168.240.2/24` | k3s node traffic and Flannel, NFS, relay and provisioner → API, backups |
 | LAN | NVIDIA `10.0.0.175` (currently over Wi-Fi), TT `10.0.0.112` | Internet access only |
-| Tailscale | NVIDIA `100.73.139.66`, TT `100.95.175.37` | Users: portal (NVIDIA :8088), SSH login (TT :22); admin SSH |
+| Tailscale | NVIDIA `100.73.139.66`, TT `100.95.175.37` | Users: portal (NVIDIA HTTPS :443), SSH login (TT :22); admin SSH |
 
 **Moving the direct link to 10 GbE (M1):**
 
@@ -68,11 +68,12 @@ link, so cluster traffic never uses the LAN or Wi-Fi.
 | Tenstorrent DRA driver (M4) | TT | k3s |
 | Postgres | NVIDIA | k3s StatefulSet, data on local SSD (never NFS) |
 | `mistd api`, `mistd scheduler` | NVIDIA | k3s Deployments (1 replica each), reachable on `192.168.240.1` for agents |
-| Portal (Nginx + static build) | NVIDIA | systemd, `:8088` on Tailscale, proxies `/api` |
+| Portal (Nginx + static build) | NVIDIA | systemd, HTTPS on Tailscale (production), proxies `/api`; `:8088` development only |
 | NFS server | TT | systemd |
 | sshd + `mist-gate` | TT | systemd |
 | `mist-relay` | TT | systemd (root) |
-| `mistd provision` | TT (later every node) | systemd (root) |
+| `mistd provision` | TT (later every node) | systemd (root), includes gateway revocation/watchdog integration |
+| `mistd cleanup-report` | both compute nodes | root-owned node service; narrowly scoped cleanup evidence |
 | `mist-noded` (M5) | nodes moved to the node executor | systemd (root) |
 
 ## Configuration and secrets
@@ -112,9 +113,10 @@ Before M1 goes live:
 
 ## Adding a node
 
-1. **Connect it to the direct-link network.** With three nodes, use the TT box's
-   second X710 port, or better a 10 GbE switch with all nodes on
-   `192.168.240.0/24`. Four or more nodes need the switch.
+1. **Connect it to the direct-link network.** For three or more nodes, use a
+   10 GbE switch with all nodes on `192.168.240.0/24`. A second direct cable is
+   not automatically the same L2 network: an alternative needs an explicitly
+   designed bridge or routed subnet and routing/firewall tests before use.
 2. **Install Ubuntu** with the drivers for its accelerators.
 3. **K3s executor:** join it as a k3s agent and install its device plugin. Node
    executor: install `mist-noded` and `mistd provision`.
@@ -132,11 +134,46 @@ Before M1 goes live:
   - gateway host setup
   - admin accounts and secret rotation
   - remove the old platform
-- **M3:** backup target, and basic monitoring (disk space, node health, failed
-  provisioner runs).
+  - job/host firewall enforcement, authorization lease watchdog and cleanup reporter
+  - basic monitoring: disk headroom, stale directory/provisioning generations,
+    failed cleanup, quarantined nodes, scheduler leadership and launch timeouts
+  - pin k3s/kernel/runtime/plugins and record tested feature support
+- **M3:** backup target, retention and restore exercises; richer monitoring UI.
 
 ## Open questions
 
 - Monitoring and alerting stack.
 - Whether the NVIDIA box's `sdb` is free for scratch and backups.
 - A stable login hostname.
+
+## Job network boundary (M1)
+
+Deployment owns host firewall rules; Executors owns job namespace/NetworkPolicy
+configuration. Both must pass the same conformance checks before a node is up.
+
+- Tag job traffic by its network interface/source before NAT. Filter both host
+  INPUT and routed/FORWARD paths; a pod's own host is not implicitly trusted.
+  Deny new job connections to every host address (direct-link, LAN, Tailscale,
+  pod gateway), Kubernetes service/pod CIDRs, RFC1918, CGNAT and link-local ranges.
+  Include locally bound public addresses, if added later. Allow only approved
+  DNS resolvers on TCP/UDP 53 and public internet egress; allow established
+  response traffic. Deny unsolicited inbound traffic to jobs.
+- Host-origin NFS mounts, control-plane traffic, cleanup reporting and admin SSH
+  are separate trusted flows. Never open NFS from the job network to make a
+  mount work; mounts are performed by the host. Block job access to host runtime
+  sockets and Unix sockets through the filesystem too.
+- M1 job networking is IPv4-only; disable IPv6 in job namespaces/routing. Enable
+  it only after equivalent IPv6/link-local rules pass tests. Startup must fail
+  closed if policy installation fails; rule reload and k3s restart must not
+  create an allow-all interval. Pin/test the actual CNI and host firewall ordering.
+- Test from CPU jobs on the storage host and GPU jobs on the control host: own
+  host and peer SSH/NFS/API/Postgres/kubelet ports, service IP aliases, pod peers,
+  LAN/Tailscale peers, DNS, internet HTTPS, and IPv6 bypass attempts. Also verify
+  legitimate host NFS mounts and admin access remain functional.
+
+Use authenticated TLS for relay/provisioner/cleanup traffic on the direct link;
+per-host bearer tokens authorize operations but do not encrypt them. Expose the
+production portal through a stable Tailscale HTTPS name with a trusted certificate.
+Record the selected hostname/certificate provisioning in deployment configuration.
+Restrict internal API listeners to trusted hosts; user-facing proxy routes never
+expose `/internal`. A clean restart must restore policies before admitting jobs.

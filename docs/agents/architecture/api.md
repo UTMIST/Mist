@@ -60,7 +60,32 @@ flowchart LR
 
 One middleware resolves the principal, and authorization goes through
 `identity.Authorize` (see [identity-and-accounts.md](identity-and-accounts.md)).
-Handlers never read identity headers directly.
+Handlers never read identity headers directly. Check active account and current
+membership on every request and stream establishment; revoke existing streams
+when the authorization generation changes. The relay cannot assert disabled
+accounts. Agent tokens are scoped by host and operation, not interchangeable
+administrator credentials.
+
+Production uses HTTPS, `Secure`, `HttpOnly`, `SameSite=Lax` session cookies,
+CSRF protection on mutations, and an Origin allowlist for browser WebSockets.
+Nginx must strip user-supplied identity headers. Keep dev principal headers out
+of production binaries. See Identity for bounded directory freshness/leases.
+
+Authorization matrix: owners may view/cancel their currently authorized jobs and
+attach to their own interactive jobs; current team members may view team job
+metadata/scripts/logs; team leads may cancel team jobs; admins may view/cancel
+all jobs but cannot attach as the user. Former membership or ownership alone
+never grants continued team access. Non-team callers receive `not_found` on job
+and log endpoints; `/queue` provides only the explicitly public summary.
+
+`POST /v1/jobs` accepts a required `Idempotency-Key` from CLI clients. Store
+(account, key, canonical client request hash, job ID, resolved submission spec)
+atomically with submission. Look up the key before applying current defaults:
+same key/body returns the original job even if defaults changed; differing body
+returns `conflict`. Reauthorize access before returning a cached result. Retain keys
+for at least the job metadata lifetime. Cancellation is intrinsically idempotent
+and returns the current job after recording stop intent; it does not wait for
+termination or release resources.
 
 ## Endpoint index
 
@@ -73,6 +98,7 @@ Handlers never read identity headers directly.
 | Cluster | `GET /v1/partitions`, `GET /v1/queue` | scheduler |
 | Admin | `/v1/admin/accounts`, `/v1/admin/partitions`, `/v1/admin/qos`, `/v1/admin/limits`, `/v1/admin/nodes` | identity, scheduler |
 | Agents | `/internal/v1/provision/*`, `/internal/v1/ssh-keys/{username}` | identity |
+| Cleanup | `POST /internal/v1/executions/{execution_id}/cleanup` | executor; node-scoped authenticated receipt |
 
 ## Job wire types
 
@@ -110,10 +136,30 @@ Handlers never read identity headers directly.
   returns the complete, normalised spec. Defaults live only in the database,
   never in clients.
 - **Validation:**
-  - The caller must be a member of `team`.
-  - `workdir` must be inside `/mist/teams/<team>/`.
-  - Resources and time must be within partition and QoS maximums.
-  - Every `gpu` job needs `gpus >= 1`.
+  - The caller must be active and a current member of `team`; directory state
+    must be fresh. Admission rechecks this atomically, not just at submission.
+  - `workdir` must be inside the charged team. Omitted workdir uses the personal
+    home for an explicit team; otherwise derive team from the submitted canonical
+    path. Never accept a login landing folder as a job workdir.
+  - Resolve relative output under workdir and expand only `%j`. Require output
+    inside the charged team's durable tree. Executor revalidates inside the
+    restricted mount namespace as the user, handling symlinks/path races without
+    privileged traversal. Missing/unwritable paths produce a clear launch error.
+  - CPU, memory, scratch and time are positive bounded integers; accelerators
+    are nonnegative whole counts. API `cpus` is a whole-core count, converted
+    once to executor millicores (1 CPU = 1000 mCPU). Reject overflow and incompatible partition
+    resources. Enforce partition/QoS maximums, including signal grace 1–120 s.
+  - `gpu` needs GPUs >= 1 and TT boards = 0; `cpu` requires both = 0; `tt` needs
+    boards >= 1 and GPUs = 0. A request must fit at least one configured node.
+  - `interactive` kind requires interactive QoS; batch/command use normal QoS.
+    Users cannot obtain interactive priority for unattached batch jobs.
+  - Optional `runtime` selects only an approved retained partition profile;
+    resolve it to a digest/profile version at admission and freeze it.
+  - Reject unknown/mutually exclusive command fields. Bound script size (1 MiB),
+    env total (64 KiB), argument total (128 KiB) and name length (128 characters).
+    Preserve batch `args` separately; command uses `argv`, without a shell.
+  - User env cannot override identity, allocation, device visibility, internal
+    attach socket or timing fields. Runtime documents the protected names.
 - **Reply:** `201` with the job object, in state `PENDING`.
 
 ### Job object: `GET /v1/jobs/{id}`
@@ -146,29 +192,45 @@ Handlers never read identity headers directly.
 ```
 
 **States and reasons** are defined in [scheduler.md](scheduler.md#job-states).
-Other teams' jobs appear in `GET /v1/queue` with `user`, `team`, `name`,
-`workdir` and `output_path` set to `null` (D15).
+The object also exposes `cleanup_pending`, `cleanup_detail`, `output_incomplete`,
+`authorization_generation`, and (interactive only) `attached`, `detached_at`,
+`reattach_deadline`. The API computes `can_cancel` and `can_attach` using state
+and current authorization. `CLEANING` is nonterminal; a `NODE_FAIL` job may be
+terminal with cleanup still pending and capacity quarantined.
+
+Other teams' jobs appear only in `GET /v1/queue` as an allowlisted summary:
+job ID, partition, QoS, state, resource counts, age and a public pending-reason
+code. Set `user`, `team`, `name`, `workdir` and `output_path` to null. Exclude
+scripts, env, arbitrary error text, event actors and detailed pending messages;
+redacting a few top-level names does not sanitize embedded paths or secrets.
 
 ### Logs: `GET /v1/jobs/{id}/log`
 
 - **Running job:** returns the live output stream from the executor. Add
   `?follow=1` to stream it over a WebSocket.
 - **Finished job:** returns the stored tail (last 64 KiB) from the database.
-- **The full log is always the `.out` file in `/mist`.** The response includes
-  `output_path` so clients can say where it is.
+- **The full log normally resides in `/mist`.** Include `output_path` and
+  `output_incomplete`. Node failure, OOM/SIGKILL, or storage errors can prevent a
+  final footer or file creation; the DB retains the observed outcome and last
+  available tail. API log viewing never reads arbitrary user-supplied paths.
 
 ### Attach: `GET /v1/jobs/{id}/attach` (WebSocket)
 
 Binary frames carry terminal bytes. Text frames carry control messages:
 
-```json
+```jsonl
 { "type": "resize", "cols": 120, "rows": 40 }
 { "type": "signal", "name": "SIGINT" }
 { "type": "exit", "code": 0 }
 ```
 
-Only the job's owner can attach. The CLI's `mist shell` and the later browser
-terminal both use this endpoint.
+Only the currently authorized job owner can attach, while the interactive job
+is `RUNNING`. The holder allows one attachment; a second receives `conflict`.
+Network closure detaches, explicit `POST .../cancel` cancels, and shell exit ends
+the job. Resize and allowed terminal signals target the existing PTY/foreground
+process group; callers cannot specify a PID, executable or alternate command.
+The holder owns grace timing, so API restart cannot reset it. The CLI's `mist
+shell` and later browser terminal use this same endpoint.
 
 ## Versioning
 
