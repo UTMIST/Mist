@@ -269,7 +269,7 @@ under sustained higher-priority demand; the simulator must report that separatel
 ## Reconciliation
 
 The scheduler and the executor agree through events plus regular full
-comparisons (see [executors.md](executors.md#reconciliation)):
+comparisons (see [executors.md](executors.md#cleanup-and-reconciliation)):
 
 | Durable state | Authoritative observation | Action |
 |---|---|---|

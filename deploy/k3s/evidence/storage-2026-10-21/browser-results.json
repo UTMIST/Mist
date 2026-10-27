@@ -1,9 +1,0 @@
-{
-  "checks": [
-    "regular_member_login_and_advisory_storage_display",
-    "real_browser_upload_with_verified_checksum",
-    "both_real_training_jobs_visible_in_member_history",
-    "no_browser_javascript_errors"
-  ],
-  "browser_errors": []
-}
