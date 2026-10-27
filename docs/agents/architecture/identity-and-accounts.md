@@ -35,7 +35,7 @@ flowchart LR
     cache --> state
     state --> prov["Provisioner on TT box<br/>useradd, groups, folders"]
     keys --> keyapi["/internal/v1/ssh-keys/user"] --> relay[mist-relay] --> sshd[sshd login]
-    acct --> nss[mist-nss ConfigMap] --> pods[Job pods: whoami works]
+    acct --> nss[per-job mist-nss projection] --> pods[Job pods: whoami works]
     acct --> authz[identity.Authorize] --> handlers[Every API handler]
 ```
 
@@ -58,17 +58,22 @@ type Team       struct{ ID, Name string }
 type Membership struct{ PersonID, TeamID string; Role string } // "member" | "lead"
 ```
 
-- **Stub.** A YAML file (`deploy/dev/misty-stub.yaml`) loaded at start-up and
-  re-read when it changes. Tests use in-memory fixtures.
-- **Sync.** `mistd api` refreshes the cache every few minutes, and re-reads one
-  person's teams whenever they sign in. Membership changes therefore apply
-  within minutes. Webhooks can replace polling if misty offers them.
+- **Stub.** Development uses `deploy/dev/misty-stub.yaml`; tests use in-memory
+  fixtures. Until misty's real API is available, M1 can use an admin-maintained,
+  access-controlled directory YAML outside Git with actual authorized members.
+  Re-read it on each directory poll, validate the complete snapshot and audit
+  changes; malformed/unreadable input does not renew freshness. Neither form
+  supplies sign-in authentication or bypasses the revocation protocol.
+- **Sync.** `mistd api` refreshes a complete directory snapshot every 60 s,
+  and refreshes at sign-in. Publish snapshots atomically with a generation and
+  `observed_at`; partial/failed fetches must not be interpreted as mass removal.
+  A snapshot is usable for new authorization for at most 5 min. Failure to
+  refresh does not extend that validity. Webhooks may trigger an earlier poll.
 - **Effect of a membership change:**
   - **Added to a team:** the provisioner creates the person's folder in that
     team, and the next login sees it.
-  - **Removed from a team:** the person loses the team's group. Their running
-    jobs charged to that team are cancelled. Their folder stays (see
-    offboarding below).
+  - **Removed from a team:** revoke access using the protocol below, including
+    pending and launching jobs and existing SSH sessions. Files remain.
 
 ## Mist account model
 
@@ -87,8 +92,14 @@ type Membership struct{ PersonID, TeamID string; Role string } // "member" | "le
 | `volume_id` | The storage volume holding the team folder (see [storage.md](storage.md)) |
 
 All researcher accounts also belong to the group `mist-users` (GID 19000), which
-the login gateway uses to select the restricted SSH configuration. These ranges
-avoid the hosts' existing local accounts (UID 1000–1003).
+the login gateway uses to select the restricted SSH configuration. This group
+is permanent, including while disabled or without teams. It grants no team data
+access. These ranges avoid existing local accounts (UID 1000–1003).
+
+Reject reserved usernames (`shared`, service/admin names and existing local
+users), namespace collisions and overlong `team-<slug>` group names before
+allocating an identity. Require uniqueness for usernames, slugs, person IDs,
+UIDs and GIDs in database constraints. Freeze the username before provisioning.
 
 ## Roles
 
@@ -124,8 +135,9 @@ sequenceDiagram
 
 - **Proving identity.** Signing in must prove that the person controls the email
   misty has on record, so that knowing someone's email isn't enough. The method
-  is open: Google or UofT SSO through OAuth, or a one-time email link. Until it
-  is chosen, the portal keeps a session cookie for signed-in users.
+  is open: Google or UofT SSO through OAuth, or a one-time email link. Choose
+  and test one before production M1; a session cookie is not an identity proof.
+  Development fixture authentication must be absent from production builds.
 - **Not registered in misty:** sign-in shows "register with UTMIST first". No
   account is created.
 - **No teams:** the account can exist but has no folders and cannot submit jobs.
@@ -135,9 +147,9 @@ sequenceDiagram
 - Types allowed: `ssh-ed25519`, `ecdsa-sha2-*`, `ssh-rsa` of at least 3072 bits;
   at most 10 keys per account. Each key has a label and a last-used time.
 - **Served live, not written to files.** sshd's `AuthorizedKeysCommand` calls
-  `mist-relay keys <user>`, which asks the API. The relay keeps the last good
-  answer, so logins keep working briefly if `mistd` is down (see
-  [login-gateway.md](login-gateway.md)).
+  `mist-relay keys <user>`, which asks the API. Any cached answer is bounded
+  by the account's authorization lease and applied host generation (see
+  [login-gateway.md](login-gateway.md)); there is no 24-hour fallback.
 - A disabled account has no keys served.
 
 ## Provisioner
@@ -158,18 +170,68 @@ It applies the state idempotently:
 
 1. **Groups:** `mist-users`, `team-<slug>` (fixed GIDs) and personal groups.
 2. **Users:** fixed UID, login home `/mist/login/<user>`, supplementary groups.
-   The login shell is irrelevant because the gateway forces its own command.
+   Set a fixed admin-controlled shell and disable user startup hooks; sshd
+   invokes ForceCommand through that shell, so its configuration matters.
 3. **Folders on volumes this host owns.** The modes are listed in
    [storage.md](storage.md):
    - the team folder, `shared/` and `.cache/`
    - each member's folder, with its private hidden folders
    - the login landing folder, with one link per team
-4. **Disabling:** an account is locked (`usermod -L`, removed from groups), not
-   deleted. **The provisioner never deletes researcher files.**
+4. **Disabling:** write a root-owned local deny entry before changing team
+   groups; retain `mist-users` and the personal group. Expire the account for
+   SSH/PAM as defense in depth; password locking alone is insufficient. Kill
+   gateway sessions through their tracked cgroups. **Never delete files.**
 5. **Refusals:** it refuses to act on any path outside configured volume roots,
    and on UID or GID collisions with existing local accounts, and reports them.
 
 Hosts authenticate to the internal API with per-host tokens (M1), or mTLS later.
+
+## Revocation and provisioning barrier (M1)
+
+1. Identity changes account/membership state, increments its authorization
+   generation, invalidates affected web sessions, and writes a durable revocation
+   record in one transaction. Scheduler admission and cancellation use Identity's
+   package with the same transaction/locking order (account, membership, job).
+2. Scheduler cancels affected `PENDING` jobs and persists stop intent for
+   `LAUNCHING`/`RUNNING` jobs. Disabled accounts affect every team. No subsequent
+   admission or launch replay may use an older authorization generation.
+3. The gateway polls desired state every 30 s. Before applying removed groups it
+   denies new sessions for the UID, invalidates cached keys, closes all that
+   user's SSH transports/channels (including multiplexed sessions), and kills
+   their gateway session cgroups. Existing processes retain old groups, so
+   editing `/etc/group` alone is not revocation. Then apply memberships/links and
+   acknowledge the generation before permitting a fresh login if still active.
+4. Key lookup and session establishment require an active account, an unexpired
+   authorization lease and an applied host generation at least as new as the
+   lease. Leases expire at the earlier of issuance + 5 min and directory snapshot
+   expiry. The root gateway watchdog terminates sessions when leases expire;
+   restarting it must not reset expiry. During an API outage cached access can
+   continue only to that expiry, then both new and existing sessions are denied.
+   Renew online leases every 30 s while eligible; never renew from a stale
+   directory snapshot. Persist expiry in root-owned state, use monotonic elapsed
+   time within a boot, and invalidate leases on reboot or clock rollback.
+5. Scheduler admission also requires ready folders for the charged team and a
+   provisioner report no older than 2 min; otherwise use `PROVISIONING`. An
+   authorization service/directory outage uses `AUTH_UNAVAILABLE`, not a stale
+   grant. Running jobs retain their bounded time limit during an outage; known
+   revocations are stopped and enforced on node recovery.
+
+Newly added membership also increments the generation; admission refreshes the
+current authorized generation only after provisioning acknowledges it. An
+unstarted old-generation launch is cancelled and must be resubmitted rather than
+mutating its frozen LaunchSpec.
+
+Report `revocation_pending` until gateway and job-stop acknowledgements arrive;
+an unreachable node may still be executing work. Do not claim immediate remote
+revocation during a partition. Keep it unschedulable until reconciled. API
+requests and streams reject known revoked membership immediately. Key deletion
+invalidates key caches and terminates gateway sessions for that account (M1
+uses this conservative policy rather than tracking which key each channel used).
+
+Provision state includes per-account generations, active/deny state, lease expiry,
+team placement and membership; reports include applied generations, session-kill
+acknowledgements, readiness and errors. These are durable fields, not in-memory
+notifications. File-retention policy is independent from access revocation.
 
 ## API endpoints owned
 
@@ -186,7 +248,7 @@ Hosts authenticate to the internal API with per-host tokens (M1), or mTLS later.
 ## Database tables owned
 
 `people` (misty cache), `teams`, `memberships`, `accounts`, `ssh_keys`,
-`id_allocations`, `provision_reports`, `sessions`.
+`id_allocations`, `provision_reports`, `sessions`, `revocations`, `authorization_leases`.
 
 ## Work by milestone
 
@@ -197,7 +259,9 @@ Hosts authenticate to the internal API with per-host tokens (M1), or mTLS later.
   - SSH keys
   - provisioner: users, groups and folders
   - key lookup for the relay
-- **M3:** team-lead permissions in the portal, and admin account management.
+  - authorization leases, revocation records, gateway acknowledgements
+  - admin account disable/enable API and job cancellation on removal
+- **M3:** team-lead and admin management UI (enforcement already exists in M1).
 - **Later:**
   - the real misty client
   - SSO

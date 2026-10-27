@@ -41,10 +41,13 @@ flowchart TD
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
+PermitUserEnvironment no
 AuthorizedKeysCommand /usr/local/bin/mist-relay keys %u
 AuthorizedKeysCommandUser mist-keys
 
 Match Group mist-users
+    AuthorizedKeysFile none
+    PermitUserRC no
     ForceCommand /usr/local/bin/mist-gate
     AllowTcpForwarding no
     AllowAgentForwarding no
@@ -53,6 +56,19 @@ Match Group mist-users
     X11Forwarding no
     PermitTTY yes
 ```
+
+This is a configuration fragment, not a complete access-control installation.
+Install a root-controlled SSH/PAM account/session check backed by the local
+active/deny state and lease from Identity. Track and register each researcher
+transport/session before it can run a command, and deny on missing/stale state.
+Retain `mist-users` permanently. Keep the login home root-owned, use a fixed
+admin-controlled shell, and disallow user startup hooks and environment injection
+(including `LD_*`, `BASH_ENV`, `ENV`, and unsafe `AcceptEnv` entries). Verify the
+effective configuration with `sshd -T -C` for active, disabled and admin accounts.
+Admin access uses an explicit separate allowlist, independent of researcher leases.
+`PermitUserEnvironment` is global (not valid inside Match); keep the installed
+OpenSSH version's allowed Match directives in mind. Reference:
+[sshd_config](https://man.openbsd.org/sshd_config).
 
 Researcher sessions run inside a systemd slice (`mist-login.slice`) with a total
 cap (for example 4 CPUs and 16 GiB) and a per-user process limit. Gateway work
@@ -65,7 +81,7 @@ either runs an allowed program or refuses:
 
 | Request | Action |
 |---|---|
-| SFTP subsystem (also used by modern `scp`) | exec `sftp-server` |
+| SFTP subsystem (also used by modern `scp`) | exec `sftp-server -u 0027` |
 | Legacy `scp -t` / `scp -f` | exec `scp` with only those server-mode flags |
 | `rsync --server ...` | validate flags as `rrsync` does (no remote shell or daemon options); exec `rsync` |
 | `mist <args>` | exec the `mist` CLI |
@@ -81,6 +97,17 @@ real shell or arbitrary programs. It offers:
 - `help` and `exit`
 
 A pager like `less` is not offered, because pagers can launch shells.
+
+Set `umask 0027` before dispatch, use absolute executable paths and a sanitized
+environment, and never pass the original command through a shell. Match parsed
+argv against explicit allowlists, including rsync server flags. File operations
+must be confined to the user's authorized team paths and login landing links;
+Unix access to arbitrary host paths such as `/proc`, devices or runtime sockets
+is not an allowed transfer capability. Implement and test confinement for each
+external transfer server (a rooted filesystem view or equivalent audited
+restriction), including symlink traversal and rename races. A command-name
+allowlist alone is insufficient. Integrate transfer permissions with
+[storage.md](storage.md#access-rules).
 
 On login it prints a banner: team folders, a reminder of what is private (see
 "What researchers see" in [storage.md](storage.md)), storage warnings, and
@@ -113,10 +140,15 @@ sequenceDiagram
   `/internal/...`. It proxies WebSockets, for log follow and interactive attach.
 - **The relay token is powerful,** since it can assert any user. It lives in
   `/etc/mist/relay.token` (0600 root) and is rotated if exposed.
-- **It also serves SSH key lookups** for sshd (`mist-relay keys <user>`). It
-  caches the last good answer per user for up to 24 hours, so a short API outage
-  doesn't block logins. A disabled account is dropped from the cache when the API
-  next answers.
+- **SSH key lookup:** cached keys are usable only while the authorization lease
+  is valid and the local applied generation matches. Deny entries override all
+  caches. Never renew a lease from cached data. The root watchdog closes all SSH
+  sessions for expired/revoked accounts, including SFTP, rsync and multiplexed
+  connections. See [the revocation protocol](identity-and-accounts.md#revocation-and-provisioning-barrier-m1).
+- **Socket authorization:** strip all client credentials before adding relay
+  credentials, normalize the route once, and enforce the allowlist after
+  normalization. Disabled accounts cannot use the relay even though they retain
+  socket group membership. Key lookup is a separate operation from user proxying.
 
 ## The `mist` CLI
 
@@ -148,7 +180,8 @@ translate easily.
 --output <path>                default: mist-%j.out in the submit folder
 --chdir <path>                 default: current folder
 --env KEY=VALUE                repeatable; the login environment is NOT copied
---signal-grace 60s             time between SIGTERM and SIGKILL
+--signal-grace 60s             time between SIGTERM and SIGKILL (1–120 s)
+--runtime <profile-version>    approved retained profile for the partition
 ```
 
 **Defaults the CLI fills in:**
@@ -156,17 +189,21 @@ translate easily.
 - **Working directory:** the folder the command was run from. Inside the gate
   prompt that is the `cd` location; for `ssh host mist ...` it is the login
   landing folder.
-- **Team:** taken from that folder (`/mist/teams/<team>/...`). It is required
-  only when outside any team folder.
+- **Team:** send the canonical current path and an explicit team if supplied;
+  the API derives/validates the charged team. Resolve landing-folder symlinks.
+  Outside a team directory require `--team`; absent `--chdir`, the API then uses
+  that team's personal home. Never submit `/mist/login/<user>` as a job workdir.
 
-The CLI turns options into a job spec (see [api.md](api.md)) and sends it
-through the relay. All checks happen in the API. The CLI only parses input and
+The CLI turns options into a job spec (see [api.md](api.md)), generates one
+Idempotency-Key per submission and reuses it on transport retries through the
+relay. A user-requested resubmit uses a new key. All checks happen in the API. The CLI only parses input and
 displays results.
 
 ## Work by milestone
 
 - **M1:**
-  - sshd config
+  - sshd config, startup-hook hardening and transfer path confinement
+  - root session tracking/watchdog, bounded leases and revocation acknowledgements
   - `mist-gate` with SFTP, scp, rsync and the gate prompt
   - `mist-relay` with key lookup
   - CLI: `submit`, `run`, `jobs`, `queue`, `show`, `logs`, `cancel`,

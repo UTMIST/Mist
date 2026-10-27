@@ -78,16 +78,19 @@ Other teams' folders don't exist inside a job.
 | `MIST_TIME_LIMIT_SECONDS`, `MIST_DEADLINE` (Unix time) | time limit |
 | `MIST_SUBMIT_DIR`, `MIST_SCRATCH` | paths |
 | `OMP_NUM_THREADS`, `MKL_NUM_THREADS` | `MIST_CPUS` |
-| `CUDA_VISIBLE_DEVICES` | allocated GPUs, numbered from 0 |
+| `CUDA_VISIBLE_DEVICES` | executor/runtime mapping of allocated GPU IDs; CUDA exposes the visible set as logical 0..N-1 |
 | `PYTHONUNBUFFERED` | `1`, so output appears live in the `.out` file |
 | `HF_HOME` | `/mist/teams/<team>/.cache/huggingface` (team-shared) |
 | `HF_TOKEN_PATH` | `$HOME/.cache/huggingface/token` (**private**) |
 | `TORCH_HOME` | `/mist/teams/<team>/.cache/torch` (team-shared) |
-| user `--env` values | as given; they override the variables above except `MIST_*`, `HOME` and `USER` |
+| user `--env` values | may override tuning/tool values, not protected identity/device/timing fields below |
 
 The login session's environment is **not** copied into jobs. Jobs get only the
 variables above plus `--env` values, so they behave the same however they were
-submitted.
+submitted. Protected names are `MIST_*`, `HOME`, `USER`, `LOGNAME`, `PWD`,
+`SHELL`, `TMPDIR`, `CUDA_VISIBLE_DEVICES`, `NVIDIA_VISIBLE_DEVICES` and all
+executor-specific device/attach settings. Define a baseline `PATH` in the pinned
+profile. `MIST_DEADLINE` is computed at actual work start, not admission time.
 
 **How caches land.** Tools without an explicit mapping follow `$HOME` and XDG
 defaults, so their caches land privately in `$HOME/.cache`, and config in
@@ -98,7 +101,7 @@ team.
 
 `mist-job-entry` does this at the start of every job:
 
-1. sets `umask 0007` (team-readable and team-writable files, nothing for others)
+1. sets `umask 0027` (personal files team-readable, not team-writable; nothing for others)
 2. ensures `$HOME/.cache`, `.config`, `.local` and `.ssh` exist with mode `0700`
 3. opens the output file and writes a header
 4. starts the script (through `bash`, from `workdir`), the command, or the
@@ -127,7 +130,14 @@ Example tail of an output file:
   **SIGTERM**, then **SIGKILL** after the grace period (default 60 s, set with
   `--signal-grace`).
 - **The deadline is known in advance.** `MIST_DEADLINE` lets code plan its final
-  checkpoint without waiting for the signal.
+  checkpoint without waiting for the signal. Work-start time is authoritative;
+  image pulling is bounded by a separate 10 min launch timeout. A local timer
+  forwards signals even with the scheduler down; the executor's independent
+  deadline backstop still terminates jobs that stop or bypass the wrapper, with
+  the bounded outage overrun documented in the executor contract.
+- **Interactive:** one holder owns one persistent PTY/shell. Disconnect keeps it
+  alive for 10 min; reattach resumes its state. Walltime continues detached.
+  Shell exit 0 succeeds, nonzero fails, and cleanup precedes resource reuse.
 
 ## Network
 
@@ -150,8 +160,9 @@ This section is the source for user-facing documentation.
   your folder's hidden directories automatically.
 - **`$TMPDIR` / `/scratch`** is fast local disk that is deleted when the job ends,
   even after a crash or cancel. Save checkpoints in your folder.
-- **Running out of memory or time** is stated plainly at the end of the output
-  file.
+- **Running out of memory or time** is reported in the API/job record. The
+  output file normally has a footer, but SIGKILL, OOM and storage/node failure
+  can leave it incomplete; the portal marks that explicitly.
 - **To checkpoint before the time limit,** handle SIGTERM: you get 60 s by
   default (`--signal-grace` changes it).
 - **Downloads.** Run them with `mist run -p cpu -- <command>`, or interactively

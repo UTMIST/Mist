@@ -26,7 +26,7 @@ flowchart LR
     I -.-> NE["Node executor (M5)"]
 
     K -->|client-go| KAPI[k3s API server]
-    KAPI --> Pod["Pod job-ID<br/>uid, team gid, nodeName,<br/>requests = limits, no token"]
+    KAPI --> Pod["Pod job-ID<br/>uid, team gid, chosen node,<br/>requests = limits, no token"]
     KAPI --> CM["ConfigMap job-ID<br/>script + job.json"]
     Pod --> Vol["Volumes: team folder, software,<br/>scratch, /dev/shm, mist-nss"]
     Pod --> Dev["Device plugin / DRA<br/>allocated GPUs or boards"]
@@ -51,7 +51,9 @@ type Executor interface {
     // Nodes reports schedulable capacity and health for nodes this executor manages.
     Nodes(ctx context.Context) ([]Node, error)
 
-    // Launch starts the job on spec.Node. Idempotent per spec.JobID.
+    // Launch ensures the one execution exists on spec.Node. Same ID/spec is
+    // repeat-safe; never recreate an execution with a recorded native object
+    // UID or evidence that it has started/ended after that object disappears.
     Launch(ctx context.Context, spec LaunchSpec) error
 
     // Terminate sends SIGTERM, then SIGKILL after grace. Idempotent.
@@ -66,12 +68,17 @@ type Executor interface {
     // List returns every execution this executor knows about, for reconciliation.
     List(ctx context.Context) ([]Execution, error)
 
-    // Events delivers state changes. Delivery is at-least-once; consumers dedupe by (JobID, Kind).
+    // Events is an at-least-once notification stream. Persist and dedupe by
+    // EventID; List/observation receipts recover missed notifications.
     Events() <-chan Event
 }
 
 type LaunchSpec struct {
     JobID        int64
+    ExecutionID  string             // immutable UUID; one execution per job
+    SpecHash     string             // immutable normalized spec digest
+    AuthGeneration int64            // authorization used at admission
+    LaunchDeadline time.Time        // admitted_at + launch timeout
     Kind         Kind               // Batch | Command | Interactive
     Node         string
     User         User               // Name, UID, PersonalGID
@@ -84,21 +91,23 @@ type LaunchSpec struct {
     Workdir      string
     OutputPath   string
     Script       string             // Batch
+    Args         []string           // Batch arguments (never shell-concatenated)
     Argv         []string           // Command
-    Env          map[string]string  // full job environment, see runtime-environment.md
+    Env          map[string]string  // frozen base; work-start/deadline fields derived at startup
     Runtime      string             // partition runtime image / host profile, pinned
     TimeLimit    time.Duration      // executor sets a backstop slightly beyond this
     SignalGrace  time.Duration
 }
 
 type Event struct {
+    EventID  string      // stable across redelivery
     JobID    int64
-    Kind     EventKind   // Started | Exited | LaunchFailed | Lost
+    ExecutionID string
+    Kind     EventKind   // Started | Finished | Exited | LaunchFailed | Lost
     Node     string
     ExitCode *int
     Reason   ExitReason  // Normal | OutOfMemory | ScratchExceeded | Deadline | Signaled | ...
     Detail   string      // human-readable, shown to users
-    Transient bool       // for LaunchFailed: safe to retry once
     At       time.Time
 }
 
@@ -113,7 +122,30 @@ type Node struct {
 ```
 
 The scheduler and API depend only on this package. Kubernetes and systemd types
-never leak outside their executor packages.
+never leak outside their executor packages. Define the supporting wire types in
+this package before component implementations:
+
+- `Execution`: JobID, ExecutionID, SpecHash, Node, observed phase, native object
+  UID, started/finished timestamps, exit result, cleanup status and evidence.
+- `Resources`: CPU millicores, memory/scratch bytes, whole GPU/board counts,
+  hugepage bytes (M4). `Mount`: volume ID, source, absolute target, read-only.
+- `Terminal`: byte input/output, resize and allowed signal controls, plus a
+  cancellation context. Stream cancellation detaches; it does not cancel a job.
+- `List` must distinguish unavailable/incomplete observations from authoritative
+  absence. Failed calls are errors, never an empty successful list. Merge live
+  objects with durable execution receipts; a watch stream is not a history store.
+
+The executor persists create intent, object UID, start/finish observations and
+cleanup receipts in executor-owned database tables through its package. Persist
+finish metadata and bounded log tail before deleting execution objects. Scheduler
+state changes and event consumption are transactional; events carry stable IDs.
+Only the scheduler issues Launch/Terminate; the API uses read/log/attach methods.
+A mismatched SpecHash for an existing ExecutionID is a hard conflict. M1 never
+reruns an execution that has started, even if the process ended before a watch
+observed it. A recorded native object UID also forbids recreating a missing Pod:
+it may have run before deletion without a start notification. Without evidence
+that an ambiguous creation never ran, report loss/quarantine rather than replay.
+Durable tombstones prevent ID reuse after cleanup.
 
 ## Guarantees every executor must provide
 
@@ -122,19 +154,25 @@ These guarantees are tested by a shared **conformance suite**
 nodes.
 
 1. **Identity.** Processes run as `User.UID`. The primary group is `TeamGID`.
-   The supplementary groups are exactly `ExtraGIDs` plus `PersonalGID`. There is
-   no privilege escalation and there are no capabilities.
+   Supplementary groups may contain only `ExtraGIDs`, `PersonalGID` and a
+   redundant `TeamGID` (some runtimes include the primary group there). No other
+   team/system groups are allowed. There is no privilege escalation or capability.
 2. **Filesystem view.**
    - **Visible:** only the given mounts, at `/mist/teams/<team>` and
      `/mist/software` (read-only), plus `/scratch`. Other teams' folders are
      absent, not merely denied.
-   - **Writable:** only the team folder (as permissions allow), `/scratch` and
-     `/tmp`. `/tmp` lives inside scratch.
-3. **Devices.** Only the allocated GPUs or TT boards can be opened, and they
-   appear numbered from 0.
+   - **Writable:** only the team folder (as permissions allow), `/scratch`,
+     `/tmp` and memory-backed `/dev/shm`. `/tmp` lives inside scratch.
+3. **Devices.** Only allocated GPUs/TT boards can be opened. CUDA presents the
+   allocated GPU set with logical indices from 0; host device filenames need not
+   be renumbered. Do not hard-code CUDA_VISIBLE_DEVICES=0 for every physical GPU;
+   verify the plugin/runtime's UUID or index mapping for both A4000s. Native
+   execution uses allocated physical IDs/UUIDs; CUDA remaps that visible set.
 4. **Limits.** CPU and memory limits apply, swap is off, and scratch is capped.
-   Hitting the memory limit gives `OutOfMemory`; going over scratch gives
-   `ScratchExceeded`.
+   Hitting the memory limit gives `OutOfMemory`; detected scratch excess gives
+   `ScratchExceeded`. K3s ephemeral storage limits are eviction thresholds, not
+   synchronous write quotas. Reserve disk headroom and reject admissions under
+   disk pressure. Include `/dev/shm` in the memory budget.
 5. **Time limits.** `Terminate` delivers SIGTERM to the job's processes, then
    SIGKILL after the grace period. A backstop kills the job even if the
    scheduler is down.
@@ -146,8 +184,10 @@ nodes.
 7. **Output.** Output goes to `OutputPath` through `mist-job-entry` (below), and
    live output is also available from `Logs`.
 8. **Cleanup.** When the job ends, all of its processes are gone, scratch is
-   deleted and devices are free. Executors report `Exited` only once this is
-   true.
+   deleted and devices are free. `Finished` reports process exit; `Exited`
+   acknowledges completed cleanup. Allocation release requires `Exited` or an
+   equivalent durable cleanup receipt. Failed cleanup keeps capacity reserved;
+   node loss quarantines it until reconciliation proves cleanup.
 9. **Repeat-safe and recoverable.** Repeating `Launch` or `Terminate` is safe.
    After a restart, `List` reports what is actually running.
 
@@ -158,15 +198,15 @@ executor. It is the single place that implements the job contract in
 [runtime-environment.md](runtime-environment.md):
 
 1. **Set up:**
-   - set `umask 0007`
+   - set `umask 0027`
    - create, or reset to `0700`, `$HOME/{.cache,.config,.local,.ssh}`
    - create the output file and write a header (job ID, node, resources, start
      time)
 2. **Run the work:**
    - **Batch:** `bash <script> <args>`
    - **Command:** run the argv directly
-   - **Interactive:** wait (the holder) until a session starts or the job is
-     terminated
+   - **Interactive:** the holder creates one persistent PTY and login shell,
+     then accepts attach clients; the shell starts once per execution
 3. **Handle output and signals:**
    - copy stdout and stderr to both the output file and its own stdout, so live
      logs work under any executor
@@ -179,8 +219,24 @@ executor. It is the single place that implements the job contract in
      termination message)
    - exit with the child's exit code
 
-Interactive sessions run `mist-job-entry --session`, which starts `bash -l` in
-the working directory with the job's environment.
+The interactive holder owns the PTY master for the job's lifetime. An attach
+helper (`mist-job-entry --attach`) connects to its job-private Unix socket and
+relays framed bytes/resizes/signals; it never starts another shell. Use one
+attached client at a time (second attach returns `conflict`), with a bounded
+64 KiB output ring while detached. Drain the PTY even when disconnected. Reattach
+preserves shell PID, cwd, variables and foreground processes; replay is marked so
+clients do not mistake buffered bytes for new output. Do not log terminal input.
+The holder records detach time, enforces the 10 min grace locally and reports it
+through execution observations. API restart closes transport but not the PTY;
+reconnection does not depend on API memory. Holder death fails the job rather
+than silently creating a fresh shell. The holder and shell share the job cgroup.
+
+An unprivileged wrapper cannot guarantee a footer after SIGKILL, OOM or node
+failure, and cannot be trusted as the sole source of limit/cleanup evidence.
+Use kubelet/cgroup observations for authoritative reasons. Persist a synthetic
+final message in the DB tail when needed; expose `output_incomplete` if the
+`.out` file could not be finalized. Never run privileged file writes against
+user-controlled output paths to repair a missing footer.
 
 ## K3s executor (M1)
 
@@ -188,10 +244,13 @@ the working directory with the job's environment.
 
 All jobs run in one namespace, `mist-jobs`. Each job gets:
 
-- **A Pod `job-<id>`.** Not a Kubernetes Job, because Mist owns retries (none)
-  and state. It is labelled `mist/job-id`, `mist/partition` and `mist/team`.
+- **A Pod `job-<id>`.** Not a Kubernetes Job, because Mist owns state. Label it
+  with `mist/job-id`, `mist/execution-id`, `mist/partition` and `mist/team`;
+  annotate the SpecHash and record its Kubernetes UID in the execution receipt.
 - **A ConfigMap `job-<id>`** holding the script and `job.json`. The Pod owns it,
-  so Kubernetes deletes it with the Pod.
+  so Kubernetes deletes it with the Pod. Create the ConfigMap first, create the
+  Pod, then patch the owner reference with the Pod UID; reconcile crashes between
+  steps and garbage-collect orphan ConfigMaps. Never overwrite a conflicting spec.
 - **A ResourceClaim** for TT boards (M4), using the existing Tenstorrent DRA
   driver.
 
@@ -199,12 +258,12 @@ All jobs run in one namespace, `mist-jobs`. Each job gets:
 
 | Field | Value | Why |
 |---|---|---|
-| `nodeName` | scheduler's choice | Bypasses the Kubernetes scheduler (D1) |
+| Placement | `nodeName` for GPU/CPU; exact unique node selector and no `nodeName` for TT/DRA | Mist chooses admission and node; Kubernetes allocates TT claims (D18) |
 | `restartPolicy` | `Never` | No silent restarts |
-| `activeDeadlineSeconds` | time limit + grace + 60 s | Backstop if `mistd` is down |
+| `activeDeadlineSeconds` | launch timeout + time limit + grace + 60 s | Coarse backstop; pod lifetime includes startup |
 | `terminationGracePeriodSeconds` | signal grace | SIGTERM → SIGKILL timing |
 | `automountServiceAccountToken`, `enableServiceLinks` | `false` | No cluster access from jobs |
-| `securityContext` | `runAsUser: uid`, `runAsGroup: team gid`, `supplementalGroups: [19000, personal gid]`, `runAsNonRoot`, `seccompProfile: RuntimeDefault` | D4, D5 |
+| `securityContext` | `runAsUser: uid`, `runAsGroup: team gid`, `supplementalGroups: [19000, personal gid]`, `supplementalGroupsPolicy: Strict`, `runAsNonRoot`, `seccompProfile: RuntimeDefault` | D4, D5 |
 | container `securityContext` | `allowPrivilegeEscalation: false`, drop `ALL` capabilities, `readOnlyRootFilesystem: true` | Writes go only to `/mist`, `/scratch`, `/tmp` |
 | **no `fsGroup`** | — | `fsGroup` would rewrite ownership of team files |
 | resources | requests = limits for `cpu`, `memory`, `nvidia.com/gpu`, `ephemeral-storage` | Guaranteed QoS class; the device plugin isolates GPUs |
@@ -218,7 +277,7 @@ All jobs run in one namespace, `mist-jobs`. Each job gets:
 | `/mist/software` (ro) | NFS or `hostPath`, likewise |
 | `/scratch`, `/tmp` | one `emptyDir` with `sizeLimit` = scratch request (`/tmp` is a sub-path) |
 | `/dev/shm` | `emptyDir`, `medium: Memory`, sized to half the memory request (PyTorch DataLoader workers need it) |
-| `/etc/passwd`, `/etc/group` | ConfigMap `mist-nss`, generated by the API from accounts, so `whoami`, `getpass` and ssh work |
+| `/etc/passwd`, `/etc/group` | Per-job `mist-nss` projection: required system entries, submitter and charged-team identities only; no other-team membership data |
 | `/etc/mist/job.json`, script | ConfigMap `job-<id>` |
 
 ### Network
@@ -226,40 +285,84 @@ All jobs run in one namespace, `mist-jobs`. Each job gets:
 A NetworkPolicy in `mist-jobs` denies all inbound traffic. It allows outbound
 traffic to DNS and to the internet, except `10.0.0.0/8`, `172.16.0.0/12`,
 `192.168.0.0/16` and `100.64.0.0/10`. k3s's built-in policy controller enforces
-it.
+it. Also install host-level filtering for job-origin traffic to the local node
+and its services; ordinary NetworkPolicy alone is not the host boundary. The
+complete policy and tests are in [deployment-and-network.md](deployment-and-network.md#job-network-boundary-m1).
+DNS is an explicit port-53 exception to approved resolvers, not a blanket cluster
+service exception. Disable IPv6 for job networks until equivalent filtering is
+verified. Test both local and remote host addresses and service IPs.
 
 ### Status mapping
 
 | Observed | Event |
 |---|---|
-| Pod scheduled, container running | `Started` |
-| Container terminated | `Exited`, with the code and reason from the termination message (fallback: Kubernetes `OOMKilled`, `DeadlineExceeded`, evicted for ephemeral storage → `ScratchExceeded`) |
-| Admission errors (`UnexpectedAdmissionError`, out of `nvidia.com/gpu`), image errors | `LaunchFailed` (admission errors are transient) |
+| Container started (interactive holder ready for M2) | `Started`, with actual start time; never informer receipt time |
+| Container terminated | `Finished`; persist result/log tail and begin cleanup. Prefer trusted OOM/deadline/eviction observations over wrapper messages. |
+| Cleanup verified | `Exited` with durable outcome and cleanup receipt |
+| Definitive admission rejection, image/mount/startup timeout before work starts | Clean partial resources, then `LaunchFailed`; no automatic new execution |
 | Pod deleted outside Mist, or node `NotReady` > 2 min with the pod unknown | `Lost` |
 
 The executor watches pods (filtered by label) and nodes through shared
 informers. `Nodes()` reports node allocatable values for CPU, memory,
 `nvidia.com/gpu` and ephemeral storage, plus TT board counts from DRA resource
-slices.
+slices. Report capacity net of Kubernetes host/system reservations, and expose
+that reservation explicitly so Mist does not subtract it twice. Subtract any
+additional Mist reserve once. Account for non-Mist workloads in the reserved
+budget; prohibit unmanaged workload placement on compute capacity. Nodes with
+unsupported strict groups, swap configuration or missing firewall rules are not
+healthy. Pin k3s, runtime and plugin versions and run conformance before upgrades.
+
+Startup timeout defaults to 10 min from admission, including image pulls, mounts
+and DRA. No workload-start retry after that timeout. `mist-job-entry` has a local
+monotonic time-limit timer from work start, and the executor has an independent
+backstop; user-controlled wrapper state is not sufficient enforcement. M1 must
+verify the installed runtime's deadline behavior with the scheduler stopped.
+The coarse Pod backstop can allow up to the launch-timeout allowance beyond
+normal walltime, plus its documented grace/polling slack; do not advertise it as
+an exact work-start timer. The normal scheduler and local wrapper enforce the
+work-start deadline. Test and record the maximum outage overrun on the pinned
+runtime, including a stopped wrapper; if exact outage timing is required, add a
+trusted node deadline supervisor before claiming that stronger guarantee.
+Strict supplemental groups require runtime support; check the node feature and
+actual process groups, rather than trusting an accepted field. Reference:
+[Kubernetes security context](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/).
 
 ### Logs and attach
 
 - **`Logs`** uses `pods/log` (with `follow`), which carries the copy of the
   output that `mist-job-entry` writes to stdout.
-- **`Attach`** uses `pods/exec` with a TTY over WebSocket, running
-  `mist-job-entry --session`. Terminal resizes map to the exec resize queue.
-  When the session's shell exits, the executor terminates the holder.
+- **`Attach`** uses `pods/exec` without allocating a second TTY, running only
+  the fixed `mist-job-entry --attach` helper. Framed resize/signal controls go to
+  the holder's existing PTY. Closing exec detaches. Shell exit ends the holder
+  with the shell's exit code; it is not inferred from exec transport closure.
+  The relay/API preserve stream framing and backpressure without buffering
+  unbounded output.
 
 ### Cleanup and reconciliation
 
 <a id="reconciliation"></a>
 
-- **Cleanup:** after `Exited` is recorded and the log tail saved, the pod is
-  deleted 10 minutes later, which leaves a window for admin debugging.
-- **Reconciliation** compares `List()` (pods with `mist/job-id`) with the
-  database every 60 s and after each restart:
-  - pods for terminal or unknown jobs are deleted
-  - jobs marked live in the database with no pod are reported `Lost`
+- Persist `Finished`, exit metadata and the log tail before deletion; scheduler
+  enters `CLEANING` and keeps the allocation. Delete the pod and its owned
+  resources promptly; do not retain live storage for a debugging window.
+- Deletion from the API is not proof that the node stopped or deleted scratch.
+  A privileged, narrowly scoped cleanup reporter on each K3s node confirms the
+  recorded container/cgroup is gone, that execution's scratch volume is removed
+  and device teardown completed. It must verify execution/object UID and safe
+  paths; it never deletes arbitrary paths supplied by jobs. Send authenticated,
+  durable receipts via the internal API. Missing reporter/receipt keeps capacity
+  reserved and alerts an admin. TT also requires a successful board reset.
+- Only then emit `Exited` and release resources. Keep diagnostics and tombstones
+  in the database, including when API deletion or cleanup is retried.
+- Compare authoritative observations every 60 s and on restart. Follow the
+  state-specific matrix in [scheduler.md](scheduler.md#reconciliation): a missing
+  pod for an unstarted `LAUNCHING` intent is recoverable, not automatically Lost.
+- Unknown executions are stopped and quarantined until cleanup is proven.
+  A timed-out launch request is ambiguous: read back the same object identity;
+  never create a replacement ID. Serialize per-job launch/stop operations and
+  drain in-flight calls before acknowledging cleanup. If a late creation cannot
+  be excluded, keep the node quarantined and reconcile; never release capacity
+  merely because one read returned NotFound.
 
 ### RBAC
 
@@ -271,11 +374,22 @@ slices.
 
 ### Tenstorrent (M4)
 
-- **Allocation:** boards through DRA claims, plus `hugepages-1Gi` requests and
-  `/dev/hugepages`, as `tt-metal` requires.
+- **Allocation:** after Mist commits admission, create board DRA claims and a
+  Pod constrained by an exact unique node selector. Do not set `nodeName`:
+  Kubernetes must allocate/reserve claims before kubelet can start the Pod.
+  Mist still decides when and on which node work is admitted. Claim failure
+  triggers launch-timeout cleanup, never placement on another node.
+- Include `hugepages-1Gi` in discovery, admission and the immutable allocation
+  ledger, with a matching `/dev/hugepages` mount. Record exact boards from the
+  allocated claims before work starts; board identity is needed in M4 for reset.
+  Validate the installed DRA driver's n300 board/chip granularity and reset
+  scope on hardware before enabling concurrent TT jobs.
 - **Reset after each TT job:** a short privileged pod, created by the executor
   on that node, runs `tt-smi -r` on the job's boards. The allocation is released
-  only when the reset succeeds. A failed reset marks the board unhealthy.
+  only when the reset succeeds and claim teardown is confirmed. Keep the node
+  unavailable for new TT admissions while resetting unless the driver proves
+  board-local reset cannot affect other jobs. A failed reset quarantines the
+  affected board (or the whole node if reset scope is uncertain).
 
 ## Node executor (M5)
 
@@ -290,19 +404,30 @@ The agent starts a systemd **transient unit** `mist-job-<id>.service` (in
 
 | Guarantee | systemd property |
 |---|---|
-| Identity | `User=`, `Group=` (team), `SupplementaryGroups=`, `NoNewPrivileges=yes`, `UMask=0007` |
+| Identity | Root-owned launcher performs explicit `setgroups(ExtraGIDs + PersonalGID)`, `setresgid(TeamGID)`, `setresuid(UID)`, drops all capability sets, and verifies credentials before exec; `NoNewPrivileges=yes`, `UMask=0027` |
 | CPU and memory | `AllowedCPUs=` (a CPU set per allocation), `MemoryMax=`, `MemorySwapMax=0`, `TasksMax=` |
 | Devices | `DevicePolicy=closed` + `DeviceAllow=` for the allocated `/dev/nvidiaN` (plus `nvidiactl`, `nvidia-uvm*`) or `/dev/tenstorrent/N`; `CUDA_VISIBLE_DEVICES` set to match |
 | Filesystem view | `TemporaryFileSystem=/mist/teams:ro` + `BindPaths=/mist/teams/<team>`; `BindReadOnlyPaths=/mist/software`; scratch bound at `/scratch` and `/tmp`; `ProtectSystem=strict`, `ProtectHome=yes` |
-| Network | `IPAddressDeny=` the internal ranges; `IPAddressAllow=` DNS |
+| Network | Per-job network namespace and veth through the same outbound-only host firewall policy as K3s; DNS exception only to approved resolvers |
 | Time limit | `RuntimeMaxSec=` as backstop; `KillSignal=SIGTERM`, `TimeoutStopSec=` grace |
 | Exit reason | Unit `Result=` (`oom-kill`, `timeout`, `exit-code`) and `ExecMainStatus` |
 
 ### Interactive sessions
 
-The agent allocates a PTY and starts `mist-job-entry --session` as a second
-transient unit inside the job's slice, passing the PTY as its standard input and
-output. The agent keeps the PTY master and streams it over gRPC.
+Use the same persistent holder/PTY protocol as K3s, inside the main job unit.
+The agent streams bytes to its Unix socket over gRPC; it does not launch a second
+unit with independent resource limits. Agent restart reconnects to the surviving
+holder without replacing the shell. All shell descendants share the allocation's
+limits, mounts, devices and cancellation boundary.
+
+`SupplementaryGroups=` extends NSS memberships; it is not a replacement list.
+Do not rely on `User=` plus that setting to isolate a multi-team account. The
+credential launcher is trusted, minimal, takes only validated root-owned job
+specs, fails closed on every setup error, and drops privilege before any user
+file or shell startup code is executed. Hide host process/runtime sockets and
+other user paths as well as `/mist/teams`; use a private PID/mount/network view.
+A systemd property table alone is not proof of parity with container isolation.
+The M5 prototype must pass the complete conformance suite before migration.
 
 ### Prerequisites
 
@@ -327,7 +452,18 @@ output. The agent keeps the PTY master and streams it over gRPC.
   - the interface and conformance suite
   - `mist-job-entry`
   - the K3s executor for batch and command jobs on `gpu` and `cpu`
-  - logs and reconciliation
+  - durable receipts, cleanup reporter, state-specific reconciliation
+  - network enforcement and credential/permission conformance
 - **M2:** `Attach` and the interactive holder.
 - **M4:** TT allocation, hugepages and board reset.
 - **M5:** the node executor, which passes the same conformance suite.
+
+## Platform references
+
+Use documentation matching the pinned deployed versions; these references explain
+why the contracts above cannot be inferred from Pod existence or a field alone:
+
+- [DRA and pre-scheduled Pods](https://kubernetes.io/docs/concepts/resource-management/dynamic-resource-allocation/how-dra-works/)
+- [Local ephemeral storage accounting and eviction](https://kubernetes.io/docs/concepts/storage/ephemeral-storage/)
+- [emptyDir lifecycle](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir)
+- [systemd supplementary-group behavior](https://www.freedesktop.org/software/systemd/man/258/systemd.exec.html)

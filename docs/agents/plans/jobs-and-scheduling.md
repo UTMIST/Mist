@@ -4,7 +4,13 @@
 `mist-job-entry`, job API endpoints. **Architecture:**
 [ARCHITECTURE.md](../../../ARCHITECTURE.md),
 [scheduler.md](../architecture/scheduler.md),
-[executors.md](../architecture/executors.md).
+[executors.md](../architecture/executors.md),
+[implementation contracts and release gates](../architecture/implementation-contracts.md).
+
+**Revision:** 27 October 2026. Read D18–D23 before implementation. The checklist
+below must be completed with real integration evidence, not only fixture/golden
+tests. This plan does not authorize removing old services or researcher files
+without the deployment document's checks.
 
 ## Goals
 
@@ -34,28 +40,42 @@
 | Job endpoints and wire types ([api.md](../architecture/api.md)) | CLI, portal |
 | `executor.Executor` + conformance suite | Future node executor |
 | `mist-job-entry` | Runtime image owner (bakes it in) |
-| `mist-nss` ConfigMap contract (passwd and group from accounts) | Identity |
+| Per-job `mist-nss` projection (required system entries, submitter/charged team only) | Identity |
 
 ## M1: GPU batch (critical path)
 
 The steps are ordered by dependency; each ends with a check that it works.
+Resolve the M1 gates in implementation-contracts.md before production rollout.
+Development may proceed against fixtures, but M1-01 through M1-11 are release
+requirements. Keep secrets and actual research data out of test fixtures.
 
 1. **Skeleton.**
    - Set up `cmd/mistd` with `api` and `scheduler` subcommands.
    - Add `internal/db` with migrations embedded via `embed`, one directory per
      owner, and `internal/executor` with the interface.
+   - Define shared Resources/Execution/Event types, immutable ExecutionID and
+     SpecHash, execution receipts and per-job operation intent. Include batch
+     Args and launch deadline; do not leave interface fields implicit.
+   - Define transaction-aware Identity authorization/admission methods with a
+     fixed lock order; owners keep their migrations/packages.
    - Agree the layout with the team in one PR.
    - *Check:* `mistd scheduler` starts, migrates an empty Postgres, and holds the
      advisory lock. A second instance waits.
 2. **Fake executor and clock.**
    - Build an in-memory `Executor` that "runs" jobs for scripted durations,
      emits events, and can simulate OOM, failures and lost nodes.
-   - Inject the clock everywhere.
+   - Inject the clock everywhere. Model delayed/ambiguous create responses,
+     duplicate/out-of-order events, observation outages and failed cleanup.
+     Persist simulated receipts separately from notification delivery.
    - *Check:* scheduler tests run without a cluster.
 3. **Scheduler core.**
    - Tables: `partitions`, `qos`, `limits`, `jobs`, `job_specs`, `job_events`,
-     `allocations`, `nodes`.
-   - The state machine, with every transition written as an event.
+     `allocations`, `nodes`, `partition_nodes`, operation intents, consumed
+     event IDs and executor receipt/tombstone migrations through its package.
+   - The state machine, including CLEANING and quarantined terminal allocations,
+     with every transition written as an event. Persist stop cause before calls.
+   - Recheck authorization/provisioning generations atomically with admission;
+     integrate durable revocation of pending/launching/running jobs.
    - The cycle (event-triggered + 10 s tick).
    - The ledger and placement, in one transaction per admission.
    - Limits with pending reasons, FIFO within QoS, time-limit enforcement,
@@ -63,28 +83,44 @@ The steps are ordered by dependency; each ends with a check that it works.
    - *Check:* tests for two 1-GPU jobs running together, a third waiting with
      `RESOURCES`, the per-user limit giving `USER_LIMIT`, a timeout giving
      `TIMEOUT`, cancel in each state, and a lost execution giving `NODE_FAIL`.
+     Cover M1-04/M1-05/M1-06: crash boundaries, split leadership, fast exit before
+     Started, lost node with retained allocation and repeated cleanup receipts.
+     Include shared-node and partition caps, not just accelerator counts.
 4. **`mist-job-entry`.**
-   - umask, private dot-folders, output header and footer, copying output to
+   - umask 0027, symlink-safe private dot-folders, output header/footer, copying output to
      the file and stdout, SIGTERM forwarding, OOM detection from
      `memory.events`, and a termination message.
    - *Check:* tests that run it locally inside a cgroup with a small
-     `memory.max`.
+     `memory.max`. Verify the fallback when the wrapper itself is killed;
+     report incomplete output without fabricating a successful footer. Test
+     batch arguments and safe output opening inside the restricted view.
 5. **K3s executor.**
    - A pod builder written as a pure function (`LaunchSpec` → Pod and
      ConfigMap), tested against golden files.
    - Informers on pods and nodes, the status mapping, `Logs`, reconciliation
      and RBAC.
-   - The `mist-jobs` namespace, the NetworkPolicy and the `mist-nss` generator.
+   - The `mist-jobs` namespace, NetworkPolicy plus host filtering, strict groups,
+     per-job `mist-nss`, a durable observation journal and cleanup reporter.
+   - Persist results/tails before deletion; use matching node receipts before
+     Exited/release. Missing Pod/API timeout must not erase execution history.
+   - Pin deadline behavior and implement a work-start timer plus independent
+     executor backstop; launch timeout is separate from work walltime.
    - *Check:* golden tests, plus a run on a local k3d cluster using the `cpu`
      path.
 6. **Job API endpoints.**
    - Submit (normalise with defaults, validate), list, get, cancel, log (live
      and tail), partitions, and queue (with anonymisation).
-   - *Check:* API tests through the dev principal.
+   - Add submission idempotency, complete validation/authorization matrix,
+     allowlisted queue summaries and cleanup/incomplete-output fields.
+   - *Check:* M1-09 through dev fixtures and real session/relay auth. Production
+     build must reject the development principal header.
 7. **Cluster.**
    - Reinstall k3s on the direct link and install the GPU Operator with only the
      device plugin and toolkit.
-   - Label nodes, deploy Postgres and `mistd`, and pre-pull the images.
+   - Label nodes, deploy Postgres and `mistd`, and pre-pull actual pinned images.
+   - Install/test cleanup reporters, gateway lease watchdog and host firewall;
+     configure TLS, disk headroom and operational alerts. Save installed version
+     manifest and capability checks. Integrate real Identity and provisioning.
    - *Check:* `Executor.Nodes()` reports 2 GPUs on `utmist-z1opa08` and the CPU
      capacity of `utmist-tt`.
 8. **Conformance on real hardware.**
@@ -92,29 +128,39 @@ The steps are ordered by dependency; each ends with a check that it works.
    - *Check:* all the guarantees in [executors.md](../architecture/executors.md)
      pass. That includes another team's folder being absent, only one GPU being
      visible, an OOM giving `OUT_OF_MEMORY`, internal ranges being unreachable,
-     and no service account token.
+     and no service account token. Execute M1-01 through M1-10 with real SSH,
+     both local/remote mounts and both own-node/remote service probes. Fixture
+     successes cannot substitute for gateway revocation and cleanup evidence.
 9. **First real job.**
    - Train a small model on one A4000 from a test user's folder, with a uv venv
      created in that folder. At the same time, run a second user's job on the
      other GPU, and a `cpu` download job.
    - *Check:* outputs and checkpoints are present, the `.out` files are
-     complete, and the portal and API show correct states.
+     complete on normal exit, and the portal/API show correct states and mark
+     exceptional incomplete output. Also verify a command job can create a venv
+     without M2 interactive support.
 
 **M1 is done when** two real users, in two different teams, can each run a GPU
 job at the same time from their own folders and can't see each other's files.
-Every finished job must end in a correct terminal state with a readable
-explanation.
+Every finished job must converge to a correct terminal state with a readable
+explanation; unresolved node cleanup remains explicitly quarantined. All M1
+acceptance IDs must have evidence. Do not release on two successful GPU demos
+alone. M1 FIFO may starve larger jobs; report this limitation until M3.
 
 ## M2: Interactive
 
-- `Attach` in the K3s executor (`pods/exec` over WebSocket, terminal resize,
-  signals) and the interactive holder in `mist-job-entry`.
-- `GET /v1/jobs/{id}/attach`, session tracking, and the reattach grace and
-  idle cancel.
+- Persistent holder in `mist-job-entry`: one shell/PTY, job-private Unix socket,
+  bounded replay and local detach timer. `pods/exec` runs a fixed attach helper
+  without a second TTY; it never starts a new shell.
+- `GET /v1/jobs/{id}/attach` proxies the holder's stream. One active attachment,
+  explicit detach versus cancel, resize/signal controls and observed grace state.
+  API/relay memory is not authoritative; walltime continues detached.
 - The `interactive` QoS and its limits.
 - *Check:* `mist shell --gpus 1` gives a shell that sees one GPU. Closing the
   laptop and running `mist attach` within 10 min resumes it; after 10 min the
-  job is cancelled with a clear reason.
+  job is cancelled with a clear reason. Assert the same PID/cwd/variables and
+  foreground process survive; repeat across API/relay restart, then holder crash.
+  Check bounded output, concurrent attach conflict and nonzero shell exit.
 
 ## M3: Fair scheduling
 
@@ -124,18 +170,26 @@ explanation.
   policy change gets compared here before it ships.
 - **Multifactor priority** and **fairshare.** Fairshare uses usage records with
   a 7-day half-life.
-- **Backfill** with a reservation for the top blocked job.
+- **Backfill** with a persistent reservation for the top eligible blocked job,
+  respecting shared-node capacity, limits, signal grace and cleanup delays.
 - **Accounting records** (billing units), `mist usage`, and the admin endpoints
   for partitions, QoS, limits, nodes and holds.
 - *Check:* in the simulator, a 2-GPU job is never starved by a stream of 1-GPU
-  jobs. Two teams with equal shares converge to equal usage under contention.
+  jobs of lower priority while nodes/cleanup are healthy. Two teams with equal
+  shares and equivalent eligible demand converge to equal usage under contention.
+  Report strict interactive-QoS starvation separately. Crash/replayed events
+  must not duplicate accounting intervals. Complete backup/restore gate too.
 
 ## M4: Tenstorrent
 
-- The `tt` partition, DRA board claims, hugepages, and the board-reset step
-  before an allocation is released.
+- The `tt` partition, DRA board claims, hugepages in the admission ledger and
+  board-reset cleanup. After Mist admission use an exact node selector, never
+  `nodeName`, so Kubernetes allocates claims on Mist's chosen node.
+- Pin/test driver board/chip granularity and reset scope; record board IDs in M4,
+  before M5. Stalled claims hit the launch deadline and release only after cleanup.
 - *Check:* two 1-board TT jobs run side by side; a crashed job's board is reset
-  before reuse.
+  before reuse; its neighbor is unaffected or concurrent TT jobs are disabled.
+  Failed reset quarantines boards/node and never silently releases the count.
 
 ## M5: Node executor
 
@@ -144,10 +198,13 @@ explanation.
   table from [executors.md](../architecture/executors.md#node-executor-m5).
 - **Device allocation by ID:** the scheduler's ledger records exact devices;
   `DeviceAllow` and `CUDA_VISIBLE_DEVICES` match them.
-- **Filesystem view:** hide other teams' folders with `TemporaryFileSystem` and
-  `BindPaths`.
-- **Interactive sessions:** allocate a PTY in the agent and pass its file
-  descriptors to the session unit.
+- **Credentials:** trusted launcher explicitly clears/replaces supplementary
+  groups, sets GID/UID and drops capabilities before user code; test a multi-team
+  account. `SupplementaryGroups=` alone is insufficient.
+- **Filesystem/network view:** isolate other teams, host processes/sockets and
+  runtime paths; use a private network namespace with the same firewall contract.
+- **Interactive sessions:** same persistent holder and PTY inside the main unit;
+  reconnect from the agent rather than creating an independently limited unit.
 - **Migrate one node:** drain it, exclude the device plugin, start the agent and
   run conformance.
 - *Check:* the same conformance suite passes unchanged on a node run by the node
@@ -168,13 +225,18 @@ Read alongside each milestone:
 ## Implementation rules
 
 - **One transaction per admission** (allocation + state change + node). Call the
-  executor *after* commit. `Launch` must be safe to repeat, because a crash
-  between commit and launch is fixed by retrying.
+  executor *after* commit. Persist the immutable spec/ExecutionID and retry
+  only the same unstarted/ambiguous intent. Reconcile before replay; a missing
+  execution with a recorded start is a loss, not permission to rerun.
 - **Never use Kubernetes to decide capacity.** The ledger decides; admission
-  errors from Kubernetes are treated as a mismatch to report, not as feedback.
+  errors from Kubernetes are a mismatch to report, not ordinary queue control.
+  DRA is the explicit exception for device allocation after Mist selects the node.
 - **Inject the clock everywhere,** so tests and the simulator use virtual time.
 - **Events arrive at least once:** handle each transition so a repeat has no
-  effect.
+  effect. Dedupe by stable event ID and validate ExecutionID/object UID; tolerate
+  out-of-order delivery and recover from durable receipts.
+- **Never free on process exit or Pod NotFound.** Require cleanup evidence and
+  resolution of ambiguous in-flight launch operations; quarantine otherwise.
 - **Time limits run from `started_at`,** never from submit time.
 - **Explain every wait:** a job left pending without a reason is a bug.
 

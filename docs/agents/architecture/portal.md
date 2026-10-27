@@ -15,6 +15,14 @@ All logic (permissions, defaults, states, reasons) lives in the API. Overview:
   for example "`mist cancel 412`". Most work happens over SSH, and this helps
   people learn the CLI.
 - **Unknown enum values show as plain text.** The API may add states or reasons.
+- **Show actual completion.** `CLEANING` means work ended but resources are still
+  held; `NODE_FAIL` with `cleanup_pending` means uncertain cleanup/quarantine.
+  Display `output_incomplete` instead of promising a complete log. Revocation
+  remains pending until gateway/executor acknowledgement; disabled is not proof
+  a disconnected machine has stopped its old process.
+- **No inferred privileges.** Honor server `can_cancel`/`can_attach`; handle
+  rejected actions and expired sessions by refreshing state. Browser terminals
+  are views of persistent shells; closing a tab detaches, explicit cancel stops.
 
 ## Pages
 
@@ -26,7 +34,7 @@ All logic (permissions, defaults, states, reasons) lives in the API. Overview:
 | Jobs | Your jobs, filterable by team and state; detail view with state history, pending/exit reason, resources, live or tail log, cancel | M1 |
 | Partitions and queue | Free and total capacity per partition; queue with other teams anonymised | M1 |
 | Teams | Membership, folder paths, storage usage per member, compute usage | M1 (storage), M3 (compute) |
-| Admin | Accounts (disable or enable), partitions, QoS, limits, nodes (drain or up), provisioner status per host, volumes | M3 (M1: read-only node and provisioner status) |
+| Admin | Accounts (disable or enable), partitions, QoS, limits, nodes (drain or up), provisioner status per host, volumes | M3 (M1: read-only node/provisioner/revocation/cleanup status; disable API already exists) |
 | Terminal | Browser terminal attached to an interactive job | M5 |
 
 Which endpoints each page uses:

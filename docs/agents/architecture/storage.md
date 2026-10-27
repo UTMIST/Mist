@@ -77,9 +77,24 @@ path is derived from team slugs and usernames; nothing is chosen by researchers.
   they can read every file. IP agreements should state this.
 - **Folders are scoped twice.** Unix permissions are the first wall. Job mounts
   are the second: a job is given only its charged team's folder (D5).
-- **Permissions inherit.** Setgid folders give new files the team group. Inside
-  jobs, `umask 0007` plus default ACLs on `shared/` and `.cache/` keep shared
-  areas writable by the whole team.
+- **Permissions inherit.** Setgid directories give new files the team group.
+  Jobs and gateway sessions use `umask 0027`: ordinary personal files are
+  `0640`, directories `2750` under setgid parents. Teammates may read but cannot
+  edit, replace or remove another member's ordinary personal files.
+- **Shared areas:** set access and default ACLs on `shared/` and team `.cache/`
+  to `u::rwx,g::rwx,m::rwx,o::---` (both access and default entries).
+  Normal file creation then yields group-writable files despite the personal
+  umask. Explicit restrictive application modes may still create private files.
+- **Transfers:** start SFTP with `-u 0027`; configure the allowed rsync/scp
+  invocation to apply this policy to newly uploaded content. Test actual clients,
+  including permission-preserving uploads; do not silently claim a umask can
+  override explicit chmod or preserved modes. Owners can deliberately share
+  files, but the default upload workflow must not add group write to personal
+  files. Document explicit permission overrides as owner choices.
+- **Provisioner safety:** create/repair managed directory modes without following
+  user-controlled symlinks, and never recursively chmod researcher content.
+  Private dot-directories must be real directories owned by the user; fail job
+  setup on an unsafe replacement rather than chmod its target.
 - **Group count.** NFS `sec=sys` carries at most 16 groups per process. Jobs
   carry only `mist-users`, the charged team and the personal group, so the limit
   is never reached. The login gateway writes locally and doesn't use NFS.
@@ -135,7 +150,12 @@ volumes.
 - **One folder per job,** on the node's local disk, mounted at `/scratch`, with
   `TMPDIR=/scratch`. It is deleted when the job ends, however it ends.
 - **Size:** default limit 100 GiB per job, configurable per partition.
-  Exceeding it ends the job, and the reason is shown.
+  K3s detects excess usage and evicts the job; this is not an instantaneous
+  filesystem quota. The reason is shown. Reserve node disk headroom for logs,
+  images and delayed eviction; a node under disk pressure stops admissions.
+- **Release:** scratch remains charged until executor cleanup is acknowledged,
+  including after process exit, cancellation or node loss. A failed cleanup
+  quarantines capacity; it never makes the disk appear free in the ledger.
 - **Disks:**
   - **NVIDIA box:** prefer the second SSD (`sdb`, 447 GB) if it is confirmed
     unused; otherwise the root SSD.
@@ -151,15 +171,25 @@ volumes.
   warns teams over their soft limit.
 - **Limits are advisory** until hard quotas are possible. A full disk fails
   writes for everyone, so the portal and the gateway login banner warn early.
-- **Hard quotas (open).** These need `/mist` on a dedicated filesystem with
-  project quotas: XFS, or ext4 created with `-O quota,project`. Today `/mist`
-  sits on the root partition. Converting is best done before data accumulates.
+- **Hard quotas (deployment decision).** Choose and test a filesystem/quota
+  layout before production data accumulates. A dedicated filesystem separates
+  durable writes from the host root disk; project quota support and enforcement
+  must be verified on the installed filesystem, not inferred from its name.
+  M1 must reserve host disk headroom and stop admissions on low space. Advisory
+  quotas alone do not guarantee availability against a user filling `/mist`.
+  The launch checklist must record the chosen layout and this remaining limit.
 
 ## Backups (M3)
 
 - **Copy:** nightly, encrypted, deduplicated snapshot of `/mist`, stored on a
   disk in a **different machine** (the NVIDIA box's spare SSD to start).
-- **Excluded:** every `.cache/` folder; their contents can be downloaded again.
+- **Database:** back up Postgres (including accounts/UID/GID allocation, jobs,
+  execution receipts and configuration) to another machine as well. A files-only
+  restore cannot reconstruct identity safely. Document coordinated restore and
+  keep admissions disabled until restored state and surviving nodes reconcile.
+- **Excluded:** regenerable shared cache payloads. Personal `.cache/` can contain
+  credentials or nonregenerable tool state, so do not blindly exclude every path
+  named `.cache`. Define explicit reviewed exclusions; encrypt all snapshots.
 - **Retention:** proposed 7 daily, 4 weekly and 3 monthly snapshots.
 - **Restores are tested** each term. Backups that have never been restored
   don't count.

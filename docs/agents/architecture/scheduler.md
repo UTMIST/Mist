@@ -56,7 +56,12 @@ Limits are database rows: `(scope, subject, partition, qos, resource, max)`.
 - **Scope:** `user`, `team` or `partition`.
 - **Subject:** a specific user or team, or `*` for everyone.
 
-The most specific matching row wins. Proposed M1 defaults:
+Within each scope/resource, choose an exact subject over `*`, then exact
+partition over wildcard, then exact QoS over wildcard. Enforce the resulting
+user, team and partition constraints together; a user override cannot bypass a
+team cap. Reject duplicate keys. Count all unreleased allocations, including
+launching/stopping/cleaning jobs, toward concurrent resource limits. Proposed
+M1 defaults:
 
 | Limit | Default |
 |---|---|
@@ -81,14 +86,21 @@ stateDiagram-v2
     PENDING --> CANCELLED: cancel
     PENDING --> LAUNCHING: admitted + placed
     LAUNCHING --> RUNNING: executor reports started
-    LAUNCHING --> LAUNCH_FAILED: executor could not start it
-    RUNNING --> STOPPING: cancel / time limit
-    RUNNING --> COMPLETED: exit 0
-    RUNNING --> FAILED: exit ≠ 0
-    RUNNING --> OUT_OF_MEMORY: memory limit kill
-    RUNNING --> NODE_FAIL: node or execution lost
-    STOPPING --> CANCELLED
-    STOPPING --> TIMEOUT
+    LAUNCHING --> STOPPING: cancel / revoke / launch timeout
+    LAUNCHING --> CLEANING: fast exit / definitive launch failure
+    RUNNING --> STOPPING: cancel / revoke / time limit
+    RUNNING --> CLEANING: process finished
+    STOPPING --> CLEANING: process stopped
+    CLEANING --> COMPLETED: cleanup confirmed, exit 0
+    CLEANING --> FAILED: cleanup confirmed, exit nonzero
+    CLEANING --> OUT_OF_MEMORY: cleanup confirmed, OOM
+    CLEANING --> LAUNCH_FAILED: cleanup confirmed, never started
+    CLEANING --> CANCELLED: cleanup confirmed, cancel or revoke intent
+    CLEANING --> TIMEOUT: cleanup confirmed, deadline intent
+    LAUNCHING --> NODE_FAIL: execution lost
+    RUNNING --> NODE_FAIL: execution lost
+    STOPPING --> NODE_FAIL: node unreachable
+    CLEANING --> NODE_FAIL: cleanup node unreachable
 ```
 
 - **Pending reasons** (shown to users):
@@ -96,32 +108,65 @@ stateDiagram-v2
   - `RESOURCES`: not enough free capacity
   - `USER_LIMIT`, `TEAM_LIMIT`, `QOS_LIMIT`
   - `PARTITION_DOWN`
+  - `PROVISIONING`: required folders/identity generation not ready
+  - `AUTH_UNAVAILABLE`: authorization freshness cannot be established
   - `HELD`: an admin hold
 - **Exit reasons** add detail to the terminal states, for example "exceeded
   32 GiB memory limit", "time limit 4h reached", "cancelled by alice" or "node
   utmist-tt unreachable".
 - **Every transition is written** to `job_events` (time, from, to, reason,
   actor). `mist show` and the portal display this history.
-- **No automatic retries.** A `LAUNCH_FAILED` caused by a transient executor
-  error may be retried once before being reported.
+- **No automatic execution retries.** Repeat the same idempotent Launch call
+  only to resolve an unstarted/ambiguous intent. A definitive launch failure or
+  any execution that has started is never replaced automatically. A user resubmit
+  creates a new job ID. This removes ambiguous retry/event identity semantics.
+- **Outcomes:** store process result separately from job state and cleanup.
+  `Finished` enters `CLEANING`; only cleanup acknowledgement releases allocations.
+  `ScratchExceeded` maps to `FAILED` with that exit reason. Nonzero interactive
+  shell exit also maps to `FAILED`. Fast jobs may finish before Started delivery;
+  reconcile their actual start/finish times without requiring every watch event.
+- **Cancellation races:** API persists a stop intent, never frees an allocation.
+  Repeated cancellation returns the same job. The first committed stop cause
+  (cancel, revoke, deadline) wins if no finish result is already committed;
+  a later cancellation cannot relabel a finished job. A launch timeout before
+  work starts yields `LAUNCH_FAILED`. Late events cannot reopen a terminal job.
+- **Authorization:** stale unstarted admission generations are cancelled as
+  specified by Identity; running jobs in still-authorized teams are not cancelled
+  just because an unrelated membership changed.
+- **Lost nodes:** after 2 min of confirmed unreachability, report `NODE_FAIL`
+  with `cleanup_pending=true`, keep allocations quarantined and the node down.
+  Do not retry lost work or reuse its devices until recovery/fencing proves the
+  old execution stopped. Terminal state alone never releases capacity.
 
 ## Scheduling cycle
 
 One active scheduler runs at a time. `mistd scheduler` holds a Postgres advisory
-lock, and a second instance stays idle until the lock frees.
+lock on a dedicated connection, and a second instance stays idle until the lock
+frees. Database connection loss stops dispatch immediately. Use bounded external
+calls, per-job serialization and persisted operation intent; a replacement leader
+reconciles unresolved operations before admissions on affected nodes. An advisory
+lock alone cannot fence an already in-flight Kubernetes request. Quarantine any
+node whose old operations cannot yet be proven complete.
 
 A cycle runs on every event (submit, cancel, job end, node change, config
 change), and also every 10 s:
 
-1. Load the pending jobs of each partition, and the current allocations.
+1. Reconcile outstanding launch/stop/cleanup intents, then load pending jobs and
+   all unreleased allocations across partitions sharing each node.
 2. Compute each job's priority and sort.
 3. For each job in order:
-   1. Check the running limits. If one is hit, set the reason and move on.
+   1. Revalidate active account, team membership, authorization generation and
+      provision readiness. Lock those records through Identity's package in the
+      admission transaction. Then check concurrent limits and partition caps.
    2. Find a node in the partition with enough free CPU, memory, accelerators
       and scratch.
    3. If one fits: in **one transaction**, insert the allocation, move the job
       to `LAUNCHING` and set its node. Then call `Executor.Launch`. Launch
-      requests are safe to repeat (keyed by job ID).
+      requests use the immutable ExecutionID and SpecHash. Persist the full
+      resolved LaunchSpec and admitted_at/launch_deadline with the allocation;
+      later configuration changes cannot alter an admitted job's runtime or size.
+      Lock/recheck job and capacity rows so concurrent cancel or config updates
+      cannot invalidate the transaction. Call Kubernetes only after commit.
    4. If none fits: set `RESOURCES`. The backfill rule (M3) decides whether
       lower-priority jobs may still start.
 4. At each `RUNNING` job's deadline (`started_at + time_limit`), move it to
@@ -139,22 +184,27 @@ flowchart TD
     Fit -->|no| R2["pending_reason: RESOURCES<br/>(M3: reserve for backfill)"] --> N
     Fit -->|yes| Tx["One transaction:<br/>allocation + LAUNCHING + node"]
     Tx --> Launch[Executor.Launch] --> N
-    Ev[Executor events] --> Up["Update job state, free allocation,<br/>record usage"] --> T
+    Ev[Executor events] --> Up["Update state and usage;<br/>release only on cleanup receipt"] --> T
 ```
 
 **Free capacity** = the node's capacity reported by the executor, minus the
-host's reserved share, minus the allocations of all `LAUNCHING`, `RUNNING` and
-`STOPPING` jobs. The scheduler places jobs from this ledger and never waits for
-Kubernetes to tell it whether something fits. Allocations record device IDs when
-an executor reports them (the native executor will); otherwise they record
-counts.
+additional Mist host reserve, minus **all unreleased allocations**, including
+`LAUNCHING`, `RUNNING`, `STOPPING`, `CLEANING` and quarantined terminal jobs.
+Executor capacity is net of Kubernetes reservations; never deduct them twice.
+The scheduler places jobs from this ledger and never waits for Kubernetes to tell
+it whether something fits. Allocations record device IDs when reported (TT in
+M4, all native devices in M5); otherwise they record
+counts. Enforce the `cpu` partition-wide cap as well as the shared TT node
+budget. Hugepages join this ledger in M4. Disk pressure and unhealthy resources
+reduce effective capacity regardless of the nominal configured totals.
 
 ## Priority
 
 - **M1:** QoS weight, then submit time (first in, first out within a QoS).
   Lower-priority jobs that fit may start when the top job doesn't fit. A
-  2-GPU job can therefore wait while 1-GPU jobs keep starting. Short default
-  time limits keep that wait bounded until backfill arrives in M3.
+  2-GPU job can starve indefinitely under a continuous stream of 1-GPU jobs;
+  short limits do not bound this wait. This is an explicit M1 limitation until
+  M3 reservations ship. Do not advertise an estimated start as a guarantee.
 - **M3, multifactor:**
 
   ```
@@ -176,22 +226,31 @@ Every job has a time limit, so the scheduler can estimate when resources free
 up.
 
 1. Take the highest-priority job that doesn't fit, and find the earliest time
-   `T` it could start, using the deadlines of running jobs.
+   `T` it could start, using deadlines plus signal grace and measured cleanup
+   allowance. Consider only jobs eligible under authorization/limits. An unknown
+   cleanup or launch completion time is not a promised future release.
 2. Reserve the resources it will need at `T`.
 3. A lower-priority job may start now only if it fits now **and** either ends
    before `T` or doesn't touch the reserved resources.
 
-This removes M1's starvation of large jobs without wasting idle GPUs.
+Keep the chosen reservation until admission, cancellation or an eligibility
+change; recomputing it must not keep moving the same job behind new arrivals.
+Recompute across shared-node partitions and include aggregate user/team caps.
+This prevents starvation by lower-priority fitting jobs under healthy bounded
+execution/cleanup. Strict interactive priority can still starve normal jobs
+under sustained higher-priority demand; the simulator must report that separately.
 
 ## Interactive jobs
 
 - **States:** an interactive job follows the same states as any other job. It
   becomes `RUNNING` once the executor reports its shell host ready.
-- **Ending:** when the shell exits, the job ends `COMPLETED` with the shell's
-  exit code.
-- **Grace:** the API tracks attach sessions. If no session has been attached for
-  the grace period, whether after a disconnect or because nobody attached after
-  start, the job is cancelled with reason "no terminal attached for 10 min".
+- **Ending:** shell exit enters `CLEANING`, then `COMPLETED` for zero or `FAILED`
+  for nonzero after cleanup.
+- **Grace:** the executor's persistent PTY holder owns session state and the
+  detach timer. If nobody attaches within 10 min of ready, or a disconnect lasts
+  10 min, stop the job with reason "no terminal attached for 10 min". Persist
+  observed attach/detach times for display; API process memory is not authority.
+  Reattach resumes the same shell. Walltime continues while detached.
 
 ## Accounting
 
@@ -200,19 +259,35 @@ This removes M1's starvation of large jobs without wasting idle GPUs.
   Proposed weights: 1 GPU-hour = 1.0, 1 TT-board-hour = 0.5,
   1 CPU-hour = 0.02. Admins can change them.
 - **Used for:** fairshare, `mist usage`, and the portal's usage views.
-- **Counted:** allocated time, not used time. A job that holds a GPU idle pays
-  for it.
+- **Counted:** reserved resource time from admission through confirmed process
+  finish, not utilization; a job holding an idle GPU pays for it. Track cleanup
+  and quarantine occupancy separately so infrastructure failure is not billed
+  indefinitely to a team. Use immutable per-job billing weights and nonoverlapping
+  intervals with unique keys; restart/replayed completion cannot double-count.
+  Retain raw timestamps/resources in M1 so M3 can derive accounting history.
 
 ## Reconciliation
 
 The scheduler and the executor agree through events plus regular full
 comparisons (see [executors.md](executors.md#reconciliation)):
 
-- **A job the database marks running has no execution:** after a short
-  confirmation window, it becomes `NODE_FAIL`.
-- **An execution has no live job:** the executor terminates it.
-- **After a restart,** `mistd scheduler` rebuilds from the database plus
-  `Executor.List`, never from memory.
+| Durable state | Authoritative observation | Action |
+|---|---|---|
+| `PENDING` | unexpected execution | Stop/quarantine it; do not adopt unauthorized work |
+| `LAUNCHING`, no object/start receipt | no execution, proven no prior successful or unresolved create | Revalidate authorization and deadline; ensure the same execution exists |
+| `LAUNCHING` | recorded object UID disappeared or possible unobserved start | Recover result receipt, otherwise report loss/quarantine; do not recreate |
+| `LAUNCHING` | create outcome unknown / API unavailable | Retain allocation, retry observation; do not infer absence |
+| `LAUNCHING` or `RUNNING` | running or finished execution | Adopt observed timestamps/result without rerunning; finish enters `CLEANING` |
+| `RUNNING` | absent after successful fresh read and confirmation | Recover saved finish receipt, otherwise `NODE_FAIL`; quarantine unresolved cleanup |
+| `STOPPING` | any live execution or unresolved launch | Reissue stop, resolve in-flight create, retain allocation |
+| `CLEANING` | saved finish, cleanup incomplete | Resume cleanup; never relaunch |
+| terminal | execution still exists | Stop/clean it; release only against matching cleanup receipt |
+| any | failed/incomplete list | No absence inference; stop new admissions on affected nodes |
+
+After restart, rebuild from persisted intent, receipts and a fresh full List;
+wait for informer sync before using watches. Ignore stale object UIDs/events.
+Unknown executions are stopped and accounted as quarantined occupancy until
+cleanup. Reconcile control-plane recovery before marking a recovered node up.
 
 ## Nodes
 
@@ -240,7 +315,8 @@ until it recovers.
 
 `partitions`, `partition_nodes`, `nodes`, `qos`, `limits`, `jobs`, `job_specs`
 (including the submitted script), `job_events`, `allocations`, `usage_records`,
-`scheduler_settings`.
+`scheduler_settings`, durable operation intents and consumed-event IDs.
+Executor-owned receipts are accessed through its package, not ad-hoc table reads.
 
 ## Work by milestone
 
@@ -255,7 +331,8 @@ until it recovers.
 - **M3:** multifactor priority, fairshare, backfill, accounting records, admin
   configuration endpoints and holds.
 - **M4:** the `tt` partition (board counts, board health from the executor).
-- **M5:** device-level allocations for the native executor.
+- **M5:** device-level allocations for the native executor (TT board IDs already
+  recorded in M4 for reset safety).
 
 ## Open questions
 
