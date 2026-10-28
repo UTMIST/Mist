@@ -13,8 +13,10 @@ honour. The reasons behind major choices are in the
 [decision log](docs/agents/architecture/decisions.md).
 
 > **Status:** target design, revised 27 October 2026 after architecture review. This design replaces the
-> platform described in `docs/content/` (container-image jobs, dataset and
-> result pools, team namespaces). It starts fresh: no users or data are migrated.
+> previous container-image platform (dataset and result pools, team
+> namespaces), which was never deployed and has been removed from the tree; it
+> remains in Git history before this change. It starts fresh: no users or data
+> are migrated.
 
 ## Goals
 
@@ -380,8 +382,9 @@ deploy/               k3s manifests, systemd units, host setup
 web-interface/        portal
 ```
 
-The existing `src/` and `cli/` modules belong to the platform being replaced.
-They are removed once the new path serves jobs.
+The previous platform's `src/`, `cli/`, `deploy/` and `web-interface/` were
+removed on 27 October 2026; the portal is rebuilt in `web-interface/` against
+the new API.
 
 ## Milestones
 
