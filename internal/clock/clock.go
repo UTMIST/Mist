@@ -8,6 +8,9 @@ import "time"
 type Clock interface {
 	Now() time.Time
 	NewTimer(d time.Duration) Timer
+	// AfterFunc calls f after d. On a Fake clock, f runs synchronously
+	// inside Advance, in time order. The returned Timer's C is nil.
+	AfterFunc(d time.Duration, f func()) Timer
 }
 
 type Timer interface {
@@ -21,6 +24,10 @@ type Real struct{}
 func (Real) Now() time.Time { return time.Now() }
 
 func (Real) NewTimer(d time.Duration) Timer { return realTimer{time.NewTimer(d)} }
+
+func (Real) AfterFunc(d time.Duration, f func()) Timer {
+	return realTimer{time.AfterFunc(d, f)}
+}
 
 type realTimer struct{ t *time.Timer }
 

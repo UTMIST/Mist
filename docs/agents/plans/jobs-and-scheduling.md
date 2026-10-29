@@ -74,6 +74,14 @@ requirements. Keep secrets and actual research data out of test fixtures.
      duplicate/out-of-order events, observation outages and failed cleanup.
      Persist simulated receipts separately from notification delivery.
    - *Check:* scheduler tests run without a cluster.
+   - *Status (28 Oct 2026):* `internal/clock` has `Fake` (timers and
+     `AfterFunc` callbacks fire synchronously, in time order, inside `Advance`).
+     `internal/executor/fake` runs scripted jobs on that clock and injects lost or
+     late create responses, OOM, launch errors and timeouts, the backstop, SIGTERM
+     versus SIGKILL, lost and recovered nodes, failed cleanup, and observation
+     outages. Its durable receipts are kept separate from an event stream that
+     tests can hold, drop, duplicate, reorder or lose on `Restart`. The scheduler
+     tests that use it come with step 3.
 3. **Scheduler core.**
    - Tables: `partitions`, `qos`, `limits`, `jobs`, `job_specs`, `job_events`,
      `allocations`, `nodes`, `partition_nodes`, operation intents, consumed
