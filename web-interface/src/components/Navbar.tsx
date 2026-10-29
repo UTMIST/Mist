@@ -5,9 +5,9 @@ import {
   LayoutDashboard,
   Play,
   Database,
-  Server,
-  Users,
+  Layers,
   BookOpen,
+  ShieldCheck,
 } from 'lucide-react'
 import { WorkspaceSelector } from '#/teams.tsx'
 
@@ -35,7 +35,7 @@ export default function Navbar() {
           Mist<span className="mist-brand-caption">Research compute</span>
         </span>
       </Link>
-      <p className="mist-nav-caption">WORKSPACE</p>
+      <p className="mist-nav-caption">PLATFORM</p>
       <nav aria-label="Main navigation" className="mist-nav">
         <Link to="/dashboard" activeProps={{ className: 'is-active' }}>
           <span aria-hidden="true">
@@ -55,17 +55,11 @@ export default function Navbar() {
           </span>{' '}
           Datasets
         </Link>
-        <Link to="/machines" activeProps={{ className: 'is-active' }}>
-          <span aria-hidden="true">
-            <Server size={17} />
-          </span>{' '}
-          Machines
-        </Link>
         <Link to="/teams" activeProps={{ className: 'is-active' }}>
           <span aria-hidden="true">
-            <Users size={17} />
+            <Layers size={17} />
           </span>{' '}
-          Teams
+          Workspaces
         </Link>
         <a href="/docs/">
           <span aria-hidden="true">
@@ -84,8 +78,15 @@ export default function Navbar() {
           <span className="mist-avatar" aria-hidden="true">
             {account.user?.name[0] ?? 'M'}
           </span>
-          <span>
-            {account.user?.name ?? 'Local pilot'}
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 font-medium truncate">
+              {account.user?.name ?? 'Local pilot'}
+              {account.isAdmin && (
+                <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase inline-flex items-center gap-0.5">
+                  <ShieldCheck size={10} /> Admin
+                </span>
+              )}
+            </span>
             <span className="mist-brand-caption">Account settings</span>
           </span>
         </Link>

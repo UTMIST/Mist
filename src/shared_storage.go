@@ -80,7 +80,7 @@ func (s *SharedStorage) availableUploadLimit(team bool) int64 {
 		return 0
 	}
 	reserve := int64(1024 * 1024 * 1024)
-	return max(0, min(s.uploadLimit, int64(stats.Bavail)*stats.Bsize-reserve))
+	return max(0, min(s.uploadLimit, int64(stats.Bavail)*int64(stats.Bsize)-reserve))
 }
 func (s *SharedStorage) dataset(id, owner string) (*Dataset, error) {
 	if !datasetIDPattern.MatchString(id) {
@@ -138,7 +138,7 @@ func (s *SharedStorage) upload(r *http.Request, owner string) (*Dataset, error) 
 		return nil, err
 	}
 	reserve := int64(1024 * 1024 * 1024)
-	remaining := int64(stats.Bavail)*stats.Bsize - reserve
+	remaining := int64(stats.Bavail)*int64(stats.Bsize) - reserve
 	if remaining <= 0 {
 		return nil, fmt.Errorf("dataset storage has insufficient free space: %w", syscall.ENOSPC)
 	}

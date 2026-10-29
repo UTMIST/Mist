@@ -28,7 +28,19 @@ func (a *App) kubernetesJobs(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusCreated, map[string]interface{}{"job_id": status.ID, "job": status})
 	case http.MethodGet:
-		jobs, err := a.requestExecutor(r).list(r.Context())
+		var jobs []KubernetesJobStatus
+		var err error
+		if r.URL.Query().Get("cluster") == "true" || r.URL.Query().Get("all") == "true" {
+			var currentMember *Member
+			if access, _ := r.Context().Value(teamContextKey{}).(*TeamAccess); access != nil {
+				currentMember = access.Member
+			} else {
+				currentMember, _ = r.Context().Value(memberKey{}).(*Member)
+			}
+			jobs, err = a.executor.listCluster(r.Context(), currentMember)
+		} else {
+			jobs, err = a.requestExecutor(r).list(r.Context())
+		}
 		if err != nil {
 			executorError(w, err)
 			return

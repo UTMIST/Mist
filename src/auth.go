@@ -305,6 +305,7 @@ func (s *AuthService) session(r *http.Request) (*Member, error) {
 		WHERE s.token = ? AND s.expiresAt > ? AND COALESCE(u.banned, 0) = 0
 	`, token, now).Scan(&m.ID, &m.Name, &m.Email, &m.Role)
 	if err == nil {
+		m.IsAdmin = isAdmin(&m)
 		return &m, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -337,6 +338,7 @@ func (s *AuthService) LookupMember(ctx context.Context, id string) (*Member, err
 	if err != nil {
 		return nil, errors.New("account unavailable")
 	}
+	m.IsAdmin = isAdmin(&m)
 	return &m, nil
 }
 
@@ -877,3 +879,16 @@ func (s *AuthService) middleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), memberKey{}, member)))
 	})
 }
+
+func (s *AuthService) Session(r *http.Request) (*Member, error) {
+	return s.session(r)
+}
+
+func (s *AuthService) ActiveMembers(ctx context.Context) (map[string]AccountStatus, error) {
+	return s.activeMembers(ctx)
+}
+
+func (s *AuthService) Middleware(next http.Handler) http.Handler {
+	return s.middleware(next)
+}
+

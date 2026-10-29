@@ -136,10 +136,10 @@ export function DatasetsPage() {
     <main className="px-6 py-8 lg:px-16 space-y-6">
       <div className="mist-page-heading">
         <div>
-          <p className="mist-eyebrow">{team?.name ?? 'Legacy workspace'}</p>
+          <p className="mist-eyebrow">{team ? `${team.name} (${team.type ?? 'team'})` : 'Workspace Datasets'}</p>
           <h1 className="text-2xl font-bold">Datasets</h1>
           <p className="mist-description">
-            A shared home for your team's data and experiment results.
+            Datasets connected to this workspace are mounted at /inputs for any experiment attributed to it.
           </p>
         </div>
         <button

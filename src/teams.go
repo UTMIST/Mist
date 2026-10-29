@@ -56,15 +56,29 @@ type StorageGrant struct {
 	TargetTeam string `json:"target_team"`
 	Scope      string `json:"scope"`
 }
+
+type WorkspaceType string
+
+const (
+	WorkspaceTypeTeam          WorkspaceType = "team"
+	WorkspaceTypePersonal      WorkspaceType = "personal"
+	WorkspaceTypeCollaboration WorkspaceType = "collaboration"
+	WorkspaceTypeAdmin         WorkspaceType = "admin"
+)
+
 type Team struct {
-	ID       string         `json:"id"`
-	Name     string         `json:"name"`
-	Created  time.Time      `json:"created"`
-	Disabled bool           `json:"disabled"`
-	Policy   TeamPolicy     `json:"policy"`
-	Members  []TeamMember   `json:"members"`
-	Grants   []StorageGrant `json:"grants"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Type        WorkspaceType  `json:"type,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Created     time.Time      `json:"created"`
+	Disabled    bool           `json:"disabled"`
+	Policy      TeamPolicy     `json:"policy"`
+	Members     []TeamMember   `json:"members"`
+	Grants      []StorageGrant `json:"grants"`
 }
+
+type Workspace = Team
 type TeamService struct {
 	app         *App
 	mu          sync.Mutex // admissions and policy changes are serialized on the single controller
@@ -115,7 +129,7 @@ func (s *TeamService) storageBudgetGiB() int64 {
 	if syscall.Statfs(s.app.executor.storage.root, &fs) != nil {
 		return 0
 	}
-	return int64(fs.Blocks) * fs.Bsize / (1024 * 1024 * 1024)
+	return int64(fs.Blocks) * int64(fs.Bsize) / (1024 * 1024 * 1024)
 }
 func normalizeStoragePolicy(p *TeamPolicy) {
 	// Preserve legacy callers which supplied one advisory allowance.
@@ -127,6 +141,17 @@ func validateTeam(team *Team) error {
 	normalizeStoragePolicy(&team.Policy)
 	if strings.TrimSpace(team.Name) == "" || len(team.Name) > 100 {
 		return errors.New("team name must contain 1–100 characters")
+	}
+	if team.Type == "" {
+		team.Type = WorkspaceTypeTeam
+	}
+	switch team.Type {
+	case WorkspaceTypeTeam, WorkspaceTypePersonal, WorkspaceTypeCollaboration, WorkspaceTypeAdmin:
+	default:
+		return errors.New("invalid workspace type; must be team, personal, collaboration, or admin")
+	}
+	if len(team.Description) > 500 {
+		return errors.New("workspace description cannot exceed 500 characters")
 	}
 	p := team.Policy
 	cpu, err := resource.ParseQuantity(p.CPU)
@@ -167,6 +192,9 @@ func (s *TeamService) registry(ctx context.Context) (*corev1.ConfigMap, []Team, 
 	}
 	for i := range teams {
 		normalizeStoragePolicy(&teams[i].Policy)
+		if teams[i].Type == "" {
+			teams[i].Type = WorkspaceTypeTeam
+		}
 	}
 	return cm, teams, nil
 }
@@ -249,13 +277,19 @@ func (s *TeamService) store(t *Team) (*SharedStorage, error) {
 }
 func (s *TeamService) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Mist-Team")
+		id := r.Header.Get("X-Mist-Workspace")
+		if id == "" {
+			id = r.Header.Get("X-Mist-Team")
+		}
+		if id == "" {
+			id = r.URL.Query().Get("workspace_id")
+		}
 		if id == "" {
 			id = r.URL.Query().Get("team_id")
 		}
-		if id == "" || strings.HasPrefix(r.URL.Path, "/teams") || r.URL.Path == "/session" || r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/auth/") {
+		if id == "" || strings.HasPrefix(r.URL.Path, "/teams") || strings.HasPrefix(r.URL.Path, "/workspaces") || r.URL.Path == "/session" || r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/auth/") {
 			if id == "" && r.Method == http.MethodPost && (r.URL.Path == "/jobs" || r.URL.Path == "/datasets") {
-				writeJSON(w, 403, map[string]string{"error": "Select a team workspace before submitting jobs or uploading files"})
+				writeJSON(w, 403, map[string]string{"error": "Select a workspace before submitting jobs or uploading files"})
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -311,7 +345,8 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, _ := r.Context().Value(memberKey{}).(*Member)
-	if r.URL.Path == "/teams" && r.Method == http.MethodGet {
+	isRootList := (r.URL.Path == "/teams" || r.URL.Path == "/workspaces") && r.Method == http.MethodGet
+	if isRootList {
 		_, teams, err := s.registry(r.Context())
 		if err != nil {
 			executorError(w, err)
@@ -323,7 +358,7 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 				result = append(result, t)
 			}
 		}
-		writeJSON(w, 200, map[string]any{"teams": result, "storage_budget_gib": s.storageBudgetGiB(), "storage_limits_enforced": false})
+		writeJSON(w, 200, map[string]any{"teams": result, "workspaces": result, "storage_budget_gib": s.storageBudgetGiB(), "storage_limits_enforced": false})
 		return
 	}
 	if !isAdmin(m) {
@@ -332,13 +367,19 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/teams"), "/")
-	if r.URL.Path == "/teams" && r.Method == http.MethodPost {
+	cleanPath := strings.TrimPrefix(r.URL.Path, "/workspaces")
+	cleanPath = strings.TrimPrefix(cleanPath, "/teams")
+	parts := strings.Split(cleanPath, "/")
+	isRootCreate := (r.URL.Path == "/teams" || r.URL.Path == "/workspaces") && r.Method == http.MethodPost
+	if isRootCreate {
 		var body struct {
-			Name            string      `json:"name"`
-			StorageGiB      *int64      `json:"storage_gib"`
-			ModelStorageGiB *int64      `json:"model_storage_gib"`
-			Policy          *TeamPolicy `json:"policy"`
+			Name            string         `json:"name"`
+			Type            *WorkspaceType `json:"type"`
+			Description     *string        `json:"description"`
+			StorageGiB      *int64         `json:"storage_gib"`
+			ModelStorageGiB *int64         `json:"model_storage_gib"`
+			Policy          *TeamPolicy    `json:"policy"`
+			UserID          *string        `json:"user_id"`
 		}
 		if err := decodeTeamJSON(w, r, &body); err != nil {
 			executorError(w, err)
@@ -349,7 +390,27 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 			executorError(w, err)
 			return
 		}
-		t := Team{ID: id, Name: body.Name, Created: time.Now().UTC(), Policy: defaultTeamPolicy(), Members: []TeamMember{}, Grants: []StorageGrant{}}
+		wsType := WorkspaceTypeTeam
+		if body.Type != nil && *body.Type != "" {
+			wsType = *body.Type
+		}
+		desc := ""
+		if body.Description != nil {
+			desc = *body.Description
+		}
+		members := []TeamMember{}
+		if body.UserID != nil && *body.UserID != "" && a.auth != nil {
+			assigned, err := a.auth.lookupMember(r, *body.UserID)
+			if err == nil && assigned != nil {
+				members = append(members, TeamMember{
+					ID:           assigned.ID,
+					Name:         assigned.Name,
+					Email:        assigned.Email,
+					CommonWriter: true,
+				})
+			}
+		}
+		t := Team{ID: id, Name: body.Name, Type: wsType, Description: desc, Created: time.Now().UTC(), Policy: defaultTeamPolicy(), Members: members, Grants: []StorageGrant{}}
 		if body.Policy != nil {
 			t.Policy = *body.Policy
 		}
@@ -392,9 +453,11 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case len(parts) == 2 && r.Method == http.MethodPatch:
 		var body struct {
-			Name     *string     `json:"name"`
-			Policy   *TeamPolicy `json:"policy"`
-			Disabled *bool       `json:"disabled"`
+			Name        *string        `json:"name"`
+			Type        *WorkspaceType `json:"type"`
+			Description *string        `json:"description"`
+			Policy      *TeamPolicy    `json:"policy"`
+			Disabled    *bool          `json:"disabled"`
 		}
 		if err := decodeTeamJSON(w, r, &body); err != nil {
 			executorError(w, err)
@@ -407,6 +470,12 @@ func (a *App) teamEndpoint(w http.ResponseWriter, r *http.Request) {
 			}
 			if body.Name != nil {
 				t.Name = *body.Name
+			}
+			if body.Type != nil {
+				t.Type = *body.Type
+			}
+			if body.Description != nil {
+				t.Description = *body.Description
 			}
 			if body.Disabled != nil {
 				t.Disabled = *body.Disabled
