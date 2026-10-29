@@ -1,0 +1,127 @@
+# Misty login verification — 2026-10-26
+
+The local implementation passed the source, regression and integration checks below.
+No live service was deployed and no real email was sent. Tailscale was not needed.
+
+## Cross-service browser check
+
+Chromium exercised the built compute frontend and real Go authentication code
+against freshly built Misty gateway, team-tracking and verification containers.
+Each service used disposable storage; gateway and verification had their own
+Postgres databases. Private calls used separately issued scoped credentials.
+Only the email sender and its code generator were test replacements. Unrelated
+compute job/cluster routes were stubs; no Kubernetes jobs ran.
+
+Observed results:
+
+- An active registered email received a challenge; an incorrect code failed.
+- The correct code created a compute session, preserving the seeded existing
+  local user ID and administrator role through an explicit operator UUID mapping.
+- Reusing the redeemed challenge failed.
+- Password account-creation and reset controls were absent in Misty mode.
+- Retiring the member in the real directory caused the existing compute session
+  to be rejected after the configured status cache expired, within 40 seconds.
+- Unknown and inactive emails received the generic start response, could not
+  establish sessions, and created no verification-code rows.
+- The gateway also passed its resolver credential-separation, upstream outage,
+  revocation, migration/readiness and email-login smoke assertions.
+- Chromium reported no page errors.
+
+A separate Chromium run through real compute authentication with a fake gateway
+verified sign-out, HttpOnly session cookies, and the absence of a gateway key in
+browser requests.
+
+## Automated checks
+
+- API and CLI: Linux `go test -race ./...` passed. Regressions cover concurrent
+  redemption, expiry, attempts, browser binding, strict origin/body validation,
+  database failures, retired members, upstream outages, legacy sessions, account
+  collisions/bans, preserved ownership after email changes and quota responses.
+- Frontend: Vitest, TypeScript, ESLint on changed sources, Prettier checks on
+  changed sources, and the production build passed. The resend regression
+  selects an earlier request explicitly after a replacement request.
+- `git diff --check` passed.
+
+The macOS API build hits existing Linux-specific `statfs` type differences,
+so Go tests and binaries use Linux Go 1.26.10. The module/workspace minimum now
+requires that patch or newer. Clean `npm ci --ignore-scripts` succeeds with the
+repaired optional-platform lock entries. Existing package versions are unchanged
+except patched Zod 4.6.6 and Undici 7.30.1; the full npm audit is clean. The API
+image builds on Alpine 3.24.3, and deployment helper images use the same release.
+
+## Security regression evidence
+
+The following tests failed against the vulnerable implementation and passed
+after the corresponding fix:
+
+- `TestSessionRejectsChangedOrigin` and `TestSessionRejectsRedirects`: API calls
+  and logout withhold saved cookies from another origin or redirect destination.
+- `TestRevocationReportsDatabaseFailure`: a real SQLite trigger rejects session
+  deletion; logout/admin revocation report failure, retain retry credentials, and
+  successfully revoke after the injected failure is removed.
+- `TestMistyUnlinkedExistingAccountCannotBeClaimedByEmail`: neither ordinary nor
+  admin accounts can be claimed by a new identity through email equality.
+- `TestMistyIssuerMismatchAndDatabasePin` and
+  `TestMistyRejectsMissingOrChangedResponseIssuer`: wrong issuers/origins and
+  missing attestation fail closed. A changed gateway origin is rejected before
+  sending its configured credential.
+- Gateway regressions demonstrate that exhausting other challenges or delivering
+  a new code cannot block a valid earlier challenge. Both storage adapters bound
+  guesses with three attempts per challenge and five deliveries per mailbox
+  issuance window.
+
+Additional tests verify explicit mapping persistence, conflict rejection, secure
+CLI URL validation and retry behavior. API/CLI race suites and `go vet`, frontend
+tests/types/lint/build, gateway Postgres tests, migration round trip and Misty's
+repository-wide `make check` passed. The updated browser run again exercised the
+real gateway/directory/verification containers with fake mail, including issuer
+checks, explicitly mapped admin identity, replay and retirement.
+
+## Local evidence
+
+The operator workspace retains the disposable test harness and logs:
+
+- `/tmp/misty-compute-browser/security_fullstack.py`: container orchestration, derived
+  from Misty's existing `services/gateway/tests/smoke_stack.py`.
+- `/tmp/misty-compute-browser/security_harness_test.go`: compute auth/static
+  frontend harness, injected only into a temporary test checkout.
+- `/tmp/misty-compute-browser/fullstack.cjs`: browser assertions.
+- `/tmp/misty-security-fullstack-final.log` and
+  `/tmp/misty-security-fullstack-browser.log`: successful integration results.
+- `/tmp/misty-compute-browser/fullstack-signed-in.png`: authenticated account UI.
+- `/tmp/misty-security-fixes-artifacts.json`: hashes of the changed source and
+  regression files used for the security checks.
+
+These are local temporary artifacts, not deployment assets. All test containers,
+networks and disposable databases were removed after verification.
+
+## Remaining live checks
+
+The private compute host was unreachable because this Mac's Tailscale client was
+logged out. Live HTTPS, ingress/proxy-IP configuration, real email delivery,
+database backup/cutover and existing production account mappings remain
+unverified. Misty's staging gateway still requires deployment and provisioning.
+Follow [the rollout guide](misty-login.md) before enabling the feature.
+
+
+## Independent audit follow-up: rollback sessions
+
+The added rollback regressions fail against the audited `cc3218d` implementation
+and pass with the follow-up change. Rolling back to local auth durably revokes
+Misty sessions and clears pending challenges while preserving local sessions and
+identity mappings. Re-enabling Misty cannot revive the deleted credentials.
+Local mode also rejects Misty-provenance rows from an overlapping old process.
+A synthetic SQLite delete failure verifies startup fails and the cleanup
+transaction cannot partially commit.
+
+The complete Linux API/CLI race suites and `go vet` passed. Misty's companion
+change passed full disposable-Postgres suites and a real HTTP reproduction of
+Discord/compute cooldown overlap and resend-clock skew, with fake mail only.
+Status capacity is configured on Misty; compute keeps its 30-second eligibility
+cache. Existing live-host and real-mail limitations above still apply.
+
+Changed-file rationale: `src/auth.go` rejects mismatched session provenance;
+`src/misty_auth.go` performs transactional rollback cleanup;
+`src/auth_security_test.go` covers rollback, late writes and cleanup failure;
+`docs/agents/misty-login.md` describes rollback and updated gateway capacity;
+this verification report records the evidence and remaining limits.

@@ -5,6 +5,7 @@ import { adminClient } from 'better-auth/client/plugins'
 import { jobsAPI } from '#/api.ts'
 import { errorMessage, usePolling } from '#/hooks/usePolling.ts'
 import { BackendConnectionError } from '#/components/BackendConnectionError.tsx'
+import { MistyLogin } from '#/components/MistyLogin.tsx'
 
 export const authClient = createAuthClient({
   basePath: '/auth',
@@ -19,8 +20,9 @@ export type Member = {
 const AccountContext = createContext<{
   user: Member | null
   enabled: boolean
+  authMode: 'local' | 'misty'
   refresh: () => void
-}>({ user: null, enabled: false, refresh: () => {} })
+}>({ user: null, enabled: false, authMode: 'local', refresh: () => {} })
 export const useAccount = () => useContext(AccountContext)
 
 function Login({ refresh }: { refresh: () => void }) {
@@ -115,12 +117,17 @@ export function AccountGate({ children }: { children: ReactNode }) {
       />
     )
   if (session.data?.enabled && !session.data.user)
-    return <Login refresh={session.refresh} />
+    return session.data.auth_mode === 'misty' ? (
+      <MistyLogin refresh={session.refresh} />
+    ) : (
+      <Login refresh={session.refresh} />
+    )
   return (
     <AccountContext
       value={{
         user: session.data?.user ?? null,
         enabled: session.data?.enabled ?? false,
+        authMode: session.data?.auth_mode ?? 'local',
         refresh: session.refresh,
       }}
     >

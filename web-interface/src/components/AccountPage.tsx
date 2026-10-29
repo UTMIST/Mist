@@ -92,6 +92,7 @@ async function listMembers() {
   return result.data
 }
 function Members() {
+  const misty = useAccount().authMode === 'misty'
   const members = usePolling(listMembers, 30000)
   const [name, setName] = useState(''),
     [email, setEmail] = useState(''),
@@ -124,17 +125,23 @@ function Members() {
     <section className="mist-card mist-members-panel border rounded p-6 space-y-4">
       <PanelHeading
         title="Members"
-        description="Create accounts and manage access to the portal."
+        description={
+          misty
+            ? 'Members join by signing in with an active Misty account.'
+            : 'Create accounts and manage access to the portal.'
+        }
         icon={<Users size={20} />}
         action={
-          <button
-            type="button"
-            className="mist-button mist-button-primary"
-            onClick={() => setCreating(true)}
-          >
-            <Plus size={15} aria-hidden="true" />
-            New member
-          </button>
+          !misty && (
+            <button
+              type="button"
+              className="mist-button mist-button-primary"
+              onClick={() => setCreating(true)}
+            >
+              <Plus size={15} aria-hidden="true" />
+              New member
+            </button>
+          )
         }
       />
       {creating && (
@@ -245,14 +252,16 @@ function Members() {
               {member.role === 'admin' ? 'Admin' : 'Member'}
             </span>
             <div className="mist-member-actions">
-              <button
-                type="button"
-                aria-label={`Reset password for ${member.name}`}
-                title="Reset password"
-                onClick={() => setResetUser(member.id)}
-              >
-                <KeyRound size={15} aria-hidden="true" />
-              </button>
+              {!misty && (
+                <button
+                  type="button"
+                  aria-label={`Reset password for ${member.name}`}
+                  title="Reset password"
+                  onClick={() => setResetUser(member.id)}
+                >
+                  <KeyRound size={15} aria-hidden="true" />
+                </button>
+              )}
             </div>
           </li>
         ))}
@@ -291,14 +300,16 @@ function Members() {
           </div>
         </div>
       )}
-      <button
-        type="button"
-        className="mist-button"
-        onClick={() => setResetUser('')}
-      >
-        <KeyRound size={15} aria-hidden="true" />
-        Reset password
-      </button>
+      {!misty && (
+        <button
+          type="button"
+          className="mist-button"
+          onClick={() => setResetUser('')}
+        >
+          <KeyRound size={15} aria-hidden="true" />
+          Reset password
+        </button>
+      )}
       {resetUser !== null && (
         <Modal title="Reset password" onClose={() => setResetUser(null)}>
           <PasswordReset
@@ -351,67 +362,79 @@ export function AccountPage() {
         aria-labelledby={isAdmin ? 'account-settings-personal-tab' : undefined}
         hidden={tab !== 'personal'}
       >
-        <section className="mist-card border rounded p-6 max-w-xl">
-          <PanelHeading
-            title="Change password"
-            description="Keep your account secure. Other sessions will be signed out."
-            icon={<KeyRound size={20} />}
-          />
-          <form
-            className="space-y-3"
-            onSubmit={async (e) => {
-              e.preventDefault()
-              setBusy(true)
-              setMessage('')
-              try {
-                const result = await authClient.changePassword({
-                  currentPassword: current,
-                  newPassword: next,
-                  revokeOtherSessions: true,
-                })
-                if (result.error) throw new Error(result.error.message)
-                setCurrent('')
-                setNext('')
-                setMessage('Password changed. Other sessions were signed out.')
-              } catch (err) {
-                setMessage(errorMessage(err))
-              } finally {
-                setBusy(false)
-              }
-            }}
-          >
-            <div>
-              <label htmlFor="current-password">Current password</label>
-              <input
-                id="current-password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className={field}
-                value={current}
-                onChange={(e) => setCurrent(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="new-password">New password</label>
-              <input
-                id="new-password"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={12}
-                maxLength={128}
-                className={field}
-                value={next}
-                onChange={(e) => setNext(e.target.value)}
-              />
-            </div>
-            <button disabled={busy} className="bg-green-200 rounded p-2">
-              Change password
-            </button>
-            {message && <p role="status">{message}</p>}
-          </form>
-        </section>
+        {account.authMode === 'misty' ? (
+          <section className="mist-card border rounded p-6 max-w-xl">
+            <h2 className="text-lg font-semibold">Sign in with Misty</h2>
+            <p>
+              Your email and account eligibility are managed in Misty. Sign in
+              using an email verification code.
+            </p>
+          </section>
+        ) : (
+          <section className="mist-card border rounded p-6 max-w-xl">
+            <PanelHeading
+              title="Change password"
+              description="Keep your account secure. Other sessions will be signed out."
+              icon={<KeyRound size={20} />}
+            />
+            <form
+              className="space-y-3"
+              onSubmit={async (e) => {
+                e.preventDefault()
+                setBusy(true)
+                setMessage('')
+                try {
+                  const result = await authClient.changePassword({
+                    currentPassword: current,
+                    newPassword: next,
+                    revokeOtherSessions: true,
+                  })
+                  if (result.error) throw new Error(result.error.message)
+                  setCurrent('')
+                  setNext('')
+                  setMessage(
+                    'Password changed. Other sessions were signed out.',
+                  )
+                } catch (err) {
+                  setMessage(errorMessage(err))
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              <div>
+                <label htmlFor="current-password">Current password</label>
+                <input
+                  id="current-password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  className={field}
+                  value={current}
+                  onChange={(e) => setCurrent(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="new-password">New password</label>
+                <input
+                  id="new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={12}
+                  maxLength={128}
+                  className={field}
+                  value={next}
+                  onChange={(e) => setNext(e.target.value)}
+                />
+              </div>
+              <button disabled={busy} className="bg-green-200 rounded p-2">
+                Change password
+              </button>
+              {message && <p role="status">{message}</p>}
+            </form>
+          </section>
+        )}
       </div>
       {isAdmin && (
         <div

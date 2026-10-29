@@ -46,7 +46,8 @@ func (a *App) requestExecutor(r *http.Request) *KubernetesExecutor {
 		return a.executor
 	}
 	clone := *a.executor
-	if a.auth != nil && strings.EqualFold(member.Email, a.auth.legacyEmail) {
+	if a.auth != nil && ((a.auth.legacyUserID != "" && member.ID == a.auth.legacyUserID) ||
+		(a.auth.legacyUserID == "" && a.auth.misty == nil && strings.EqualFold(member.Email, a.auth.legacyEmail))) {
 		clone.owner = a.executor.owner
 	} else {
 		digest := sha256.Sum256([]byte(member.ID))
