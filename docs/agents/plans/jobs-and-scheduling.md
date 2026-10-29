@@ -61,6 +61,12 @@ requirements. Keep secrets and actual research data out of test fixtures.
    - Agree the layout with the team in one PR.
    - *Check:* `mistd scheduler` starts, migrates an empty Postgres, and holds the
      advisory lock. A second instance waits.
+   - *Status (27 Oct 2026):* implemented on `feat/jobs-scheduling-m1`; the check
+     is `TestSchedulerMigratesAndHoldsLock` in `cmd/mistd`, plus a test that
+     losing the lock connection stops the scheduler. Lock order is documented in
+     `internal/db`. `internal/identity` holds only the contract Identity
+     implements; `identitytest` is the fixture stand-in. Layout PR still needs
+     team agreement.
 2. **Fake executor and clock.**
    - Build an in-memory `Executor` that "runs" jobs for scripted durations,
      emits events, and can simulate OOM, failures and lost nodes.

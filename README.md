@@ -30,7 +30,17 @@ deployed and has been removed from the tree; see Git history before 27 October
 ## Development
 
 A Nix dev shell (`flake.nix`, `shell.nix`) provides Go, Node.js, Python, k3s and
-kubectl. Check documentation links with:
+kubectl. Run the Go tests with:
+
+```bash
+go test ./...
+```
+
+Database tests start an embedded Postgres as the current user (downloaded to
+`~/.embedded-postgres-go` on first run). To use an existing server instead, set
+`MIST_TEST_DATABASE_URL` to a superuser URL; each test creates its own database.
+
+Check documentation links with:
 
 ```bash
 python3 scripts/check-docs.py
