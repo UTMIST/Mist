@@ -22,6 +22,9 @@ type LaunchSpec struct {
 	AuthGeneration int64             `json:"auth_generation"`
 	LaunchDeadline time.Time         `json:"launch_deadline"` // admitted_at + launch timeout
 	Kind           Kind              `json:"kind"`
+	JobName        string            `json:"job_name"`
+	Partition      string            `json:"partition"`
+	QOS            string            `json:"qos"`
 	Node           string            `json:"node"`
 	User           User              `json:"user"`
 	TeamSlug       string            `json:"team_slug"`
@@ -111,8 +114,8 @@ func (s LaunchSpec) Validate() error {
 	if s.LaunchDeadline.IsZero() {
 		bad("launch_deadline is required")
 	}
-	if s.Node == "" {
-		bad("node is required")
+	if s.Node == "" || s.Partition == "" || s.QOS == "" {
+		bad("node, partition and qos are required")
 	}
 	if !namePattern.MatchString(s.User.Name) || s.User.UID <= 0 || s.User.PersonalGID <= 0 {
 		bad("user needs a valid name, uid and personal gid")

@@ -3,6 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/UTMIST/Mist/internal/db/dbtest"
+	"github.com/UTMIST/Mist/internal/executor/k3s"
 )
 
 func TestMain(m *testing.M) { dbtest.Main(m) }
@@ -53,7 +60,7 @@ func startScheduler(t *testing.T, url string) *instance {
 	ctx, cancel := context.WithCancel(context.Background())
 	in := &instance{log: &syncBuffer{}, cancel: cancel, done: make(chan error, 1)}
 	go func() {
-		in.done <- run(ctx, []string{"scheduler", "-database-url", url, "-leader-check", "100ms"}, in.log)
+		in.done <- run(ctx, []string{"scheduler", "-database-url", url, "-leader-check", "100ms"}, io.Discard, in.log)
 	}()
 	t.Cleanup(func() { cancel(); <-in.done })
 	return in
@@ -128,5 +135,44 @@ func TestSchedulerExitsWhenConnectionLost(t *testing.T) {
 		in.done <- nil
 	case <-time.After(10 * time.Second):
 		t.Fatal("scheduler kept running after losing its lock connection")
+	}
+}
+
+// cleanup-report -post delivers the receipt with the host's token.
+func TestCleanupReportPosts(t *testing.T) {
+	kubelet, cgroups := t.TempDir(), t.TempDir()
+	os.Mkdir(filepath.Join(kubelet, "pods"), 0o755)
+	token := filepath.Join(t.TempDir(), "token")
+	os.WriteFile(token, []byte("tt-secret\n"), 0o600)
+	const execID = "3f1c2a9e-8b7d-4c6e-9a5b-1d2e3f4a5b6c"
+	const uid = "0b6e7f2c-1a2b-4c3d-8e9f-0123456789ab"
+
+	var got k3s.CleanupReceipt
+	var auth, path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth, path = r.Header.Get("Authorization"), r.URL.Path
+		json.NewDecoder(r.Body).Decode(&got)
+		io.WriteString(w, `{"status":"recorded"}`)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"cleanup-report", "-kubelet-root", kubelet, "-cgroup-root", cgroups,
+		"-node", "utmist-tt", "-execution-id", execID, "-pod-uid", uid, "-post", srv.URL, "-token-file", token}, &out, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth != "Bearer tt-secret" || path != "/internal/v1/executions/"+execID+"/cleanup" ||
+		got.PodUID != uid || got.Node != "utmist-tt" || got.Evidence == "" {
+		t.Fatalf("posted %q %q %+v", auth, path, got)
+	}
+
+	// Leftovers mean no receipt at all.
+	os.Mkdir(filepath.Join(kubelet, "pods", uid), 0o755)
+	auth = ""
+	err = run(context.Background(), []string{"cleanup-report", "-kubelet-root", kubelet, "-cgroup-root", cgroups,
+		"-node", "utmist-tt", "-execution-id", execID, "-pod-uid", uid, "-post", srv.URL, "-token-file", token}, &out, io.Discard)
+	if err == nil || auth != "" {
+		t.Fatalf("receipt sent with the Pod directory present: %v", err)
 	}
 }

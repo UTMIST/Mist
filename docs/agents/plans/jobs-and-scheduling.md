@@ -74,6 +74,14 @@ requirements. Keep secrets and actual research data out of test fixtures.
      duplicate/out-of-order events, observation outages and failed cleanup.
      Persist simulated receipts separately from notification delivery.
    - *Check:* scheduler tests run without a cluster.
+   - *Status (28 Oct 2026):* `internal/clock` has `Fake` (timers and
+     `AfterFunc` callbacks fire synchronously, in time order, inside `Advance`).
+     `internal/executor/fake` runs scripted jobs on that clock and injects lost or
+     late create responses, OOM, launch errors and timeouts, the backstop, SIGTERM
+     versus SIGKILL, lost and recovered nodes, failed cleanup, and observation
+     outages. Its durable receipts are kept separate from an event stream that
+     tests can hold, drop, duplicate, reorder or lose on `Restart`. The scheduler
+     tests that use it come with step 3.
 3. **Scheduler core.**
    - Tables: `partitions`, `qos`, `limits`, `jobs`, `job_specs`, `job_events`,
      `allocations`, `nodes`, `partition_nodes`, operation intents, consumed
@@ -92,6 +100,19 @@ requirements. Keep secrets and actual research data out of test fixtures.
      Cover M1-04/M1-05/M1-06: crash boundaries, split leadership, fast exit before
      Started, lost node with retained allocation and repeated cleanup receipts.
      Include shared-node and partition caps, not just accelerator counts.
+   - *Status (30 Oct 2026):* implemented in `internal/scheduler`, with tables in
+     `migrations/scheduler/0002`. `scheduler_test.go` covers every scenario
+     listed in the check above, plus revocation, PROVISIONING/AUTH_UNAVAILABLE,
+     stale generation before launch, ambiguous creates, and dropped or duplicated
+     events. Writes are fenced by a leader epoch (scheduler.md). Still open:
+     - **Unknown executions:** they are stopped, and their node is kept out of
+       admission in memory, but not yet charged as quarantined occupancy.
+     - **Executor receipt tables:** moved to step 5, since the fake keeps
+       receipts in memory.
+     - **Generation granularity:** the identity fixture's generation is global
+       rather than per account, so any membership change cancels unsent
+       launches. Identity's real implementation should scope it per account.
+     - **Pending detail:** refreshed only when the pending reason changes.
 4. **`mist-job-entry`.**
    - umask 0027, symlink-safe private dot-folders, output header/footer, copying output to
      the file and stdout, SIGTERM forwarding, OOM detection from
@@ -100,6 +121,23 @@ requirements. Keep secrets and actual research data out of test fixtures.
      `memory.max`. Verify the fallback when the wrapper itself is killed;
      report incomplete output without fabricating a successful footer. Test
      batch arguments and safe output opening inside the restricted view.
+   - *Status (30 Oct 2026):* `cmd/mist-job-entry` (static binary) with logic in
+     `internal/jobentry`.
+     - **How it works:** the output file opens via `openat2(RESOLVE_BENEATH)`
+       under the team root, regular files only. Dot-folders are opened
+       `O_NOFOLLOW` and checked by `fstat`; an unsafe replacement fails setup.
+       Setup failures exit 125 with a `launch_error` result and never run the
+       work. Work runs in its own process group with a parent-death signal;
+       the local deadline timer sends SIGTERM, then SIGKILL after grace.
+     - **Tests:** the process tests re-execute the test binary as the real
+       wrapper. They cover batch args with shell metacharacters, command exit
+       codes, SIGTERM forwarding, both deadline paths, killing the wrapper (no
+       footer, no result, work dies) and an unsafe output path. OOM runs in a
+       64 MiB systemd scope with swap off and detects `oom_kill` from
+       `memory.events`.
+     - **Still open:** grandchildren that call `setsid` escape the group and
+       rely on the executor tearing down the container or cgroup.
+       `/dev/termination-log` wiring belongs to the step-5 Pod builder.
 5. **K3s executor.**
    - A pod builder written as a pure function (`LaunchSpec` → Pod and
      ConfigMap), tested against golden files.
@@ -113,6 +151,27 @@ requirements. Keep secrets and actual research data out of test fixtures.
      executor backstop; launch timeout is separate from work walltime.
    - *Check:* golden tests, plus a run on a local k3d cluster using the `cpu`
      path.
+   - *Status (30 Oct 2026):* `internal/executor/k3s`, plus `deploy/k3s/` (the
+     namespace, NetworkPolicy and RBAC) and `mistd cleanup-report`.
+     - **Unit tests:** golden Pod and ConfigMap files with separate security
+       invariants, and executor behaviour on client-go's fake clientset.
+     - **Integration:** `scripts/k3d-test.sh` runs on k3s v1.36.5 (containerd
+       2.3.4), as mistd's service account. It covers strict groups (only the
+       team, `mist-users` and the personal group), other teams absent, no
+       service-account token, a read-only root, writable scratch, umask 0027,
+       the network blocked except the internet, SIGTERM forwarding, kernel
+       OOM, the local time limit, setup failure as LAUNCH_FAILED, executor
+       restart, narrow RBAC, and scheduler → k3s → node cleanup receipt →
+       COMPLETED.
+     - **Found:** NetworkPolicy is applied about a second after the containers
+       start. Fixed with the isolation gate init container (executors.md).
+     - **Still open:**
+       - Cleanup receipts reach the executor through `RecordCleanup`; the
+         authenticated node → API transport is step 6.
+       - Orphan ConfigMap collection.
+       - Throttling `Lost` until the node has been NotReady for 2 min
+         *and* the scheduler has confirmed it.
+       - GPU, NFS, host firewall and real-node cleanup, which are steps 7–8.
 6. **Job API endpoints.**
    - Submit (normalise with defaults, validate), list, get, cancel, log (live
      and tail), partitions, and queue (with anonymisation).
@@ -120,6 +179,46 @@ requirements. Keep secrets and actual research data out of test fixtures.
      allowlisted queue summaries and cleanup/incomplete-output fields.
    - *Check:* M1-09 through dev fixtures and real session/relay auth. Production
      build must reject the development principal header.
+   - *Status (30 Oct 2026):* `internal/api` and the `mistd api` wiring. The
+     details are in [api.md](../architecture/api.md#implementation-notes-m1).
+     - **Endpoints:**
+       - `POST /v1/jobs`, which normalizes with database defaults and requires
+         an `Idempotency-Key`;
+       - `GET /v1/jobs` and `GET /v1/jobs/{id}`;
+       - `POST /v1/jobs/{id}/cancel`;
+       - `GET /v1/jobs/{id}/log`, including the `?follow=1` WebSocket;
+       - `GET /v1/queue`, anonymised;
+       - `GET /v1/partitions`;
+       - `POST /internal/v1/executions/{id}/cleanup`, with host tokens.
+
+       `mistd cleanup-report -post` delivers receipts.
+     - **M1-09 tests on the fixture:**
+       - A duplicate key gives one job, both through HTTP and inside the submit
+         transaction. A conflicting body is rejected, and a replay survives a
+         defaults change.
+       - Non-team detail, log and cancel requests get `not_found`.
+       - The lead, owner and admin rules follow the matrix, and former members
+         lose access.
+       - The queue and partition replies are free of other teams' identities,
+         names, env and paths.
+       - Hostile paths, env and argv are rejected and never stored.
+       - Log streams close on revocation.
+       - A production build refuses `-dev-fixture` and the dev header.
+
+       Mutation checks confirm the tests catch removed authorization, queue
+       redaction, the idempotency check, dev-header rejection, path
+       confinement, protected env and node-scoped receipts.
+     - **k3d:** `TestK3dAPIEndToEnd` submits over HTTP, admits, runs on k3s,
+       reads the log through the API, and has the node post its own cleanup
+       receipt to `/internal`. The job then reaches `COMPLETED` with the
+       allocation released.
+     - **Still open:**
+       - Real session and relay auth (Identity) are not integrated, so the
+         second half of the check waits for Lucas's authenticators.
+       - Host-token issuing (Identity provisioning).
+       - TLS on the direct link (step 7).
+       - The scheduler role has no executors wired in `mistd` yet (step 7
+         config).
 7. **Cluster.**
    - Reinstall k3s on the direct link and install the GPU Operator with only the
      device plugin and toolkit.

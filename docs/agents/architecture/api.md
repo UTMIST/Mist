@@ -232,6 +232,84 @@ process group; callers cannot specify a PID, executable or alternate command.
 The holder owns grace timing, so API restart cannot reset it. The CLI's `mist
 shell` and later browser terminal use this same endpoint.
 
+## Implementation notes (M1)
+
+The job endpoints are in `internal/api`. Where this section is more specific than
+the contract above, the code follows this section.
+
+- **Status codes.** `unauthenticated` is 401, `forbidden` 403, `not_found` 404,
+  `invalid` 400, `limit_exceeded` 422, `conflict` 409 and `unavailable` 503.
+  Clients should switch on `code`, not on the status.
+- **Authenticators.** `api.Authenticator` resolves a request to an
+  `identity.Principal`. It returns `api.ErrNoCredentials` when the request carries
+  none of its credentials, so the next one can try. Identity plugs the portal
+  session and relay authenticators into `Server.Accounts`. Until it does,
+  `mistd api` fails closed: every `/v1` request is `unauthenticated`, and
+  authorization is `unavailable`. Session-cookie CSRF and Origin checks belong
+  to the session authenticator.
+- **Development identity.** `X-Mist-Dev-User` and `mistd -dev-fixture` exist only
+  in binaries built with `-tags mistdev`, which use the `identitytest` accounts.
+  - Production binaries contain neither, refuse `-dev-fixture`, and answer
+    `unauthenticated` to any request carrying the header, even alongside valid
+    credentials.
+  - `cmd/mistd/nodev_test.go` checks this on the built server.
+- **Idempotency.** `Idempotency-Key` is required from every caller, not only the
+  CLI. The portal should send a fresh `crypto.randomUUID()` per submit click.
+  - Keys are per account.
+  - The hash covers the request as decoded: field order and spacing don't
+    matter.
+  - A replay answers `200` with header `Idempotent-Replayed: true` (a new job is
+    `201`), after rechecking that the caller may still view the job.
+  - The key is checked once before normalization and again inside the submit
+    transaction, under the per-user lock, so concurrent retries create one job.
+- **Defaults and checks.** Defaults come from the `partitions` and `qos` rows,
+  including `partitions.is_default` and `default_signal_grace_seconds`.
+  - `%j` in `output` is expanded when the job ID is assigned. Other `%`
+    sequences are kept literally.
+  - Paths must be clean and absolute (no `.`, `..`, `//` or trailing `/`).
+    Output must lie strictly inside the charged team.
+  - Protected env names (`jobentry.ProtectedEnv`) are rejected, not dropped.
+  - A partition whose nodes have never been reported answers `unavailable`
+    rather than accepting a job that might never fit.
+  - `interactive` kind and QoS are rejected until M2.
+- **`GET /v1/jobs`.**
+  - Without parameters it lists the caller's own jobs, keeping only teams they
+    still belong to.
+  - `?team=` lists a team's jobs for its members, and `?all=1` lists every job
+    for admins.
+  - `?state=` takes a comma list of states, or `active`.
+  - The cursor is the last job ID of the page; pages run newest first.
+- **`GET /v1/jobs/{id}`** adds `events` (the state history) and `exit_detail`.
+  `?script=1` adds `script`, `args`, `argv` and `env`.
+- **`GET /v1/jobs/{id}/log`** answers
+  `{state, output_path, output_incomplete, truncated, text}`, with at most the
+  last 64 KiB as text. Invalid UTF-8 becomes U+FFFD.
+  - `?follow=1` upgrades to a WebSocket of binary frames. It closes when output
+    ends, when the client sends anything, or when a recheck of view access
+    (every 10 s) fails.
+  - A browser `Origin` must be in `-allowed-origins`. Requests without an
+    Origin are not from a browser.
+- **`GET /v1/queue`** entries carry `id`, `partition`, `qos`, `state`,
+  `resources`, `age_seconds`, `pending_reason`, `user`, `team`, `name`,
+  `workdir` and `output_path`.
+  - `user`, `team` and `name` are filled only for teams the caller belongs to.
+  - `workdir` and `output_path` are always null.
+  - `pending_reason` passes only known codes.
+- **`GET /v1/partitions`** gives defaults, maximums (per accelerator when
+  `per_accelerator`), nodes with total and free capacity, and free capacity on
+  schedulable nodes.
+  - Only limits the caller can learn are listed: wildcard rows, rows naming the
+    caller, and rows naming teams the caller belongs to.
+  - Admins see every limit.
+- **Host tokens.** `/internal` accepts only `Authorization: Bearer` host tokens,
+  and `/v1` never accepts them. `mistd api -host-tokens FILE` reads lines of
+  `<host> <scope> <sha256-hex>`; generate a hash with `api.HashToken`.
+  - Each server path accepts one scope (`cleanup`).
+  - A host may post cleanup receipts only for itself. The executor then checks
+    the receipt against its own records; a refusal is `conflict`.
+  - Issuing and rotating tokens is Identity's provisioning work. Until then,
+    an admin writes the file.
+
 ## Versioning
 
 Additive changes (new fields, endpoints or enum values) don't change the

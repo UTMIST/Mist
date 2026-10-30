@@ -1,0 +1,197 @@
+---
+apiVersion: v1
+data:
+  group: |
+    root:x:0:
+    nogroup:x:65534:
+    team-vision:x:40001:alice
+    alice:x:20001:alice
+    mist-users:x:19000:alice
+  job.json: |
+    {
+      "job_id": 413,
+      "name": "resnet-sweep-3",
+      "user": "alice",
+      "team": "vision",
+      "partition": "cpu",
+      "qos": "normal",
+      "node": "utmist-tt",
+      "kind": "command",
+      "resources": {
+        "milli_cpu": 2000,
+        "memory_bytes": 8589934592,
+        "gpus": 0,
+        "tt_boards": 0,
+        "scratch_bytes": 53687091200,
+        "hugepages_bytes": 0
+      },
+      "time_limit_seconds": 14400,
+      "signal_grace_seconds": 60,
+      "team_root": "/mist/teams/vision",
+      "home": "/mist/teams/vision/alice",
+      "workdir": "/mist/teams/vision/alice/resnet",
+      "output_path": "/mist/teams/vision/alice/resnet/mist-412.out",
+      "scratch": "/scratch",
+      "script_path": "",
+      "args": null,
+      "argv": [
+        "huggingface-cli",
+        "download",
+        "meta-llama/Llama-3-8B"
+      ],
+      "env": {
+        "WANDB_PROJECT": "resnet"
+      },
+      "termination_log": "/dev/termination-log"
+    }
+  passwd: |
+    root:x:0:0:root:/root:/usr/sbin/nologin
+    nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+    alice:x:20001:40001::/mist/teams/vision/alice:/bin/bash
+immutable: true
+kind: ConfigMap
+metadata:
+  annotations:
+    mist/spec-hash: sha256:2afd963d82ff2edd045185b45d2fb055673b2f8e4796c996c1415c1df0cfc028
+  labels:
+    mist/execution-id: 3f1c2a9e-8b7d-4c6e-9a5b-1d2e3f4a5b6c
+    mist/job-id: "413"
+    mist/partition: cpu
+    mist/team: vision
+  name: job-413
+  namespace: mist-jobs
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    mist/spec-hash: sha256:2afd963d82ff2edd045185b45d2fb055673b2f8e4796c996c1415c1df0cfc028
+  labels:
+    mist/execution-id: 3f1c2a9e-8b7d-4c6e-9a5b-1d2e3f4a5b6c
+    mist/job-id: "413"
+    mist/partition: cpu
+    mist/team: vision
+  name: job-413
+  namespace: mist-jobs
+spec:
+  activeDeadlineSeconds: 15120
+  automountServiceAccountToken: false
+  containers:
+  - command:
+    - /usr/local/bin/mist-job-entry
+    - -spec
+    - /etc/mist/job.json
+    image: registry.mist.local/runtime/cpu@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+    imagePullPolicy: IfNotPresent
+    name: job
+    resources:
+      limits:
+        cpu: "2"
+        ephemeral-storage: 50Gi
+        memory: 8Gi
+      requests:
+        cpu: "2"
+        ephemeral-storage: 50Gi
+        memory: 8Gi
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      privileged: false
+      readOnlyRootFilesystem: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /mist/teams/vision
+      name: durable-0
+    - mountPath: /mist/software
+      name: durable-1
+      readOnly: true
+    - mountPath: /scratch
+      name: scratch
+    - mountPath: /tmp
+      name: scratch
+    - mountPath: /dev/shm
+      name: shm
+    - mountPath: /etc/mist/job.json
+      name: job
+      readOnly: true
+      subPath: job.json
+    - mountPath: /etc/passwd
+      name: job
+      readOnly: true
+      subPath: passwd
+    - mountPath: /etc/group
+      name: job
+      readOnly: true
+      subPath: group
+  dnsConfig:
+    nameservers:
+    - 1.1.1.1
+    - 9.9.9.9
+  dnsPolicy: None
+  enableServiceLinks: false
+  initContainers:
+  - command:
+    - /usr/local/bin/mist-job-entry
+    - -await-isolation
+    - $(MIST_HOST_IP):10250
+    env:
+    - name: MIST_HOST_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+    image: registry.mist.local/runtime/cpu@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+    imagePullPolicy: IfNotPresent
+    name: network-gate
+    resources:
+      limits:
+        cpu: 100m
+        memory: 32Mi
+      requests:
+        cpu: 100m
+        memory: 32Mi
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      privileged: false
+      readOnlyRootFilesystem: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+  nodeName: utmist-tt
+  restartPolicy: Never
+  securityContext:
+    runAsGroup: 40001
+    runAsNonRoot: true
+    runAsUser: 20001
+    seccompProfile:
+      type: RuntimeDefault
+    supplementalGroups:
+    - 19000
+    - 20001
+    supplementalGroupsPolicy: Strict
+  terminationGracePeriodSeconds: 60
+  volumes:
+  - hostPath:
+      path: /mist/teams/vision
+      type: Directory
+    name: durable-0
+  - hostPath:
+      path: /mist/software
+      type: Directory
+    name: durable-1
+  - emptyDir:
+      sizeLimit: 50Gi
+    name: scratch
+  - emptyDir:
+      medium: Memory
+      sizeLimit: 4Gi
+    name: shm
+  - configMap:
+      defaultMode: 292
+      name: job-413
+    name: job
+status: {}

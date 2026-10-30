@@ -121,3 +121,15 @@ type Revocation struct {
 	Username string
 	Team     string
 }
+
+// Unavailable is an Admitter that can never establish authorization. It
+// keeps a scheduler without a real Identity backend failing closed.
+type Unavailable struct{}
+
+func (Unavailable) LockGrant(context.Context, pgx.Tx, string, string, int64) (Grant, error) {
+	return Grant{}, ErrUnavailable
+}
+
+func (Unavailable) Revocations(context.Context, pgx.Tx, int64) ([]Revocation, int64, error) {
+	return nil, 0, ErrUnavailable
+}
