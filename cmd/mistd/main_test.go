@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -53,7 +54,7 @@ func startScheduler(t *testing.T, url string) *instance {
 	ctx, cancel := context.WithCancel(context.Background())
 	in := &instance{log: &syncBuffer{}, cancel: cancel, done: make(chan error, 1)}
 	go func() {
-		in.done <- run(ctx, []string{"scheduler", "-database-url", url, "-leader-check", "100ms"}, in.log)
+		in.done <- run(ctx, []string{"scheduler", "-database-url", url, "-leader-check", "100ms"}, io.Discard, in.log)
 	}()
 	t.Cleanup(func() { cancel(); <-in.done })
 	return in

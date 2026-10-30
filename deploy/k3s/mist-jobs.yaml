@@ -1,0 +1,32 @@
+# Namespace and network boundary for job Pods (executors.md#network).
+# NetworkPolicy alone is not the host boundary: deployment-and-network.md
+# adds host filtering for job traffic to each node's own services.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mist-jobs
+  # No Pod Security admission label: both "restricted" and "baseline" forbid
+  # hostPath, which jobs on the volume's host node need. The pod builder's
+  # invariant tests (internal/executor/k3s) are the guard instead, and only
+  # mistd may create Pods here.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jobs-internet-egress-only
+  namespace: mist-jobs
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []            # nothing connects in
+  egress:
+    - to:                # IPv4 internet only; IPv6 is not listed, so it is denied
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8       # LAN, cluster Pod/Service ranges
+              - 172.16.0.0/12
+              - 192.168.0.0/16   # includes the direct link
+              - 100.64.0.0/10    # Tailscale
+              - 169.254.0.0/16   # link-local and metadata
+              - 127.0.0.0/8

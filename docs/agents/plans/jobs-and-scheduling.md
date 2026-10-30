@@ -151,6 +151,27 @@ requirements. Keep secrets and actual research data out of test fixtures.
      executor backstop; launch timeout is separate from work walltime.
    - *Check:* golden tests, plus a run on a local k3d cluster using the `cpu`
      path.
+   - *Status (30 Oct 2026):* `internal/executor/k3s`, plus `deploy/k3s/` (the
+     namespace, NetworkPolicy and RBAC) and `mistd cleanup-report`.
+     - **Unit tests:** golden Pod and ConfigMap files with separate security
+       invariants, and executor behaviour on client-go's fake clientset.
+     - **Integration:** `scripts/k3d-test.sh` runs on k3s v1.36.5 (containerd
+       2.3.4), as mistd's service account. It covers strict groups (only the
+       team, `mist-users` and the personal group), other teams absent, no
+       service-account token, a read-only root, writable scratch, umask 0027,
+       the network blocked except the internet, SIGTERM forwarding, kernel
+       OOM, the local time limit, setup failure as LAUNCH_FAILED, executor
+       restart, narrow RBAC, and scheduler → k3s → node cleanup receipt →
+       COMPLETED.
+     - **Found:** NetworkPolicy is applied about a second after the containers
+       start. Fixed with the isolation gate init container (executors.md).
+     - **Still open:**
+       - Cleanup receipts reach the executor through `RecordCleanup`; the
+         authenticated node → API transport is step 6.
+       - Orphan ConfigMap collection.
+       - Throttling `Lost` until the node has been NotReady for 2 min
+         *and* the scheduler has confirmed it.
+       - GPU, NFS, host firewall and real-node cleanup, which are steps 7–8.
 6. **Job API endpoints.**
    - Submit (normalise with defaults, validate), list, get, cancel, log (live
      and tail), partitions, and queue (with anonymisation).

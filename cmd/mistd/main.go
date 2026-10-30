@@ -2,6 +2,8 @@
 //
 //	mistd api        HTTP API
 //	mistd scheduler  queue, admission and executor calls (one active leader)
+//	mistd cleanup-report  on a k3s node, as root: print a cleanup receipt
+//	                 for a deleted Pod, or fail if anything of it remains
 //
 // Both connect to MIST_DATABASE_URL (or -database-url) and apply pending
 // migrations at start.
@@ -9,6 +11,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +24,7 @@ import (
 	"time"
 
 	"github.com/UTMIST/Mist/internal/db"
+	"github.com/UTMIST/Mist/internal/executor/k3s"
 	"github.com/UTMIST/Mist/internal/identity"
 	"github.com/UTMIST/Mist/internal/scheduler"
 )
@@ -28,17 +32,20 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, os.Args[1:], os.Stderr); err != nil {
+	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "mistd:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, args []string, stderr io.Writer) error {
+func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: mistd <api|scheduler> [flags]")
+		return errors.New("usage: mistd <api|scheduler|cleanup-report> [flags]")
 	}
 	cmd, args := args[0], args[1:]
+	if cmd == "cleanup-report" {
+		return cleanupReport(args, stdout)
+	}
 	fs := flag.NewFlagSet("mistd "+cmd, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dbURL := fs.String("database-url", os.Getenv("MIST_DATABASE_URL"), "Postgres URL")
@@ -99,4 +106,26 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	default:
 		return fmt.Errorf("unknown subcommand %q", cmd)
 	}
+}
+
+// cleanupReport checks a node for leftovers of one Pod and prints the
+// receipt. Until the internal API exists (M1 step 6) the receipt is
+// delivered by whoever runs this; it is evidence, never a request.
+func cleanupReport(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("mistd cleanup-report", flag.ContinueOnError)
+	kubelet := fs.String("kubelet-root", "/var/lib/kubelet", "kubelet root directory")
+	cgroups := fs.String("cgroup-root", "/sys/fs/cgroup", "cgroup v2 mount")
+	node := fs.String("node", "", "this node's name")
+	execID := fs.String("execution-id", "", "execution ID")
+	podUID := fs.String("pod-uid", "", "recorded Pod UID")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	evidence, err := k3s.VerifyCleanup(*kubelet, *cgroups, *podUID)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(stdout).Encode(k3s.CleanupReceipt{
+		ExecutionID: *execID, PodUID: *podUID, Node: *node, Evidence: evidence,
+	})
 }

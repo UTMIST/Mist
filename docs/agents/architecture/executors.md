@@ -292,6 +292,20 @@ DNS is an explicit port-53 exception to approved resolvers, not a blanket cluste
 service exception. Disable IPv6 for job networks until equivalent filtering is
 verified. Test both local and remote host addresses and service IPs.
 
+**Isolation gate (found in M1 step 5).** k3s's policy controller (kube-router)
+programs a Pod's rules about a second *after* its containers start. In k3d, a
+job's first connections to the API service, the node's API server and kubelet
+all succeeded, and the same probes were blocked a second later. Every job Pod
+therefore has an init container, `mist-job-entry -await-isolation
+$(MIST_HOST_IP):10250`. It shares the Pod's network namespace and passes only
+after three consecutive failed connections to the node's kubelet, which is
+known to be listening because it is starting the Pod. After 60 s it fails
+closed, and the job becomes `LAUNCH_FAILED`. Jobs use `dnsPolicy: None` with
+approved public resolvers, so they never need cluster DNS. Once rules are in
+place, kube-router also filters job traffic to its own node (INPUT and OUTPUT
+chains) in k3d. That still has to be shown on the real hosts, together with
+the host firewall.
+
 ### Status mapping
 
 | Observed | Event |
@@ -337,6 +351,24 @@ actual process groups, rather than trusting an accepted field. Reference:
   with the shell's exit code; it is not inferred from exec transport closure.
   The relay/API preserve stream framing and backpressure without buffering
   unbounded output.
+
+### Implementation notes (M1)
+
+- **Terminate** shortens the Pod's `activeDeadlineSeconds`, which may only
+  decrease, instead of deleting the Pod. Kubelet sends SIGTERM, then SIGKILL
+  after `terminationGracePeriodSeconds` (the job's signal grace), and keeps the
+  final status, so the result and log tail are saved before the executor
+  deletes the Pod.
+- **`/tmp`** is the scratch emptyDir mounted a second time, not a `subPath`:
+  kubelet creates subPath directories root-owned, so a non-root job could not
+  write to them.
+- **Pod Security admission** is not enabled on `mist-jobs`: the `restricted`
+  and `baseline` levels both forbid the hostPath that jobs on the volume's host
+  need. The pod builder's invariant tests guard the security fields instead,
+  and only mistd may create Pods there.
+- **Receipts** live in `k3s_executions` and `k3s_receipts`. A recorded Pod
+  UID forbids recreating the Pod. A create whose response was lost is read
+  back by name and adopted only if its execution ID and spec hash match.
 
 ### Cleanup and reconciliation
 

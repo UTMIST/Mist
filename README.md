@@ -40,6 +40,13 @@ Database tests start an embedded Postgres as the current user (downloaded to
 `~/.embedded-postgres-go` on first run). To use an existing server instead, set
 `MIST_TEST_DATABASE_URL` to a superuser URL; each test creates its own database.
 
+Executor integration tests run on a local k3d cluster (needs Docker without
+sudo, plus k3d and kubectl):
+
+```bash
+scripts/k3d-test.sh
+```
+
 Check documentation links with:
 
 ```bash

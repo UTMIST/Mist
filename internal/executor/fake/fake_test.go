@@ -41,6 +41,8 @@ func (e *env) spec(jobID int64) executor.LaunchSpec {
 		AuthGeneration: 1,
 		LaunchDeadline: e.clock.Now().Add(10 * time.Minute),
 		Kind:           executor.KindBatch,
+		Partition:      "gpu",
+		QOS:            "normal",
 		Node:           gpuNode,
 		User:           executor.User{Name: "alice", UID: 20001, PersonalGID: 20001},
 		TeamSlug:       "team-a",

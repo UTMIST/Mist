@@ -1,0 +1,205 @@
+---
+apiVersion: v1
+data:
+  group: |
+    root:x:0:
+    nogroup:x:65534:
+    team-vision:x:40001:alice
+    alice:x:20001:alice
+    mist-users:x:19000:alice
+  job.json: |
+    {
+      "job_id": 412,
+      "name": "resnet-sweep-3",
+      "user": "alice",
+      "team": "vision",
+      "partition": "gpu",
+      "qos": "normal",
+      "node": "utmist-z1opa08",
+      "kind": "batch",
+      "resources": {
+        "milli_cpu": 8000,
+        "memory_bytes": 34359738368,
+        "gpus": 1,
+        "tt_boards": 0,
+        "scratch_bytes": 107374182400,
+        "hugepages_bytes": 0
+      },
+      "time_limit_seconds": 14400,
+      "signal_grace_seconds": 60,
+      "team_root": "/mist/teams/vision",
+      "home": "/mist/teams/vision/alice",
+      "workdir": "/mist/teams/vision/alice/resnet",
+      "output_path": "/mist/teams/vision/alice/resnet/mist-412.out",
+      "scratch": "/scratch",
+      "script_path": "/etc/mist/script",
+      "args": [
+        "3e-4"
+      ],
+      "argv": null,
+      "env": {
+        "WANDB_PROJECT": "resnet"
+      },
+      "termination_log": "/dev/termination-log"
+    }
+  passwd: |
+    root:x:0:0:root:/root:/usr/sbin/nologin
+    nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+    alice:x:20001:40001::/mist/teams/vision/alice:/bin/bash
+  script: |
+    #!/bin/bash
+    python train.py --lr "$1"
+immutable: true
+kind: ConfigMap
+metadata:
+  annotations:
+    mist/spec-hash: sha256:add67d194aa767e462365538aad75bf3714b005a47f14a9a5902f3737db49cb6
+  labels:
+    mist/execution-id: 3f1c2a9e-8b7d-4c6e-9a5b-1d2e3f4a5b6c
+    mist/job-id: "412"
+    mist/partition: gpu
+    mist/team: vision
+  name: job-412
+  namespace: mist-jobs
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    mist/spec-hash: sha256:add67d194aa767e462365538aad75bf3714b005a47f14a9a5902f3737db49cb6
+  labels:
+    mist/execution-id: 3f1c2a9e-8b7d-4c6e-9a5b-1d2e3f4a5b6c
+    mist/job-id: "412"
+    mist/partition: gpu
+    mist/team: vision
+  name: job-412
+  namespace: mist-jobs
+spec:
+  activeDeadlineSeconds: 15120
+  automountServiceAccountToken: false
+  containers:
+  - command:
+    - /usr/local/bin/mist-job-entry
+    - -spec
+    - /etc/mist/job.json
+    image: registry.mist.local/runtime/gpu@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    imagePullPolicy: IfNotPresent
+    name: job
+    resources:
+      limits:
+        cpu: "8"
+        ephemeral-storage: 100Gi
+        memory: 32Gi
+        nvidia.com/gpu: "1"
+      requests:
+        cpu: "8"
+        ephemeral-storage: 100Gi
+        memory: 32Gi
+        nvidia.com/gpu: "1"
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      privileged: false
+      readOnlyRootFilesystem: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /mist/teams/vision
+      name: durable-0
+    - mountPath: /mist/software
+      name: durable-1
+      readOnly: true
+    - mountPath: /scratch
+      name: scratch
+    - mountPath: /tmp
+      name: scratch
+    - mountPath: /dev/shm
+      name: shm
+    - mountPath: /etc/mist/job.json
+      name: job
+      readOnly: true
+      subPath: job.json
+    - mountPath: /etc/passwd
+      name: job
+      readOnly: true
+      subPath: passwd
+    - mountPath: /etc/group
+      name: job
+      readOnly: true
+      subPath: group
+    - mountPath: /etc/mist/script
+      name: job
+      readOnly: true
+      subPath: script
+  dnsConfig:
+    nameservers:
+    - 1.1.1.1
+    - 9.9.9.9
+  dnsPolicy: None
+  enableServiceLinks: false
+  initContainers:
+  - command:
+    - /usr/local/bin/mist-job-entry
+    - -await-isolation
+    - $(MIST_HOST_IP):10250
+    env:
+    - name: MIST_HOST_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+    image: registry.mist.local/runtime/gpu@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    imagePullPolicy: IfNotPresent
+    name: network-gate
+    resources:
+      limits:
+        cpu: 100m
+        memory: 32Mi
+      requests:
+        cpu: 100m
+        memory: 32Mi
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      privileged: false
+      readOnlyRootFilesystem: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+  nodeName: utmist-z1opa08
+  restartPolicy: Never
+  securityContext:
+    runAsGroup: 40001
+    runAsNonRoot: true
+    runAsUser: 20001
+    seccompProfile:
+      type: RuntimeDefault
+    supplementalGroups:
+    - 19000
+    - 20001
+    supplementalGroupsPolicy: Strict
+  terminationGracePeriodSeconds: 60
+  volumes:
+  - name: durable-0
+    nfs:
+      path: /mist/teams/vision
+      server: 192.168.240.2
+  - name: durable-1
+    nfs:
+      path: /mist/software
+      readOnly: true
+      server: 192.168.240.2
+  - emptyDir:
+      sizeLimit: 100Gi
+    name: scratch
+  - emptyDir:
+      medium: Memory
+      sizeLimit: 16Gi
+    name: shm
+  - configMap:
+      defaultMode: 292
+      name: job-412
+    name: job
+status: {}
