@@ -412,6 +412,8 @@ The agent starts a systemd **transient unit** `mist-job-<id>.service` (in
 | Time limit | `RuntimeMaxSec=` as backstop; `KillSignal=SIGTERM`, `TimeoutStopSec=` grace |
 | Exit reason | Unit `Result=` (`oom-kill`, `timeout`, `exit-code`) and `ExecMainStatus` |
 
+systemd's default `OOMPolicy=stop` also sends SIGTERM to the rest of the unit after a kernel OOM kill (observed in the M1 `mist-job-entry` cgroup test). Pin `OOMPolicy` explicitly, and take the reason from `Result=oom-kill` or `memory.events`, not from the exit status.
+
 ### Interactive sessions
 
 Use the same persistent holder/PTY protocol as K3s, inside the main job unit.

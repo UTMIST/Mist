@@ -121,6 +121,23 @@ requirements. Keep secrets and actual research data out of test fixtures.
      `memory.max`. Verify the fallback when the wrapper itself is killed;
      report incomplete output without fabricating a successful footer. Test
      batch arguments and safe output opening inside the restricted view.
+   - *Status (30 Oct 2026):* `cmd/mist-job-entry` (static binary) with logic in
+     `internal/jobentry`.
+     - **How it works:** the output file opens via `openat2(RESOLVE_BENEATH)`
+       under the team root, regular files only. Dot-folders are opened
+       `O_NOFOLLOW` and checked by `fstat`; an unsafe replacement fails setup.
+       Setup failures exit 125 with a `launch_error` result and never run the
+       work. Work runs in its own process group with a parent-death signal;
+       the local deadline timer sends SIGTERM, then SIGKILL after grace.
+     - **Tests:** the process tests re-execute the test binary as the real
+       wrapper. They cover batch args with shell metacharacters, command exit
+       codes, SIGTERM forwarding, both deadline paths, killing the wrapper (no
+       footer, no result, work dies) and an unsafe output path. OOM runs in a
+       64 MiB systemd scope with swap off and detects `oom_kill` from
+       `memory.events`.
+     - **Still open:** grandchildren that call `setsid` escape the group and
+       rely on the executor tearing down the container or cgroup.
+       `/dev/termination-log` wiring belongs to the step-5 Pod builder.
 5. **K3s executor.**
    - A pod builder written as a pure function (`LaunchSpec` → Pod and
      ConfigMap), tested against golden files.
