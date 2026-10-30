@@ -390,6 +390,20 @@ func (f *Fake) cleaned(e *execution, evidence string) {
 	f.emit(e, executor.EventExited, code, reason, evidence, f.clock.Now())
 }
 
+// Forget erases every record of jobID's execution, as if the executor's
+// state were wiped. Real executors must never do this; the scheduler has
+// to treat the resulting absence as a loss, not as permission to rerun.
+func (f *Fake) Forget(jobID int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if e := f.execs[jobID]; e != nil {
+		f.stopTimers(e)
+		e.frozen = true
+		delete(f.receipts, e.spec.ExecutionID)
+		delete(f.execs, jobID)
+	}
+}
+
 // FixCleanup lets a failed cleanup confirm now.
 func (f *Fake) FixCleanup(jobID int64) {
 	f.mu.Lock()

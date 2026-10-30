@@ -148,6 +148,15 @@ reconciles unresolved operations before admissions on affected nodes. An advisor
 lock alone cannot fence an already in-flight Kubernetes request. Quarantine any
 node whose old operations cannot yet be proven complete.
 
+Database writes are fenced by a **leader epoch**. A new leader increments
+`scheduler_cursors.leader_epoch`. Every scheduler transaction first share-locks
+that row and aborts unless the epoch is still its own. A transaction an old
+leader started on another pooled connection therefore cannot commit after a
+takeover. API-side writes (submit, cancel) are not fenced; job row locks
+serialize them with admission. An intent's status distinguishes `pending` (the
+call was never sent, which proves nothing exists on the node) from `in_flight`
+(ambiguous until observed).
+
 A cycle runs on every event (submit, cancel, job end, node change, config
 change), and also every 10 s:
 

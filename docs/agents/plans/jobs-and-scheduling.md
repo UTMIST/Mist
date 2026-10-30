@@ -100,6 +100,19 @@ requirements. Keep secrets and actual research data out of test fixtures.
      Cover M1-04/M1-05/M1-06: crash boundaries, split leadership, fast exit before
      Started, lost node with retained allocation and repeated cleanup receipts.
      Include shared-node and partition caps, not just accelerator counts.
+   - *Status (30 Oct 2026):* implemented in `internal/scheduler`, with tables in
+     `migrations/scheduler/0002`. `scheduler_test.go` covers every scenario
+     listed in the check above, plus revocation, PROVISIONING/AUTH_UNAVAILABLE,
+     stale generation before launch, ambiguous creates, and dropped or duplicated
+     events. Writes are fenced by a leader epoch (scheduler.md). Still open:
+     - **Unknown executions:** they are stopped, and their node is kept out of
+       admission in memory, but not yet charged as quarantined occupancy.
+     - **Executor receipt tables:** moved to step 5, since the fake keeps
+       receipts in memory.
+     - **Generation granularity:** the identity fixture's generation is global
+       rather than per account, so any membership change cancels unsent
+       launches. Identity's real implementation should scope it per account.
+     - **Pending detail:** refreshed only when the pending reason changes.
 4. **`mist-job-entry`.**
    - umask 0027, symlink-safe private dot-folders, output header/footer, copying output to
      the file and stdout, SIGTERM forwarding, OOM detection from

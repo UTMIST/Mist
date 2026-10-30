@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/UTMIST/Mist/internal/db"
+	"github.com/UTMIST/Mist/internal/identity"
 	"github.com/UTMIST/Mist/internal/scheduler"
 )
 
@@ -67,6 +68,9 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 		return scheduler.Run(ctx, scheduler.Config{
 			DatabaseURL: *dbURL,
 			Pool:        pool,
+			// Until Identity's implementation lands, fail closed: nothing is
+			// admitted (AUTH_UNAVAILABLE). No executors are wired yet either.
+			Identity:    identity.Unavailable{},
 			Log:         log,
 			Tick:        *tick,
 			LeaderCheck: *leaderCheck,
