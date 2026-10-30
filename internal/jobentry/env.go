@@ -11,8 +11,9 @@ import (
 // runtime profile's baseline and what the executor/device runtime sets.
 var passthrough = []string{"PATH", "LANG", "LC_ALL", "TERM", "CUDA_VISIBLE_DEVICES", "NVIDIA_VISIBLE_DEVICES"}
 
-// protected reports whether a user --env value may not set name.
-func protected(name string) bool {
+// ProtectedEnv reports whether a user --env value may not set name. The API
+// rejects these at submission; the wrapper drops them again here.
+func ProtectedEnv(name string) bool {
 	switch name {
 	case "HOME", "USER", "LOGNAME", "PWD", "SHELL", "TMPDIR",
 		"CUDA_VISIBLE_DEVICES", "NVIDIA_VISIBLE_DEVICES", "PATH":
@@ -49,7 +50,7 @@ func childEnv(s Spec, own []string, started time.Time) []string {
 		env[k] = v
 	}
 	for k, v := range s.Env {
-		if !protected(k) && k != "" && !strings.ContainsAny(k, "=\x00") && !strings.Contains(v, "\x00") {
+		if !ProtectedEnv(k) && k != "" && !strings.ContainsAny(k, "=\x00") && !strings.Contains(v, "\x00") {
 			env[k] = v
 		}
 	}

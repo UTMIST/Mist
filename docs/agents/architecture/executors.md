@@ -384,6 +384,11 @@ actual process groups, rather than trusting an accepted field. Reference:
   paths; it never deletes arbitrary paths supplied by jobs. Send authenticated,
   durable receipts via the internal API. Missing reporter/receipt keeps capacity
   reserved and alerts an admin. TT also requires a successful board reset.
+  M1: `mistd cleanup-report -post <api> -token-file <file>` checks the node and
+  posts to `POST /internal/v1/executions/{id}/cleanup` with the node's
+  `cleanup` host token ([api.md](api.md#implementation-notes-m1)). The API's
+  executor records the receipt, and the scheduler sees it through `List`. What
+  runs the reporter after each Pod deletion is step 7.
 - Only then emit `Exited` and release resources. Keep diagnostics and tombstones
   in the database, including when API deletion or cleanup is retried.
 - Compare authoritative observations every 60 s and on restart. Follow the

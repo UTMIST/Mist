@@ -35,4 +35,4 @@ docker exec "$node" sh -c '
   chown 0:40002 /mist/teams/team-b && chmod 2750 /mist/teams/team-b'
 
 MIST_K3D_CONTEXT=$ctx MIST_K3D_NODE=$node \
-  go test -tags k3d -count=1 -v -run K3d ./internal/executor/k3s "$@"
+  go test -tags k3d -count=1 -v -run K3d ./internal/executor/k3s ./internal/e2e "$@"

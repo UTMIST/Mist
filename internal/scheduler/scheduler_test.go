@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -460,5 +461,38 @@ func TestSubmitQueueLimit(t *testing.T) {
 		Resources: executor.Resources{MilliCPU: 1000, MemoryBytes: 1 << 30, GPUs: 1, ScratchBytes: 1 << 30}})
 	if !errors.Is(err, ErrLimitExceeded) {
 		t.Fatalf("want ErrLimitExceeded, got %v", err)
+	}
+}
+
+// The idempotency check inside the submit transaction, which decides
+// races the API's earlier lookup cannot.
+func TestSubmitOnce(t *testing.T) {
+	h := newHarness(t)
+	r := Request{
+		Username: "alice", Team: "team-a", Partition: "cpu", QOS: "normal", Name: "x", Kind: executor.KindBatch,
+		Resources: executor.Resources{MilliCPU: 1000, MemoryBytes: 1 << 30, ScratchBytes: 1 << 30},
+		TimeLimit: time.Hour, SignalGrace: time.Minute, Script: "true",
+		Workdir: "/mist/teams/team-a/alice", OutputPath: "/mist/teams/team-a/alice/mist-%j.out",
+	}
+	idem := Idempotency{Key: "k", RequestHash: "h1"}
+	id, replayed, err := h.jobs.SubmitOnce(h.ctx, r, idem)
+	if err != nil || replayed {
+		t.Fatal(err, replayed)
+	}
+	again, replayed, err := h.jobs.SubmitOnce(h.ctx, r, idem)
+	if err != nil || !replayed || again != id {
+		t.Fatalf("retry: id %d replayed %v err %v", again, replayed, err)
+	}
+	if _, _, err := h.jobs.SubmitOnce(h.ctx, r, Idempotency{Key: "k", RequestHash: "h2"}); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("different request under the same key: %v", err)
+	}
+	spec, err := h.jobs.Spec(h.ctx, id)
+	if err != nil || spec.OutputPath != fmt.Sprintf("/mist/teams/team-a/alice/mist-%d.out", id) {
+		t.Fatalf("output %%j: %q %v", spec.OutputPath, err)
+	}
+	var n int
+	h.pool.QueryRow(h.ctx, "SELECT count(*) FROM jobs").Scan(&n)
+	if n != 1 {
+		t.Fatalf("%d jobs", n)
 	}
 }

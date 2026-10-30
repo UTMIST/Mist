@@ -588,6 +588,10 @@ type CleanupReceipt struct {
 	Evidence    string `json:"evidence"`
 }
 
+// ErrCleanupRejected: a cleanup receipt does not confirm cleanup of a
+// recorded execution (wrong UID or node, no outcome yet, Pod still there).
+var ErrCleanupRejected = errors.New("k3s: cleanup receipt rejected")
+
 // RecordCleanup accepts a node cleanup receipt. Only a receipt matching
 // the recorded execution, Pod UID and node, for a Pod the API no longer
 // has, confirms cleanup and lets the scheduler release resources.
@@ -603,15 +607,15 @@ func (e *Executor) RecordCleanup(ctx context.Context, r CleanupReceipt) error {
 		}
 	}
 	if rec == nil || rec.ObjectUID == "" || rec.ObjectUID != r.PodUID || rec.Node != r.Node {
-		return fmt.Errorf("k3s: cleanup receipt does not match a recorded execution")
+		return fmt.Errorf("%w: it does not match a recorded execution", ErrCleanupRejected)
 	}
 	defer e.lock(rec.JobID)()
 	if rec.FinishedAt == nil && rec.LostAt == nil {
-		return fmt.Errorf("k3s: execution %s has no recorded outcome yet", rec.ExecutionID)
+		return fmt.Errorf("%w: execution %s has no recorded outcome yet", ErrCleanupRejected, rec.ExecutionID)
 	}
 	live, err := e.client.CoreV1().Pods(e.opt.Namespace).Get(ctx, Name(rec.JobID), metav1.GetOptions{})
 	if err == nil && string(live.UID) == rec.ObjectUID {
-		return fmt.Errorf("k3s: Pod %s still exists", live.Name)
+		return fmt.Errorf("%w: Pod %s still exists", ErrCleanupRejected, live.Name)
 	} else if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}

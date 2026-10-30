@@ -179,6 +179,46 @@ requirements. Keep secrets and actual research data out of test fixtures.
      allowlisted queue summaries and cleanup/incomplete-output fields.
    - *Check:* M1-09 through dev fixtures and real session/relay auth. Production
      build must reject the development principal header.
+   - *Status (30 Oct 2026):* `internal/api` and the `mistd api` wiring. The
+     details are in [api.md](../architecture/api.md#implementation-notes-m1).
+     - **Endpoints:**
+       - `POST /v1/jobs`, which normalizes with database defaults and requires
+         an `Idempotency-Key`;
+       - `GET /v1/jobs` and `GET /v1/jobs/{id}`;
+       - `POST /v1/jobs/{id}/cancel`;
+       - `GET /v1/jobs/{id}/log`, including the `?follow=1` WebSocket;
+       - `GET /v1/queue`, anonymised;
+       - `GET /v1/partitions`;
+       - `POST /internal/v1/executions/{id}/cleanup`, with host tokens.
+
+       `mistd cleanup-report -post` delivers receipts.
+     - **M1-09 tests on the fixture:**
+       - A duplicate key gives one job, both through HTTP and inside the submit
+         transaction. A conflicting body is rejected, and a replay survives a
+         defaults change.
+       - Non-team detail, log and cancel requests get `not_found`.
+       - The lead, owner and admin rules follow the matrix, and former members
+         lose access.
+       - The queue and partition replies are free of other teams' identities,
+         names, env and paths.
+       - Hostile paths, env and argv are rejected and never stored.
+       - Log streams close on revocation.
+       - A production build refuses `-dev-fixture` and the dev header.
+
+       Mutation checks confirm the tests catch removed authorization, queue
+       redaction, the idempotency check, dev-header rejection, path
+       confinement, protected env and node-scoped receipts.
+     - **k3d:** `TestK3dAPIEndToEnd` submits over HTTP, admits, runs on k3s,
+       reads the log through the API, and has the node post its own cleanup
+       receipt to `/internal`. The job then reaches `COMPLETED` with the
+       allocation released.
+     - **Still open:**
+       - Real session and relay auth (Identity) are not integrated, so the
+         second half of the check waits for Lucas's authenticators.
+       - Host-token issuing (Identity provisioning).
+       - TLS on the direct link (step 7).
+       - The scheduler role has no executors wired in `mistd` yet (step 7
+         config).
 7. **Cluster.**
    - Reinstall k3s on the direct link and install the GPU Operator with only the
      device plugin and toolkit.
